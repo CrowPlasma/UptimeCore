@@ -213,56 +213,73 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* ── Tarjetas resumen ──── */}
+      {/* ── Header Fijo (Estadísticas y Controles) ──── */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-        gap: 16, marginBottom: 28,
+        position: 'sticky',
+        top: 58, // altura del Navbar
+        zIndex: 90,
+        backgroundColor: 'var(--color-bg-primary)',
+        paddingTop: 28,
+        paddingBottom: 16,
+        marginTop: -28,
+        marginLeft: -32,
+        marginRight: -32,
+        paddingLeft: 32,
+        paddingRight: 32,
+        marginBottom: 24,
+        borderBottom: '1px solid var(--color-border)',
       }}>
-        <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups}    color="#6366f1" />
-        <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}       color="#22c55e" />
-        <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}     color="#ef4444" />
-        <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded} color="#f59e0b" />
-        <StatCard icon={<Wrench size={22} />} label="Mantenimiento" value={stats.maintenance} color="#3b82f6" />
+        {/* ── Tarjetas resumen ──── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: 16, marginBottom: 24,
+        }}>
+          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups}    color="#6366f1" />
+          <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}       color="#22c55e" />
+          <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}     color="#ef4444" />
+          <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded} color="#f59e0b" />
+          <StatCard icon={<Wrench size={22} />} label="Mantenimiento" value={stats.maintenance} color="#3b82f6" />
           <StatCard icon={<Pause size={22} />} label="En Pausa" value={stats.paused} color="#9ca3af" />
-      </div>
+        </div>
 
-      {/* ── Barra de controles ──── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 22, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder="🔍  Buscar por nombre..."
-          value={search}
-          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
-          style={{
-            flex: 1, minWidth: 220, padding: '9px 14px', borderRadius: 9,
+        {/* ── Barra de controles ──── */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="🔍  Buscar por nombre..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+            style={{
+              flex: 1, minWidth: 220, padding: '9px 14px', borderRadius: 9,
+              border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
+              color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
+            }}
+          />
+
+          <TagFilter allTagNames={allTagNames} selected={tagFilter} onChange={(v) => { setTagFilter(v); setCurrentPage(1); }} />
+
+          {/* Botón refresh manual */}
+          <button onClick={handleRefresh} title="Actualizar ahora" style={{
+            width: 38, height: 38, borderRadius: 9, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
             border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
-            color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
-          }}
-        />
+            color: 'var(--color-text-muted)', cursor: 'pointer',
+          }}>
+            <RefreshCw size={15} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </button>
 
-        <TagFilter allTagNames={allTagNames} selected={tagFilter} onChange={(v) => { setTagFilter(v); setCurrentPage(1); }} />
-
-        {/* Botón refresh manual */}
-        <button onClick={handleRefresh} title="Actualizar ahora" style={{
-          width: 38, height: 38, borderRadius: 9, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
-          color: 'var(--color-text-muted)', cursor: 'pointer',
-        }}>
-          <RefreshCw size={15} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </button>
-
-        {/* Nuevo grupo */}
-        <button onClick={() => setModal({ type: 'new_group' })} style={{
-          display: 'flex', alignItems: 'center', gap: 7,
-          padding: '9px 20px', borderRadius: 9, border: 'none',
-          background: 'var(--color-accent)', color: '#fff',
-          fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-        }}>
-          <PlusCircle size={15} /> Nuevo Grupo
-        </button>
+          {/* Nuevo grupo */}
+          <button onClick={() => setModal({ type: 'new_group' })} style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '9px 20px', borderRadius: 9, border: 'none',
+            background: 'var(--color-accent)', color: '#fff',
+            fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>
+            <PlusCircle size={15} /> Nuevo Grupo
+          </button>
+        </div>
       </div>
 
       {/* ── Estado de carga ──── */}
