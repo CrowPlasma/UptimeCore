@@ -200,13 +200,13 @@ export function Dashboard() {
 
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: '100%' }}>
+    <div style={{ padding: '0 32px 28px 32px', maxWidth: '100%' }}>
 
       {/* ── Error banner ──── */}
       {error && (
         <div style={{
           background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
-          padding: '12px 18px', marginBottom: 24, fontSize: 13, color: '#b91c1c',
+          padding: '12px 18px', marginBottom: 24, marginTop: 28, fontSize: 13, color: '#b91c1c',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
           ⚠️ No se pudo conectar al backend: {error}. Asegúrate de que el contenedor `ping-eye-backend` esté activo.
@@ -221,13 +221,11 @@ export function Dashboard() {
         backgroundColor: 'var(--color-bg-primary)',
         paddingTop: 28,
         paddingBottom: 16,
-        marginTop: -28,
-        marginLeft: -32,
-        marginRight: -32,
-        paddingLeft: 32,
-        paddingRight: 32,
         marginBottom: 24,
         borderBottom: '1px solid var(--color-border)',
+        boxShadow: '0 10px 15px -3px var(--color-bg-primary)', // Suaviza la transición hacia abajo
+        margin: '0 -32px',
+        padding: '28px 32px 16px 32px',
       }}>
         {/* ── Tarjetas resumen ──── */}
         <div style={{
