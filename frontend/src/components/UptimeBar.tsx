@@ -61,4 +61,4 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 60 }
       })}
     </div>
   )
-}
+})

@@ -222,7 +222,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
       )}
     </>
   )
-}
+})
 
 // ── Fila de endpoint hijo ─────────────────────────────────────────────────
 function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {

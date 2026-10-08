@@ -173,4 +173,4 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
       </ResponsiveContainer>
     </div>
   )
-}
+})
