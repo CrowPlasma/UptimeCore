@@ -303,6 +303,29 @@ func (db *DB) GetMonitor(ctx context.Context, id int) (models.Monitor, error) {
 	return m, err
 }
 
+// GetMonitorsByGroup returns all monitors that belong to a specific group.
+func (db *DB) GetMonitorsByGroup(ctx context.Context, groupID int) ([]models.Monitor, error) {
+	rows, err := db.pool.Query(ctx,
+		`SELECT id, group_id, name, type, target, port, interval_seconds, timeout_seconds, retries, snmp_community, snmp_oid, ssl_expiration_days, push_token, cpu_threshold, ram_threshold, disk_threshold, value_threshold, is_active, is_maintenance, created_at, updated_at
+		 FROM monitors WHERE group_id=$1`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []models.Monitor
+	for rows.Next() {
+		var m models.Monitor
+		if err := rows.Scan(
+			&m.ID, &m.GroupID, &m.Name, &m.Type, &m.Target,
+			&m.Port, &m.IntervalSeconds, &m.TimeoutSeconds,
+			&m.Retries, &m.SnmpCommunity, &m.SnmpOID, &m.SslExpirationDays, &m.PushToken, &m.CpuThreshold, &m.RamThreshold, &m.DiskThreshold, &m.ValueThreshold, &m.IsActive, &m.IsMaintenance, &m.CreatedAt, &m.UpdatedAt,
+		); err == nil {
+			list = append(list, m)
+		}
+	}
+	return list, nil
+}
+
 // CreateMonitor inserts a new monitor endpoint.
 func (db *DB) CreateMonitor(ctx context.Context, m models.Monitor) (models.Monitor, error) {
 	var created models.Monitor

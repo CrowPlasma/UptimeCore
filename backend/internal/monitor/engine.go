@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"sync"
 	"strconv"
+	"strings"
 	"time"
 
 	"ping-eye/internal/config"
@@ -81,12 +82,22 @@ func (e *Engine) ScheduleMonitor(m models.Monitor) {
 				maxJitter = 5
 			}
 			jitter := time.Duration(rand.Intn(maxJitter*1000)) * time.Millisecond
-			time.Sleep(jitter)
+			select {
+			case <-time.After(jitter):
+			case <-stop:
+				return
+			}
+		}
+
+		// Prevent execution if stopped during jitter
+		select {
+		case <-stop:
+			return
+		default:
 		}
 
 		// Run immediately on first schedule
 		e.executeCheck(context.Background(), m)
-
 		ticker := time.NewTicker(time.Duration(m.IntervalSeconds) * time.Second)
 		defer ticker.Stop()
 		for {
@@ -268,6 +279,14 @@ func (e *Engine) batchWriter(ctx context.Context) {
 		if err := e.db.SaveCheckResultsBulk(ctx, batch); err != nil {
 			lastFail = time.Now()
 			log.Printf("⚠️  Bulk insert failed (%d results kept for retry): %v", len(batch), err)
+			
+			// Discard batch if a monitor was deleted
+			if strings.Contains(err.Error(), "23503") || strings.Contains(err.Error(), "foreign key") {
+				log.Printf("🚮 Discarding batch due to foreign key violation (deleted monitor)")
+				batch = nil
+				return
+			}
+			
 			if len(batch) > maxPendingBatch {
 				batch = batch[len(batch)-maxPendingBatch:]
 			}
