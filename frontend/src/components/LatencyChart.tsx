@@ -3,7 +3,7 @@
  * Gráfica de línea de latencia por rango de tiempo.
  * Soporta los rangos: recent | 3h | 6h | 24h | 1w (igual que Uptime Kuma)
  */
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceArea,
@@ -24,7 +24,7 @@ interface Props {
   onRangeChange?: (range: TimeRange) => void
 }
 
-export function LatencyChart({ data, onRangeChange }: Props) {
+export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChange }: Props) {
   const [range, setRange] = useState<TimeRange>('recent')
 
   const handleRange = (r: TimeRange) => {

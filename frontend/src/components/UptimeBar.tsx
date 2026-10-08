@@ -3,6 +3,7 @@
  * Barra de historial de estado estilo Uptime Kuma.
  * Muestra N barras verticales coloreadas representando el estado en el tiempo.
  */
+import React from 'react'
 import type { HistoryPoint } from '../types'
 
 const COLOR: Record<string, string> = {
@@ -19,7 +20,7 @@ interface Props {
   maxBars?: number
 }
 
-export function UptimeBar({ history, maxBars = 60 }: Props) {
+export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 60 }: Props) {
   // Tomar los últimos N puntos
   const points = history.slice(-maxBars)
 

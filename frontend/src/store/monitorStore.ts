@@ -40,7 +40,7 @@ interface MonitorStore {
   // Data fetching
   fetchGroups: () => Promise<void>
   fetchTags: () => Promise<void>
-  updateMonitorLive: (ev: CheckResultEvent) => void
+  updateMonitorsLiveBatch: (events: CheckResultEvent[]) => void
 
   // CRUD Groups
   addGroup: (data: MonitorFormData) => Promise<void>
@@ -128,12 +128,17 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     }
   },
 
-  updateMonitorLive: (ev) => {
+  updateMonitorsLiveBatch: (events: CheckResultEvent[]) => {
     set((state) => {
+      // Agrupar los eventos más recientes por monitorID para no procesar duplicados innecesarios
+      const latestEvents = new Map<number, CheckResultEvent>()
+      events.forEach(ev => latestEvents.set(ev.MonitorID, ev))
+
       const groups = state.groups.map(g => {
         let changed = false
         const newMonitors = g.monitors?.map(m => {
-          if (m.id === ev.MonitorID) {
+          const ev = latestEvents.get(m.id)
+          if (ev) {
             changed = true
             
             const oldStatus = m.current_status
@@ -171,7 +176,6 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
               status: ev.Status as any,
               latency_ms: ev.LatencyMs
             }]
-            // Keep maximum 60 points in memory to avoid memory leaks
             if (newHistory.length > 60) newHistory.shift()
 
             return { 
@@ -185,7 +189,6 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         }) || []
 
         if (changed) {
-          // Re-calcular el status del grupo
           const hasUp = newMonitors.some(m => m.current_status === 'UP')
           const hasDeg = newMonitors.some(m => m.current_status === 'DEGRADED')
           const allDown = newMonitors.every(m => m.current_status === 'DOWN')

@@ -131,18 +131,30 @@ export function Dashboard() {
   useEffect(() => {
     fetchGroups()
 
-    // 1. Sincronización en tiempo real
+    // 1. Sincronización en tiempo real con buffering para evitar colapso de renders
     const sse = new EventSource('/api/stream')
-    // On every RE-connection, resync from the server to cover the gap while the stream was down.
     let firstOpen = true
     sse.onopen = () => {
       if (!firstOpen) fetchGroups()
       firstOpen = false
     }
+
+    let pendingEvents: any[] = []
+    let flushInterval: any = null
+
     sse.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
-        useMonitorStore.getState().updateMonitorLive(data)
+        pendingEvents.push(data)
+        
+        if (!flushInterval) {
+          flushInterval = setTimeout(() => {
+            // Mandamos todos los eventos juntos para hacer 1 solo re-render
+            useMonitorStore.getState().updateMonitorsLiveBatch(pendingEvents)
+            pendingEvents = []
+            flushInterval = null
+          }, 1000) // Actualiza la UI máximo 1 vez por segundo
+        }
       } catch (err) {}
     }
 

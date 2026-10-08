@@ -6,7 +6,7 @@
  *  - Botones de editar/eliminar funcionales
  *  - Historia real desde API (/api/monitors/:id/history)
  */
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   ChevronDown, ChevronUp, Plus, Pencil, Trash2,
   Globe, Wifi, Activity, Clock, TrendingUp, Loader2, Pause, Play, Wrench
@@ -49,7 +49,7 @@ interface Props {
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
-export function MonitorCard({ group, onOpenModal }: Props) {
+export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal }: Props) {
   const { deleteGroup, deleteMonitor } = useMonitorStore()
   const [expanded, setExpanded] = useState(false)
   const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
