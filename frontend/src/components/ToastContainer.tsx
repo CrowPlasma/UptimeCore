@@ -11,19 +11,6 @@ export function ToastContainer() {
       position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
       display: 'flex', flexDirection: 'column', gap: 12
     }}>
-      
-      
-      {toasts.length > 1 && (
-        <button
-          onClick={() => useToastStore.setState({ toasts: [] })}
-          style={{
-            alignSelf: 'flex-end', background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
-            color: 'var(--color-text-muted)', padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer'
-          }}
-        >
-          Limpiar todas
-        </button>
-      )}
       {toasts.map(t => (
         <div key={t.id} style={{
           width: 340, padding: 16, borderRadius: 12,
@@ -62,6 +49,18 @@ export function ToastContainer() {
           </button>
         </div>
       ))}
+      {toasts.length > 1 && (
+        <button
+          onClick={() => useToastStore.setState({ toasts: [] })}
+          style={{
+            alignSelf: 'flex-end', background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+            color: 'var(--color-text-primary)', padding: '6px 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+            fontWeight: 600, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+          }}
+        >
+          🧹 Limpiar todas
+        </button>
+      )}
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }

@@ -26,7 +26,8 @@ export const useToastStore = create<ToastStore>((set) => ({
     set((state) => {
       // Remove existing toast with the same ID if it exists to prevent duplicates
       const filtered = state.toasts.filter(t => t.id !== id)
-      return { toasts: [...filtered, { autoClose, ...toast, id }] }
+      // Cap at 10 to prevent screen flooding when many monitors fail at once
+      return { toasts: [...filtered, { autoClose, ...toast, id }].slice(-10) }
     })
 
     if (autoClose) {
