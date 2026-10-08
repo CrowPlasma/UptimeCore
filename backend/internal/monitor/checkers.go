@@ -113,15 +113,6 @@ func CheckSNMP(target string, port int, community, oid string, timeoutSec int) m
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
 
-	// --- MOCK FOR USER DEMO ---
-	if target == "127.0.0.99" {
-		val := float64(45 + (time.Now().Unix() % 40)) // Randomish value between 45 and 85
-		r.MetricValue = &val
-		r.Status = models.StatusUP
-		r.LatencyMs = 12
-		return r
-	}
-	// --------------------------
 
 	params := &gosnmp.GoSNMP{
 		Target:    target,
