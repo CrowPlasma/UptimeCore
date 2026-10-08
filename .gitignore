@@ -1,0 +1,36 @@
+# Docker Volumes and Data
+postgres-data/
+redis-data/
+timescaledb-data/
+data/
+
+# Environment Variables
+.env
+.env.*
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go / Backend
+backend/bin/
+backend/tmp/
+backend/uptimecore-backend.exe
+backend/uptimecore-backend
+
+# Python / Scratch Scripts
+*.py
+*.pyc
+__pycache__/
+
+# Private User Data / Testing
+test_monitoreo.txt
+*.txt
+
+# OS Files
+.DS_Store
+Thumbs.db

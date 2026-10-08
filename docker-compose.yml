@@ -1,0 +1,87 @@
+name: uptimecore
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: uptimecore-db
+    environment:
+      POSTGRES_DB: ping_eye
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ping_eye"]
+      interval: 8s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: uptimecore-redis
+    # AOF persistence: live status/alert state survives container restarts
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: uptimecore-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - DB_URL=postgres://admin:adminpassword@timescaledb:5432/ping_eye?sslmode=disable
+      - REDIS_URL=redis:6379
+      - PORT=8080
+      # -- Configuración de Notificaciones --
+      # - SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      # - SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+      # - TEAMS_WEBHOOK_URL=https://tu-empresa.webhook.office.com/...
+      # - GCHAT_WEBHOOK_URL=https://chat.googleapis.com/...
+      # - SMTP_HOST=smtp.gmail.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=tu_correo@gmail.com
+      # - SMTP_PASS=tu_password_de_aplicacion
+      # - SMTP_FROM=alertas@tu-empresa.com
+      # - SMTP_TO=admin@tu-empresa.com
+    # NET_RAW es necesario para que el checker de ICMP Ping funcione en Linux
+    cap_add:
+      - NET_RAW
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: uptimecore-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  timescaledb_data:
+    name: uptimecore_timescaledb_data
+  redis_data:
+    name: uptimecore_redis_data
