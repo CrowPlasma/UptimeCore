@@ -221,10 +221,9 @@ export function Dashboard() {
         backgroundColor: 'var(--color-bg-primary)',
         paddingTop: 28,
         paddingBottom: 16,
-        marginBottom: 24,
         borderBottom: '1px solid var(--color-border)',
         boxShadow: '0 10px 15px -3px var(--color-bg-primary)', // Suaviza la transición hacia abajo
-        margin: '0 -32px',
+        margin: '0 -32px 24px -32px',
         padding: '28px 32px 16px 32px',
       }}>
         {/* ── Tarjetas resumen ──── */}
