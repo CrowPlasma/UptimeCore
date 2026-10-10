@@ -178,13 +178,11 @@ export function Dashboard() {
   const stats = useMemo(() => {
     let up = 0, down = 0, degraded = 0, maintenance = 0, paused = 0;
     groups.forEach(g => {
-      g.monitors?.forEach(m => {
-        if (m.current_status === 'UP') up++;
-        if (m.current_status === 'DOWN') down++;
-        if (m.current_status === 'DEGRADED') degraded++;
-        if (m.current_status === 'MAINTENANCE') maintenance++;
-        if (m.current_status === 'PAUSED' || !m.is_active) paused++;
-      })
+      if (g.overall_status === 'UP') up++;
+      else if (g.overall_status === 'DOWN') down++;
+      else if (g.overall_status === 'DEGRADED') degraded++;
+      else if (g.overall_status === 'MAINTENANCE') maintenance++;
+      else if (g.overall_status === 'PAUSED') paused++;
     });
     return { totalGroups: groups.length, up, down, degraded, maintenance, paused };
   }, [groups])

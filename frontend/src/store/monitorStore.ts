@@ -111,15 +111,27 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         if (m.live_history?.length) local.set(m.id, m.live_history)
       }))
 
-      const groups: MonitorGroup[] = incoming.map(g => ({
-        ...g,
-        monitors: (g.monitors || []).map(m => {
+      const groups: MonitorGroup[] = incoming.map(g => {
+        const monitors = (g.monitors || []).map(m => {
           const server = m.live_history || []
           const lastServer = server.length ? new Date(server[server.length - 1].time).getTime() : 0
           const extra = (local.get(m.id) || []).filter(p => new Date(p.time).getTime() > lastServer)
           return { ...m, live_history: [...server, ...extra].slice(-60) }
-        }),
-      }))
+        });
+
+        const hasUp = monitors.some(m => m.current_status === 'UP')
+        const hasDown = monitors.some(m => m.current_status === 'DOWN')
+        const hasDeg = monitors.some(m => m.current_status === 'DEGRADED')
+        const allDown = monitors.every(m => m.current_status === 'DOWN')
+
+        let overall = 'UNKNOWN'
+        if (hasUp && hasDown) overall = 'DEGRADED' // Partial outage
+        else if (hasUp) overall = hasDeg ? 'DEGRADED' : 'UP'
+        else if (hasDeg) overall = 'DEGRADED'
+        else if (allDown && monitors.length > 0) overall = 'DOWN'
+
+        return { ...g, monitors, overall_status: overall as any }
+      })
 
       set({ groups, loading: false })
         get().fetchTags()
@@ -190,11 +202,13 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
 
         if (changed) {
           const hasUp = newMonitors.some(m => m.current_status === 'UP')
+          const hasDown = newMonitors.some(m => m.current_status === 'DOWN')
           const hasDeg = newMonitors.some(m => m.current_status === 'DEGRADED')
           const allDown = newMonitors.every(m => m.current_status === 'DOWN')
           
           let overall = 'UNKNOWN'
-          if (hasUp) overall = hasDeg ? 'DEGRADED' : 'UP'
+          if (hasUp && hasDown) overall = 'DEGRADED' // Partial outage = Degraded
+          else if (hasUp) overall = hasDeg ? 'DEGRADED' : 'UP'
           else if (hasDeg) overall = 'DEGRADED'
           else if (allDown && newMonitors.length > 0) overall = 'DOWN'
 
