@@ -16,7 +16,7 @@ import type { ModalMode } from './MonitorModal'
 import { StatusBadge } from './StatusBadge'
 import { UptimeBar } from './UptimeBar'
 import { LatencyChart } from './LatencyChart'
-import { useMonitorStore } from '../store/monitorStore'
+import { useMonitorStore, aggregateGroupHistory } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
   >(null)
 
   const status = group.overall_status ?? 'UNKNOWN'
+  const groupHistory = React.useMemo(() => aggregateGroupHistory(group.monitors || []), [group.monitors])
 
   return (
     <>
@@ -106,7 +107,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           <div style={{ minWidth: 0 }}>
             {group.monitors && group.monitors.length > 0 ? (
               <UptimeBar
-                history={group.monitors[0].live_history || []}
+                history={groupHistory}
                 maxBars={30}
               />
             ) : (

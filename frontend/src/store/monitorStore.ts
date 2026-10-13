@@ -7,6 +7,39 @@ import { create } from 'zustand'
 import { useToastStore } from './toastStore'
 import type { MonitorGroup, Monitor, MonitorType, Tag, HistoryPoint } from '../types'
 
+const isActive = (m: Monitor) => m.is_active !== false && m.current_status !== 'PAUSED'
+
+/** Group status: paused/inactive endpoints are ignored so they don't force UNKNOWN. */
+export function computeGroupStatus(monitors: Monitor[]): string {
+  if (monitors.length === 0) return 'UNKNOWN'
+  const active = monitors.filter(isActive)
+  if (active.length === 0) return 'PAUSED'
+  const s = active.map(m => m.current_status)
+  const hasUp = s.includes('UP'), hasDown = s.includes('DOWN'), hasDeg = s.includes('DEGRADED')
+  if (s.every(x => x === 'MAINTENANCE')) return 'MAINTENANCE'
+  if (hasDeg || (hasUp && hasDown)) return 'DEGRADED'
+  if (hasDown) return s.every(x => x === 'DOWN' || x === 'UNKNOWN') ? 'DOWN' : 'DEGRADED'
+  if (hasUp) return 'UP'
+  return 'UNKNOWN'
+}
+
+/** Aggregated history for the group bar: per slot (aligned to newest), mixes all active endpoints. */
+export function aggregateGroupHistory(monitors: Monitor[], max = 60): HistoryPoint[] {
+  const hs = monitors.filter(isActive).map(m => (m.live_history || []).slice(-max)).filter(h => h.length)
+  if (!hs.length) return []
+  const len = Math.max(...hs.map(h => h.length))
+  const out: HistoryPoint[] = []
+  for (let i = 0; i < len; i++) {
+    const pts = hs.map(h => h[h.length - len + i]).filter(Boolean) as HistoryPoint[]
+    const st = pts.map(p => p.status as string)
+    const up = st.includes('UP'), down = st.includes('DOWN'), deg = st.includes('DEGRADED')
+    const status = deg || (up && down) ? 'DEGRADED' : down ? 'DOWN' : up ? 'UP' : (st[0] ?? 'UNKNOWN')
+    const lat = pts.map(p => p.latency_ms || 0)
+    out.push({ ...pts[pts.length - 1], status: status as any, latency_ms: Math.max(...lat) })
+  }
+  return out
+}
+
 export interface MonitorFormData {
   name: string
   type: MonitorType
@@ -119,18 +152,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
           return { ...m, live_history: [...server, ...extra].slice(-60) }
         });
 
-        const hasUp = monitors.some(m => m.current_status === 'UP')
-        const hasDown = monitors.some(m => m.current_status === 'DOWN')
-        const hasDeg = monitors.some(m => m.current_status === 'DEGRADED')
-        const allDown = monitors.every(m => m.current_status === 'DOWN')
-
-        let overall = 'UNKNOWN'
-        if (hasUp && hasDown) overall = 'DEGRADED' // Partial outage
-        else if (hasUp) overall = hasDeg ? 'DEGRADED' : 'UP'
-        else if (hasDeg) overall = 'DEGRADED'
-        else if (allDown && monitors.length > 0) overall = 'DOWN'
-
-        return { ...g, monitors, overall_status: overall as any }
+        return { ...g, monitors, overall_status: computeGroupStatus(monitors) as any }
       })
 
       set({ groups, loading: false })
@@ -201,18 +223,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         }) || []
 
         if (changed) {
-          const hasUp = newMonitors.some(m => m.current_status === 'UP')
-          const hasDown = newMonitors.some(m => m.current_status === 'DOWN')
-          const hasDeg = newMonitors.some(m => m.current_status === 'DEGRADED')
-          const allDown = newMonitors.every(m => m.current_status === 'DOWN')
-          
-          let overall = 'UNKNOWN'
-          if (hasUp && hasDown) overall = 'DEGRADED' // Partial outage = Degraded
-          else if (hasUp) overall = hasDeg ? 'DEGRADED' : 'UP'
-          else if (hasDeg) overall = 'DEGRADED'
-          else if (allDown && newMonitors.length > 0) overall = 'DOWN'
-
-          return { ...g, monitors: newMonitors, overall_status: overall as any }
+          return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
         }
         return g
       })
