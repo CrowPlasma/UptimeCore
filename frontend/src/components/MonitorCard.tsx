@@ -97,7 +97,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
               )}
             </div>
             {group.description && (
-              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+              <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', marginTop: 6, lineHeight: 1.4 }}>
                 {group.description}
               </p>
             )}
@@ -120,7 +120,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           {/* Panel derecho */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
             {/* Contador */}
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
               {group.monitors?.length ?? 0} endpoint{(group.monitors?.length ?? 0) !== 1 ? 's' : ''}
             </span>
@@ -314,8 +314,13 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>
             {monitor.name}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'monospace', marginTop: 3 }}>
-            {monitor.type} &bull;{' '}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 5, fontSize: 12.5, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '1px 6px', borderRadius: 4,
+              color: 'var(--color-accent)', background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.3)',
+            }}>
+              {monitor.type}
+            </span>
             <a
               href={
                 monitor.target.startsWith('http')
@@ -325,9 +330,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              style={{ color: 'var(--color-text-muted)', textDecoration: 'none', transition: 'color 0.2s' }}
+              style={{ color: 'var(--color-text-secondary)', fontWeight: 500, textDecoration: 'none', transition: 'color 0.2s' }}
               onMouseOver={(e) => { e.currentTarget.style.color = '#8b5cf6'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
             >
               {monitor.target}{monitor.port ? `:${monitor.port}` : ''}
             </a>
