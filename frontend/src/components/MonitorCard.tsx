@@ -427,9 +427,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
 function Btn({ icon, title, onClick, danger, customColor }: {
   icon: React.ReactNode; title: string; onClick: () => void; danger?: boolean; customColor?: { text: string, bg: string, border: string }
 }) {
-  const bg = customColor ? customColor.bg : danger ? '#fef2f2' : 'var(--color-bg-primary)'
-  const border = customColor ? customColor.border : danger ? '#fecaca' : 'var(--color-border)'
-  const text = customColor ? customColor.text : danger ? '#ef4444' : 'var(--color-text-muted)'
+  const bg = customColor ? customColor.bg : danger ? 'rgba(239,68,68,0.12)' : 'var(--color-bg-primary)'
+  const border = customColor ? customColor.border : danger ? 'rgba(239,68,68,0.35)' : 'var(--color-border)'
+  const text = customColor ? customColor.text : danger ? '#f87171' : 'var(--color-text-secondary)'
 
   return (
     <button title={title} onClick={onClick} style={{
