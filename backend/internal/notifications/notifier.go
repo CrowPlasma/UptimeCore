@@ -7,6 +7,7 @@ import (
 	"log"
 	"context"
 	"crypto/tls"
+	"mime"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -64,7 +65,7 @@ func (d *Dispatcher) Send(m models.Monitor, groupName string, status string, err
 
 	go d.sendTeams(title, msg, color)
 	go d.sendGChat(title, msg)
-	go d.sendEmail(title, msg)
+	go d.sendEmail(m, groupName, status, errMsg, title, msg)
 	go d.sendTelegram(status, m.Name, groupName, m.Target, errMsg)
 }
 
@@ -135,7 +136,109 @@ func (d *Dispatcher) sendGChat(title, text string) {
 	d.postJSON(d.cfg.GChatWebhook, payload, "Google Chat")
 }
 
-func (d *Dispatcher) sendEmail(subject, body string) {
+func (d *Dispatcher) formatSubject(template string, m models.Monitor, groupName, status string) string {
+	res := template
+	portStr := ""
+	if m.Port != nil && *m.Port > 0 {
+		portStr = fmt.Sprintf(":%d", *m.Port)
+	}
+
+	replacements := map[string]string{
+		"{group}":      groupName,
+		"{{group}}":    groupName,
+		"{monitor}":    m.Name,
+		"{{monitor}}":  m.Name,
+		"{endpoint}":   m.Name,
+		"{{endpoint}}": m.Name,
+		"{status}":     status,
+		"{{status}}":   status,
+		"{target}":     m.Target,
+		"{{target}}":   m.Target,
+		"{ip}":         m.Target,
+		"{{ip}}":       m.Target,
+		"{port}":       portStr,
+		"{{port}}":     portStr,
+		"{type}":       m.Type,
+		"{{type}}":     m.Type,
+	}
+
+	for k, v := range replacements {
+		res = strings.ReplaceAll(res, k, v)
+	}
+	return strings.TrimSpace(res)
+}
+
+func (d *Dispatcher) getEmailSubject(m models.Monitor, groupName, status, defaultTitle string) string {
+	if status == "UP" {
+		tmplUp := d.GetSetting("smtp_subject_up", "")
+		if tmplUp != "" {
+			return d.formatSubject(tmplUp, m, groupName, status)
+		}
+		downTmpl := d.GetSetting("smtp_subject_down", "")
+		if downTmpl == "" {
+			downTmpl = d.GetSetting("smtp_subject_template", "")
+		}
+		if downTmpl != "" {
+			if strings.Contains(strings.ToLower(downTmpl), "status") {
+				return d.formatSubject(downTmpl, m, groupName, status)
+			}
+			return fmt.Sprintf("[RECUPERADO] %s", d.formatSubject(downTmpl, m, groupName, status))
+		}
+		return fmt.Sprintf("[RECUPERADO] %s - %s", groupName, m.Name)
+	}
+
+	tmplDown := d.GetSetting("smtp_subject_down", "")
+	if tmplDown == "" {
+		tmplDown = d.GetSetting("smtp_subject_template", "")
+	}
+	if tmplDown != "" {
+		return d.formatSubject(tmplDown, m, groupName, status)
+	}
+
+	if groupName != "" && groupName != "Sin Grupo" {
+		return fmt.Sprintf("[%s] %s - %s", status, groupName, m.Name)
+	}
+	return defaultTitle
+}
+
+func (d *Dispatcher) getEmailBody(m models.Monitor, groupName string, status string, errMsg string, defaultBody string) string {
+	stateLabel := "CAÍDA / NO DISPONIBLE"
+	emoji := "🚨"
+	if status == "UP" {
+		stateLabel = "OPERATIVO / RECUPERADO"
+		emoji = "✅"
+	} else if status == "DEGRADED" {
+		stateLabel = "RENDIMIENTO DEGRADADO"
+		emoji = "⚠️"
+	} else if status == "MAINTENANCE" {
+		stateLabel = "EN MANTENIMIENTO"
+		emoji = "🔧"
+	}
+
+	portStr := ""
+	if m.Port != nil && *m.Port > 0 {
+		portStr = fmt.Sprintf(":%d", *m.Port)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s NOTIFICACIÓN DE TELEMETRÍA - UPTIMECORE\n", emoji))
+	sb.WriteString(strings.Repeat("=", 48) + "\n\n")
+	sb.WriteString(fmt.Sprintf("• Grupo:    %s\n", groupName))
+	sb.WriteString(fmt.Sprintf("• Endpoint: %s\n", m.Name))
+	sb.WriteString(fmt.Sprintf("• Destino:  %s%s (%s)\n", m.Target, portStr, m.Type))
+	sb.WriteString(fmt.Sprintf("• Estado:   %s (%s)\n", status, stateLabel))
+	sb.WriteString(fmt.Sprintf("• Fecha:    %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
+
+	if errMsg != "" {
+		sb.WriteString(fmt.Sprintf("\nDetalle técnico:\n%s\n", errMsg))
+	}
+	sb.WriteString("\n" + strings.Repeat("-", 48) + "\n")
+	sb.WriteString("Mensaje generado automáticamente por UptimeCore.")
+
+	return sb.String()
+}
+
+func (d *Dispatcher) sendEmail(m models.Monitor, groupName string, status string, errMsg string, defaultTitle string, defaultBody string) {
 	smtpTo := d.GetSetting("smtp_to", "SMTP_TO")
 	if smtpTo == "" {
 		smtpTo = d.cfg.SmtpTo
@@ -143,6 +246,9 @@ func (d *Dispatcher) sendEmail(subject, body string) {
 	if smtpTo == "" {
 		return
 	}
+
+	subject := d.getEmailSubject(m, groupName, status, defaultTitle)
+	body := d.getEmailBody(m, groupName, status, errMsg, defaultBody)
 
 	emails := strings.Split(smtpTo, ",")
 	for _, email := range emails {
@@ -216,10 +322,15 @@ func (d *Dispatcher) SendEscalation(m models.Monitor, groupName string, status s
 	escalationEmailsStr := d.GetSetting("escalation_smtp_to", "")
 	if escalationEmailsStr != "" {
 		emails := strings.Split(escalationEmailsStr, ",")
+		subject := d.getEmailSubject(m, groupName, status, title)
+		if !strings.HasPrefix(subject, "[ESCALACIÓN]") && !strings.HasPrefix(subject, "ESCALATION") {
+			subject = "[ESCALACIÓN] " + subject
+		}
+		body := d.getEmailBody(m, groupName, status, errMsg, msg)
 		for _, email := range emails {
 			email = strings.TrimSpace(email)
 			if email == "" { continue }
-			go d.sendEmailTo(title, msg, email)
+			go d.sendEmailTo(subject, body, email)
 		}
 	}
 }
@@ -249,7 +360,26 @@ func (d *Dispatcher) sendEmailTo(subject, body, customTo string) {
 		smtpPort = "587"
 	}
 
-	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s\r\n", customTo, subject, body))
+	fromName := d.GetSetting("smtp_from_name", "SMTP_FROM_NAME")
+	if fromName == "" {
+		fromName = "UptimeCore Alertas"
+	}
+
+	encodedSubject := mime.QEncoding.Encode("utf-8", subject)
+	encodedFromName := mime.QEncoding.Encode("utf-8", fromName)
+
+	var msgBuffer bytes.Buffer
+	msgBuffer.WriteString(fmt.Sprintf("From: %s <%s>\r\n", encodedFromName, smtpUser))
+	msgBuffer.WriteString(fmt.Sprintf("To: %s\r\n", customTo))
+	msgBuffer.WriteString(fmt.Sprintf("Subject: %s\r\n", encodedSubject))
+	msgBuffer.WriteString("MIME-Version: 1.0\r\n")
+	msgBuffer.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	msgBuffer.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	msgBuffer.WriteString("\r\n")
+	msgBuffer.WriteString(body)
+	msgBuffer.WriteString("\r\n")
+
+	msg := msgBuffer.Bytes()
 	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 	addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
 

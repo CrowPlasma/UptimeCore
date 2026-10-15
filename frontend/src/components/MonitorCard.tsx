@@ -46,16 +46,29 @@ function TagChip({ name, color }: { name: string; color: string }) {
 interface Props {
   group: MonitorGroup
   onOpenModal: (mode: ModalMode) => void
+  searchTerm?: string
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
-export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal }: Props) {
+export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal, searchTerm }: Props) {
   const { deleteGroup, deleteMonitor } = useMonitorStore()
-  const [expanded, setExpanded] = useState(false)
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null)
   const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
   >(null)
+
+  const matchesEndpoint = React.useMemo(() => {
+    if (!searchTerm || !searchTerm.trim()) return false
+    const term = searchTerm.trim().toLowerCase()
+    return group.monitors?.some(m => 
+      m.name.toLowerCase().includes(term) ||
+      m.target.toLowerCase().includes(term) ||
+      (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
+    )
+  }, [searchTerm, group.monitors])
+
+  const expanded = userExpanded !== null ? userExpanded : !!matchesEndpoint
 
   const status = group.overall_status ?? 'UNKNOWN'
   const groupHistory = React.useMemo(() => aggregateGroupHistory(group.monitors || []), [group.monitors])
@@ -75,7 +88,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           style={{
             display: 'grid', gridTemplateColumns: '200px 1fr auto', alignItems: 'center', gap: 16, padding: '24px 28px', cursor: 'pointer', position: 'relative',
           }}
-          onClick={() => setExpanded(e => !e)}
+          onClick={() => setUserExpanded(prev => prev === null ? !matchesEndpoint : !prev)}
         >
           {/* Franja de color */}
           <div style={{
@@ -132,7 +145,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
 
             {/* Acciones */}
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); setExpanded(true) }} />
+              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); setUserExpanded(true) }} />
               <Btn icon={<Pencil size={13} />} title="Editar grupo"      onClick={() => onOpenModal({ type: 'edit_group', group })} />
               <Btn icon={<Trash2 size={13} />} title="Eliminar grupo"    danger onClick={() => setConfirmDelete({ type: 'group' })} />
             </div>

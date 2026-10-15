@@ -137,7 +137,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       isConnected={!!settings.smtp_user && !!settings.smtp_pass && !!settings.smtp_to}
                       isEditing={editing['email']}
                       onEdit={() => setEditing({...editing, email: true})}
-                      onDelete={() => handleDelete(['smtp_user', 'smtp_pass', 'smtp_to'])}
+                      onDelete={() => handleDelete(['smtp_user', 'smtp_pass', 'smtp_to', 'smtp_from_name', 'smtp_subject_down', 'smtp_subject_up'])}
                     >
                       <Field label="Tu cuenta de Gmail (Remitente)">
                         <input type="text" value={settings.smtp_user || ''} onChange={e => setSettings({...settings, smtp_user: e.target.value})} placeholder="ejemplo@gmail.com" style={inputStyle} />
@@ -146,8 +146,58 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         <input type="password" value={settings.smtp_pass || ''} onChange={e => setSettings({...settings, smtp_pass: e.target.value})} placeholder="Contraseña de 16 letras generada en Google" style={inputStyle} />
                         <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>*Debes generar una Contraseña de Aplicación en los ajustes de seguridad de tu cuenta de Google.</span>
                       </Field>
+                      <Field label="Nombre del Remitente (Header 'De' / Opcional)">
+                        <input type="text" value={settings.smtp_from_name || ''} onChange={e => setSettings({...settings, smtp_from_name: e.target.value})} placeholder="Ej: Perdida de Telemetría o UptimeCore Alertas" style={inputStyle} />
+                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Nombre con el que se mostrará el remitente en la bandeja de entrada.</span>
+                      </Field>
                       <Field label="Correos Destino (Separados por coma)">
                         <input type="text" value={settings.smtp_to || ''} onChange={e => setSettings({...settings, smtp_to: e.target.value})} placeholder="alertas-it@miempresa.com, jefe@miempresa.com" style={inputStyle} />
+                      </Field>
+                      <Field label="Encabezado / Asunto para Caídas o Pérdida de Telemetría">
+                        <input 
+                          type="text" 
+                          value={settings.smtp_subject_down || ''} 
+                          onChange={e => setSettings({...settings, smtp_subject_down: e.target.value})} 
+                          placeholder="Ej: Perdida de Telemetría: {group} - {monitor}" 
+                          style={inputStyle} 
+                        />
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Variables disponibles:</span>
+                          {[
+                            { label: '+ Grupo', val: '{group}' },
+                            { label: '+ Endpoint', val: '{monitor}' },
+                            { label: '+ IP/Host', val: '{target}' },
+                            { label: '+ Estado', val: '{status}' },
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                const current = settings.smtp_subject_down || ''
+                                setSettings({ ...settings, smtp_subject_down: current ? `${current} ${item.val}` : item.val })
+                              }}
+                              style={{
+                                background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
+                                color: 'var(--color-accent)', borderRadius: 4, padding: '2px 8px', fontSize: 11,
+                                cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600
+                              }}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </Field>
+                      <Field label="Encabezado / Asunto para Recuperación (Opcional)">
+                        <input 
+                          type="text" 
+                          value={settings.smtp_subject_up || ''} 
+                          onChange={e => setSettings({...settings, smtp_subject_up: e.target.value})} 
+                          placeholder="Ej: Telemetría Recuperada: {group} - {monitor}" 
+                          style={inputStyle} 
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                          Dejar en blanco para usar el formato por defecto.
+                        </span>
                       </Field>
                     </IntegrationCard>
 

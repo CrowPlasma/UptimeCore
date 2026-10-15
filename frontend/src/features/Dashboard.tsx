@@ -188,7 +188,16 @@ export function Dashboard() {
   }, [groups])
 
   const filtered = useMemo(() => groups.filter(g => {
-    const matchSearch = g.name.toLowerCase().includes(search.toLowerCase())
+    const term = search.trim().toLowerCase()
+    const matchSearch = !term ||
+      g.name.toLowerCase().includes(term) ||
+      (g.description ? g.description.toLowerCase().includes(term) : false) ||
+      g.tags?.some(t => t.name.toLowerCase().includes(term)) ||
+      g.monitors?.some(m =>
+        m.name.toLowerCase().includes(term) ||
+        m.target.toLowerCase().includes(term) ||
+        (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
+      )
     const matchFilter = (() => {
       if (tagFilter === 'all') return true;
       if (tagFilter === 'down') return g.monitors?.some(m => m.current_status === 'DOWN') || g.overall_status === 'DOWN';
@@ -254,7 +263,7 @@ export function Dashboard() {
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="text"
-            placeholder="🔍  Buscar por nombre..."
+            placeholder="🔍  Buscar por nombre o IP..."
             value={search}
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
             style={{
@@ -320,7 +329,7 @@ export function Dashboard() {
             </div>
           ) : (
             paginatedGroups.map(group => (
-              <MonitorCard key={group.id} group={group} onOpenModal={setModal} />
+              <MonitorCard key={group.id} group={group} onOpenModal={setModal} searchTerm={search} />
             ))
           )}
         </div>
