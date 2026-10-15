@@ -40,16 +40,6 @@ export function Navbar() {
           }}>
             Uptime<span style={{ color: '#2563eb' }}>Core</span>
           </span>
-          <span style={{
-            marginLeft: 8, fontSize: 9, fontWeight: 700,
-            background: 'linear-gradient(90deg, #2563eb, #1e40af)',
-            color: '#fff',
-            padding: '2px 7px', borderRadius: 4,
-            letterSpacing: '0.08em',
-            verticalAlign: 'middle',
-          }}>
-            ENTERPRISE
-          </span>
         </div>
       </div>
 

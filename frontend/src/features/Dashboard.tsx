@@ -338,7 +338,7 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          PingEye Enterprise · {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización cada 15s
+          UptimeCore · {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización cada 15s
         </div>
       )}
 
