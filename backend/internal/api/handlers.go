@@ -31,9 +31,14 @@ func computeGroupStatus(monitors []models.Monitor) models.MonitorStatus {
 	if len(monitors) == 0 {
 		return models.StatusUNKNOWN
 	}
-	hasUp, hasDeg, hasDown, hasMaint, hasPaused := false, false, false, false, false
+	hasUp, hasDeg, hasDown, hasMaint := false, false, false, false
+	activeCount := 0
 
 	for _, m := range monitors {
+		if !m.IsActive || m.CurrentStatus == models.StatusPAUSED {
+			continue
+		}
+		activeCount++
 		switch m.CurrentStatus {
 		case models.StatusUP:
 			hasUp = true
@@ -43,11 +48,12 @@ func computeGroupStatus(monitors []models.Monitor) models.MonitorStatus {
 			hasDown = true
 		case models.StatusMAINTENANCE:
 			hasMaint = true
-		case models.StatusPAUSED:
-			hasPaused = true
 		}
 	}
 
+	if activeCount == 0 {
+		return models.StatusPAUSED
+	}
 	if hasUp {
 		if hasDeg || hasDown {
 			return models.StatusDEGRADED
@@ -62,9 +68,6 @@ func computeGroupStatus(monitors []models.Monitor) models.MonitorStatus {
 	}
 	if hasMaint {
 		return models.StatusMAINTENANCE
-	}
-	if hasPaused {
-		return models.StatusPAUSED
 	}
 	return models.StatusUNKNOWN
 }

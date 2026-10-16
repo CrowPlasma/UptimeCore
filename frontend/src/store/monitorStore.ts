@@ -58,10 +58,21 @@ export interface MonitorFormData {
 }
 
 export interface CheckResultEvent {
-  MonitorID: number
-  Status: string
-  LatencyMs: number
-  ErrorMsg: string
+  monitor_id?: number
+  MonitorID?: number
+  id?: number
+  status?: string
+  Status?: string
+  latency_ms?: number
+  LatencyMs?: number
+  error_msg?: string
+  ErrorMsg?: string
+  checked_at?: string
+  CheckedAt?: string
+  metric_cpu?: number | null
+  metric_ram?: number | null
+  metric_disk?: number | null
+  metric_value?: number | null
 }
 
 interface MonitorStore {
@@ -166,17 +177,33 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     set((state) => {
       // Agrupar los eventos más recientes por monitorID para no procesar duplicados innecesarios
       const latestEvents = new Map<number, CheckResultEvent>()
-      events.forEach(ev => latestEvents.set(ev.MonitorID, ev))
+      events.forEach(ev => {
+        const id = ev.monitor_id ?? ev.MonitorID ?? ev.id
+        if (id !== undefined && id !== null) {
+          latestEvents.set(id, ev)
+        }
+      })
 
+      if (latestEvents.size === 0) return state
+
+      let anyGroupChanged = false
       const groups = state.groups.map(g => {
         let changed = false
         const newMonitors = g.monitors?.map(m => {
           const ev = latestEvents.get(m.id)
           if (ev) {
             changed = true
+            anyGroupChanged = true
             
             const oldStatus = m.current_status
-            const newStatus = ev.Status as string
+            const newStatus = (ev.status ?? ev.Status ?? m.current_status) as string
+            const newLatency = (ev.latency_ms ?? ev.LatencyMs ?? m.current_latency_ms ?? 0) as number
+            const newTime = ev.checked_at ?? ev.CheckedAt ?? new Date().toISOString()
+            const newError = ev.error_msg ?? ev.ErrorMsg ?? m.current_msg ?? ''
+            const newCpu = ev.metric_cpu !== undefined ? ev.metric_cpu : m.current_cpu
+            const newRam = ev.metric_ram !== undefined ? ev.metric_ram : m.current_ram
+            const newDisk = ev.metric_disk !== undefined ? ev.metric_disk : m.current_disk
+            const newValue = ev.metric_value !== undefined ? ev.metric_value : m.current_value
 
             // Only notify if we transition from a known state
             if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED') {
@@ -205,17 +232,27 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
               }
             }
 
-            const newHistory = [...(m.live_history || []), {
-              time: (ev as any).CheckedAt || new Date().toISOString(),
-              status: ev.Status as any,
-              latency_ms: ev.LatencyMs
+            const newHistory: HistoryPoint[] = [...(m.live_history || []), {
+              time: newTime,
+              status: newStatus as any,
+              latency_ms: newLatency,
+              error_msg: newError,
+              metric_cpu: newCpu ?? undefined,
+              metric_ram: newRam ?? undefined,
+              metric_disk: newDisk ?? undefined,
+              metric_value: newValue ?? undefined,
             }]
             if (newHistory.length > 60) newHistory.shift()
 
             return { 
               ...m, 
-              current_status: ev.Status as any, 
-              current_latency_ms: ev.LatencyMs,
+              current_status: newStatus as any, 
+              current_latency_ms: newLatency,
+              current_msg: newError,
+              current_cpu: newCpu,
+              current_ram: newRam,
+              current_disk: newDisk,
+              current_value: newValue,
               live_history: newHistory
             }
           }
@@ -227,6 +264,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         }
         return g
       })
+
+      if (!anyGroupChanged) return state
       return { groups }
     })
   },

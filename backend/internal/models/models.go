@@ -83,13 +83,13 @@ type HistoryPoint struct {
 
 // CheckResult is the output of a single check execution.
 type CheckResult struct {
-	MonitorID  int
-	Status     MonitorStatus
-	LatencyMs  int
-	ErrorMsg   string
-	CheckedAt  time.Time
-	MetricCpu  *float64
-	MetricRam  *float64
-	MetricDisk *float64
-	MetricValue *float64
+	MonitorID   int           `json:"monitor_id"`
+	Status      MonitorStatus `json:"status"`
+	LatencyMs   int           `json:"latency_ms"`
+	ErrorMsg    string        `json:"error_msg,omitempty"`
+	CheckedAt   time.Time     `json:"checked_at"`
+	MetricCpu   *float64      `json:"metric_cpu,omitempty"`
+	MetricRam   *float64      `json:"metric_ram,omitempty"`
+	MetricDisk  *float64      `json:"metric_disk,omitempty"`
+	MetricValue *float64      `json:"metric_value,omitempty"`
 }

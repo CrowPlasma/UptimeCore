@@ -41,9 +41,10 @@ func (h *SSEHub) Handler(c *fiber.Ctx) error {
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")
 	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
 	c.Set("Access-Control-Allow-Origin", "*")
 
-	ch := make(chan models.CheckResult, 50)
+	ch := make(chan models.CheckResult, 1000)
 	
 	h.mu.Lock()
 	h.clients[ch] = true
@@ -57,15 +58,30 @@ func (h *SSEHub) Handler(c *fiber.Ctx) error {
 			h.mu.Unlock()
 		}()
 
+		// Enviar comentario de handshake inmediato para vaciar buffers de proxies (Nginx/Traefik/Dockge)
+		// y asegurar que el navegador pase de readyState 0 (CONNECTING) a 1 (OPEN) al instante.
+		fmt.Fprintf(w, ": connected\n\n")
+		if err := w.Flush(); err != nil {
+			return
+		}
+
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
-			case res := <-ch:
-				data, _ := json.Marshal(res)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				if err := w.Flush(); err != nil {
-					return // Navegador desconectado
+			case res, ok := <-ch:
+				if !ok {
+					return
 				}
-			case <-time.After(15 * time.Second):
+				data, err := json.Marshal(res)
+				if err == nil {
+					fmt.Fprintf(w, "data: %s\n\n", data)
+					if err := w.Flush(); err != nil {
+						return // Navegador desconectado
+					}
+				}
+			case <-ticker.C:
 				// Ping para mantener la conexión viva (Keep-Alive)
 				fmt.Fprintf(w, ": keepalive\n\n")
 				if err := w.Flush(); err != nil {

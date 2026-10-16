@@ -131,16 +131,24 @@ export function Dashboard() {
   useEffect(() => {
     fetchGroups()
 
-    // 1. Sincronización en tiempo real con buffering para evitar colapso de renders
-    const sse = new EventSource('/api/stream')
+    // 1. Sincronización en tiempo real con buffering optimizado (400ms)
+    let sse: EventSource | null = new EventSource('/api/stream')
     let firstOpen = true
+    let pendingEvents: any[] = []
+    let flushInterval: any = null
+
+    const flush = () => {
+      if (pendingEvents.length > 0) {
+        useMonitorStore.getState().updateMonitorsLiveBatch(pendingEvents)
+        pendingEvents = []
+      }
+      flushInterval = null
+    }
+
     sse.onopen = () => {
       if (!firstOpen) fetchGroups()
       firstOpen = false
     }
-
-    let pendingEvents: any[] = []
-    let flushInterval: any = null
 
     sse.onmessage = (e) => {
       try {
@@ -148,21 +156,22 @@ export function Dashboard() {
         pendingEvents.push(data)
         
         if (!flushInterval) {
-          flushInterval = setTimeout(() => {
-            // Mandamos todos los eventos juntos para hacer 1 solo re-render
-            useMonitorStore.getState().updateMonitorsLiveBatch(pendingEvents)
-            pendingEvents = []
-            flushInterval = null
-          }, 1000) // Actualiza la UI máximo 1 vez por segundo
+          flushInterval = setTimeout(flush, 400) // Actualiza la UI de forma fluida y rápida
         }
       } catch (err) {}
     }
 
-    // 2. Respaldo (fallback polling ultra lento) por si se pierde la conexión
-    const interval = setInterval(fetchGroups, 120_000)
+    sse.onerror = () => {
+      // Si la conexión SSE se interrumpe o el proxy reconecta, refrescamos el estado por HTTP
+      fetchGroups()
+    }
+
+    // 2. Respaldo periódico (fallback polling cada 15s) para garantizar frescura absoluta
+    const interval = setInterval(fetchGroups, 15_000)
 
     return () => {
-      sse.close()
+      if (flushInterval) clearTimeout(flushInterval)
+      if (sse) sse.close()
       clearInterval(interval)
     }
   }, [])
