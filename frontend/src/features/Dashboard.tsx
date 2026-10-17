@@ -54,35 +54,60 @@ function StatCard({ icon, label, value, color, active, onClick }: {
   )
 }
 
+// ── Regla única de filtrado para garantizar 100% de coincidencia entre Tarjetas Superiores, Dropdown, Modo Normal y Modo NOC ──
+function groupMatchesStatusOrTag(g: import('../types').MonitorGroup, filter: string): boolean {
+  if (filter === 'all') return true
+  if (filter === 'up') return g.overall_status === 'UP'
+  if (filter === 'down') return g.overall_status === 'DOWN'
+  if (filter === 'degraded') return g.overall_status === 'DEGRADED'
+  if (filter === 'maintenance') {
+    return (
+      g.overall_status === 'MAINTENANCE' ||
+      Boolean(g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)))
+    )
+  }
+  if (filter === 'paused') {
+    return (
+      g.overall_status === 'PAUSED' ||
+      Boolean(g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED'))
+    )
+  }
+  return Boolean(g.tags?.some(t => t.name === filter))
+}
+
 // ── Dropdown de filtro ─────────────────────────────────────────────────────
-function TagFilter({ allTagNames, selected, onChange }: {
-  allTagNames: string[]; selected: string; onChange: (v: string) => void
+function TagFilter({ allTagNames, selected, onChange, stats }: {
+  allTagNames: string[]
+  selected: string
+  onChange: (v: string) => void
+  stats: { totalGroups: number; up: number; down: number; degraded: number; maintenance: number; paused: number }
 }) {
   const [open, setOpen] = useState(false)
-  const label = selected === 'all' ? 'Todas las etiquetas'
-    : selected === 'up' ? 'Operativos'
-    : selected === 'down' ? 'Caídos'
-    : selected === 'degraded' ? 'Degradados'
-    : selected === 'maintenance' ? 'Mantenimiento'
-    : selected === 'paused' ? 'Pausados'
+  const label = selected === 'all' ? `Todos (${stats.totalGroups})`
+    : selected === 'up' ? `Operativos (${stats.up})`
+    : selected === 'down' ? `Caídos (${stats.down})`
+    : selected === 'degraded' ? `Degradados (${stats.degraded})`
+    : selected === 'maintenance' ? `Mantenimiento (${stats.maintenance})`
+    : selected === 'paused' ? `En Pausa (${stats.paused})`
     : selected
 
   const options = [
-    { label: 'Todas las etiquetas', value: 'all', dot: null },
-    { label: 'Operativos', value: 'up', dot: '#22c55e' },
-    { label: 'Caídos', value: 'down', dot: '#ef4444' },
-    { label: 'Degradados', value: 'degraded', dot: '#f59e0b' },
-    { label: 'Mantenimiento', value: 'maintenance', dot: '#3b82f6' },
-    { label: 'Pausados', value: 'paused', dot: '#9ca3af' },
-    ...allTagNames.map(t => ({ label: t, value: t, isTag: true })),
+    { label: `Todos los grupos (${stats.totalGroups})`, value: 'all', dot: null },
+    { label: `Operativos (${stats.up})`, value: 'up', dot: '#22c55e' },
+    { label: `Caídos (${stats.down})`, value: 'down', dot: '#ef4444' },
+    { label: `Degradados (${stats.degraded})`, value: 'degraded', dot: '#f59e0b' },
+    { label: `Mantenimiento (${stats.maintenance})`, value: 'maintenance', dot: '#3b82f6' },
+    { label: `En Pausa (${stats.paused})`, value: 'paused', dot: '#9ca3af' },
+    ...allTagNames.map(t => ({ label: t, value: t, isTag: true, dot: null })),
   ]
 
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)} style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
-        borderRadius: 9, border: '1px solid var(--color-border)',
-        background: 'var(--color-bg-card)', color: 'var(--color-text-secondary)',
+        borderRadius: 9, border: selected !== 'all' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+        background: selected !== 'all' ? 'rgba(99, 102, 241, 0.12)' : 'var(--color-bg-card)',
+        color: selected !== 'all' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
         fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
       }}>
         <Filter size={13} />
@@ -95,7 +120,7 @@ function TagFilter({ allTagNames, selected, onChange }: {
           <div style={{
             position: 'absolute', top: '110%', left: 0, zIndex: 11,
             background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
-            borderRadius: 12, padding: 6, minWidth: 210,
+            borderRadius: 12, padding: 6, minWidth: 230,
             boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
           }}>
             {options.map(opt => {
@@ -141,8 +166,6 @@ const STATUS_ORDER: Record<string, number> = {
 export function Dashboard() {
   const { groups, allTags, loading, error, lastEventAt, sseConnected, setSseConnected, fetchGroups } = useMonitorStore()
   const [search, setSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 50
   const [tagFilter, setTagFilter] = useState('all')
   const [modal, setModal] = useState<ModalMode | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -239,20 +262,15 @@ export function Dashboard() {
   const allTagNames = useMemo(() => [...new Set(allTags.map(t => t.name))], [allTags])
 
   const stats = useMemo(() => {
-    let up = 0, down = 0, degraded = 0, maintenance = 0, paused = 0;
+    let up = 0, down = 0, degraded = 0, maintenance = 0, paused = 0
     groups.forEach(g => {
-      if (g.overall_status === 'UP') up++;
-      else if (g.overall_status === 'DOWN') down++;
-      else if (g.overall_status === 'DEGRADED') degraded++;
-
-      if (g.overall_status === 'MAINTENANCE' || g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance))) {
-        maintenance++;
-      }
-      if (g.overall_status === 'PAUSED' || g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED')) {
-        paused++;
-      }
-    });
-    return { totalGroups: groups.length, up, down, degraded, maintenance, paused };
+      if (groupMatchesStatusOrTag(g, 'up')) up++
+      if (groupMatchesStatusOrTag(g, 'down')) down++
+      if (groupMatchesStatusOrTag(g, 'degraded')) degraded++
+      if (groupMatchesStatusOrTag(g, 'maintenance')) maintenance++
+      if (groupMatchesStatusOrTag(g, 'paused')) paused++
+    })
+    return { totalGroups: groups.length, up, down, degraded, maintenance, paused }
   }, [groups])
 
   const filtered = useMemo(() => {
@@ -267,15 +285,7 @@ export function Dashboard() {
           m.target.toLowerCase().includes(term) ||
           (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
         )
-      const matchFilter = (() => {
-        if (tagFilter === 'all') return true;
-        if (tagFilter === 'up') return g.overall_status === 'UP';
-        if (tagFilter === 'down') return g.monitors?.some(m => m.is_active !== false && !m.is_maintenance && m.current_status === 'DOWN') || g.overall_status === 'DOWN';
-        if (tagFilter === 'degraded') return g.overall_status === 'DEGRADED';
-        if (tagFilter === 'maintenance') return g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)) || g.overall_status === 'MAINTENANCE';
-        if (tagFilter === 'paused') return g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED') || g.overall_status === 'PAUSED';
-        return g.tags?.some(t => t.name === tagFilter);
-      })();
+      const matchFilter = groupMatchesStatusOrTag(g, tagFilter)
       return matchSearch && matchFilter
     })
 
@@ -288,17 +298,8 @@ export function Dashboard() {
     })
   }, [groups, search, tagFilter, sortDownFirst])
 
-  // Paginación para Alta Concurrencia
-  const paginatedGroups = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage
-    return filtered.slice(start, start + itemsPerPage)
-  }, [filtered, currentPage])
-  
-  const totalPages = Math.ceil(filtered.length / itemsPerPage)
-
   const toggleCardFilter = (val: string) => {
     setTagFilter(prev => prev === val ? 'all' : val)
-    setCurrentPage(1)
   }
 
   return (
@@ -334,7 +335,7 @@ export function Dashboard() {
           gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
           gap: 16, marginBottom: 24,
         }}>
-          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups} color="#6366f1" active={tagFilter === 'all'}         onClick={() => { setTagFilter('all'); setCurrentPage(1) }} />
+          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups} color="#6366f1" active={tagFilter === 'all'}         onClick={() => setTagFilter('all')} />
           <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}          color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
           <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}        color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
           <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded}    color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
@@ -348,7 +349,7 @@ export function Dashboard() {
             type="text"
             placeholder="🔍  Buscar por nombre o IP..."
             value={search}
-            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+            onChange={e => setSearch(e.target.value)}
             style={{
               flex: 1, minWidth: 200, padding: '9px 14px', borderRadius: 9,
               border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
@@ -356,7 +357,12 @@ export function Dashboard() {
             }}
           />
 
-          <TagFilter allTagNames={allTagNames} selected={tagFilter} onChange={(v) => { setTagFilter(v); setCurrentPage(1); }} />
+          <TagFilter
+            allTagNames={allTagNames}
+            selected={tagFilter}
+            stats={stats}
+            onChange={(v) => setTagFilter(v)}
+          />
 
           {/* Priorizar Caídos 1º */}
           <button
@@ -523,7 +529,7 @@ export function Dashboard() {
       {/* ── Lista de grupos o Modo NOC Wallboard ──── */}
       {!loading || groups.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {filtered.length === 0 && search === "" && !loading ? (
+          {groups.length === 0 && !loading ? (
             <div style={{
               textAlign: 'center', padding: '80px 20px',
               color: 'var(--color-text-muted)', background: 'var(--color-bg-card)',
@@ -542,10 +548,45 @@ export function Dashboard() {
               </button>
             </div>
           ) : nocMode ? (
-            <NocWallboard groups={filtered} onOpenModal={setModal} />
+            <NocWallboard
+              groups={filtered}
+              onOpenModal={setModal}
+              activeFilter={tagFilter}
+              searchTerm={search}
+              sortDownFirst={sortDownFirst}
+              onClearFilter={() => { setTagFilter('all'); setSearch('') }}
+            />
+          ) : filtered.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '56px 20px',
+              color: 'var(--color-text-muted)', background: 'var(--color-bg-card)',
+              borderRadius: 14, border: '1px dashed var(--color-border)',
+            }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                No hay grupos que coincidan con el filtro seleccionado (0 resultados)
+              </p>
+              <p style={{ fontSize: 12.5, marginBottom: 16 }}>
+                Prueba quitando el filtro activo o limpiando el término de búsqueda.
+              </p>
+              <button
+                onClick={() => { setTagFilter('all'); setSearch('') }}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, background: 'var(--color-accent)',
+                  color: '#fff', fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
+                }}
+              >
+                Mostrar todos los grupos ({stats.totalGroups})
+              </button>
+            </div>
           ) : (
-            paginatedGroups.map(group => (
-              <MonitorCard key={group.id} group={group} onOpenModal={setModal} searchTerm={search} />
+            filtered.map(group => (
+              <MonitorCard
+                key={group.id}
+                group={group}
+                onOpenModal={setModal}
+                searchTerm={search}
+                activeFilter={tagFilter}
+              />
             ))
           )}
         </div>
@@ -554,7 +595,7 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore · {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
+          UptimeCore · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
         </div>
       )}
 

@@ -1,10 +1,10 @@
 /**
  * components/NocWallboard.tsx
  * Modo Pantalla NOC / Wallboard con 2 Vistas seleccionables:
- *  1. "mosaic" (NOC Mosaico PRTG): Vista ultra-compacta de "cuadritos" estilo PRTG
+ *  1. "mosaic" (Mosaico): Vista ultra-compacta de cuadritos
  *     (Por Grupos o Todos los Sensores). Al hacer clic en cualquier cuadrito abre
  *     la tarjeta de inspección rápida con detalles del grupo y sus sensores.
- *  2. "cards"  (NOC Tarjetas): Tarjetas compactas con lista de endpoints por grupo.
+ *  2. "cards"  (Tarjetas): Tarjetas compactas con lista de endpoints por grupo.
  */
 import { useState, useMemo } from 'react'
 import { Wrench, Pause, Play, Plus, LayoutGrid, Grid, Layers, X, Pencil, Terminal } from 'lucide-react'
@@ -20,6 +20,10 @@ interface Props {
   onOpenModal: (mode: ModalMode) => void
   viewType?: NocViewType
   onChangeViewType?: (v: NocViewType) => void
+  activeFilter?: string
+  searchTerm?: string
+  sortDownFirst?: boolean
+  onClearFilter?: () => void
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -55,7 +59,16 @@ function getMonitorEffectiveStatus(m: Monitor): MonitorStatus {
   return m.current_status || 'UNKNOWN'
 }
 
-export function NocWallboard({ groups, onOpenModal, viewType: externalView, onChangeViewType }: Props) {
+export function NocWallboard({
+  groups,
+  onOpenModal,
+  viewType: externalView,
+  onChangeViewType,
+  activeFilter = 'all',
+  searchTerm = '',
+  sortDownFirst = false,
+  onClearFilter,
+}: Props) {
   const { toggleGroup, toggleGroupMaintenance, toggleMonitor, toggleMaintenance } = useMonitorStore()
 
   const [internalView, setInternalView] = useState<NocViewType>(() => {
@@ -73,7 +86,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
     onChangeViewType?.(v)
   }
 
-  // En modo Mosaico PRTG: permite ver cuadritos por Grupo o todos los Endpoints individuales
+  // En modo Mosaico: permite ver cuadritos por Grupo o todos los Endpoints individuales
   const [mosaicGranularity, setMosaicGranularity] = useState<'groups' | 'endpoints'>('groups')
   // Grupo y sensor seleccionados al hacer clic en un cuadrito del mosaico para inspección rápida
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
@@ -81,28 +94,57 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
   const [diagnosticTarget, setDiagnosticTarget] = useState<{ monitor: Monitor; groupName: string } | null>(null)
 
   const sortedGroups = useMemo(() => {
+    if (!sortDownFirst) return groups
     return [...groups].sort((a, b) => {
       const pa = STATUS_PRIORITY[a.overall_status] ?? 4
       const pb = STATUS_PRIORITY[b.overall_status] ?? 4
       if (pa !== pb) return pa - pb
       return a.name.localeCompare(b.name)
     })
-  }, [groups])
+  }, [groups, sortDownFirst])
 
   const allEndpoints = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
     const list: { group: MonitorGroup; monitor: Monitor; status: MonitorStatus }[] = []
+
     sortedGroups.forEach(g => {
+      const groupDirectMatch =
+        !term ||
+        g.name.toLowerCase().includes(term) ||
+        (g.description ? g.description.toLowerCase().includes(term) : false) ||
+        Boolean(g.tags?.some(t => t.name.toLowerCase().includes(term)))
+
       ;(g.monitors ?? []).forEach(m => {
-        list.push({ group: g, monitor: m, status: getMonitorEffectiveStatus(m) })
+        const st = getMonitorEffectiveStatus(m)
+
+        // Filtrar sensores individuales para que coincidan con el filtro de estado activo
+        if (activeFilter === 'up' && st !== 'UP') return
+        if (activeFilter === 'down' && st !== 'DOWN') return
+        if (activeFilter === 'degraded' && st === 'PAUSED') return
+        if (activeFilter === 'maintenance' && st !== 'MAINTENANCE') return
+        if (activeFilter === 'paused' && st !== 'PAUSED') return
+
+        // Si hay búsqueda por texto y el nombre del grupo no coincidió directamente, filtrar por el sensor que sí coincide
+        if (term && !groupDirectMatch) {
+          const monitorMatch =
+            m.name.toLowerCase().includes(term) ||
+            m.target.toLowerCase().includes(term) ||
+            (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
+          if (!monitorMatch) return
+        }
+
+        list.push({ group: g, monitor: m, status: st })
       })
     })
-    return list.sort((a, b) => {
+
+    if (!sortDownFirst) return list
+    return [...list].sort((a, b) => {
       const pa = STATUS_PRIORITY[a.status] ?? 4
       const pb = STATUS_PRIORITY[b.status] ?? 4
       if (pa !== pb) return pa - pb
       return a.group.name.localeCompare(b.group.name)
     })
-  }, [sortedGroups])
+  }, [sortedGroups, activeFilter, searchTerm, sortDownFirst])
 
   const inspectedGroup = useMemo(
     () => groups.find(g => g.id === selectedGroupId) ?? null,
@@ -161,7 +203,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
               }}
             >
               <Grid size={14} />
-              Mosaico PRTG (Cuadritos)
+              Mosaico
             </button>
             <button
               type="button"
@@ -175,11 +217,11 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
               }}
             >
               <LayoutGrid size={14} />
-              Tarjetas NOC (Detallado)
+              Tarjetas
             </button>
           </div>
 
-          {activeView === 'mosaic' && (
+          {activeView === 'mosaic' ? (
             <div style={{
               display: 'flex', gap: 4, background: 'var(--color-bg-primary)',
               padding: 4, borderRadius: 9, border: '1px solid var(--color-border)',
@@ -213,10 +255,19 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                 Todos los Sensores ({allEndpoints.length})
               </button>
             </div>
+          ) : (
+            <span style={{
+              fontSize: 11.5, fontWeight: 700, color: '#818cf8',
+              background: 'rgba(99, 102, 241, 0.14)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              padding: '5px 11px', borderRadius: 8,
+            }}>
+              Mostrando {sortedGroups.length} {sortedGroups.length === 1 ? 'grupo' : 'grupos'}
+            </span>
           )}
         </div>
 
-        {/* Leyenda rápida estilo PRTG */}
+        {/* Leyenda rápida */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', flexWrap: 'wrap' }}>
           <LegendDot color="#ef4444" label="Caído" />
           <LegendDot color="#f59e0b" label="Degradado" />
@@ -226,10 +277,37 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
         </div>
       </div>
 
+      {/* Estado vacío cuando el filtro no tiene coincidencias */}
+      {sortedGroups.length === 0 && (
+        <div style={{
+          textAlign: 'center', padding: '56px 20px',
+          color: 'var(--color-text-muted)', background: 'var(--color-bg-card)',
+          borderRadius: 14, border: '1px dashed var(--color-border)',
+        }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
+            No hay elementos que coincidan con el filtro seleccionado (0 resultados)
+          </p>
+          <p style={{ fontSize: 12.5, marginBottom: 16 }}>
+            Prueba quitando el filtro activo o limpiando el término de búsqueda.
+          </p>
+          {onClearFilter && (
+            <button
+              onClick={onClearFilter}
+              style={{
+                padding: '8px 18px', borderRadius: 8, background: 'var(--color-accent)',
+                color: '#fff', fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
+              }}
+            >
+              Ver todos los grupos
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ═══════════════════════════════════════════════════════════════════════
-          VISTA 1: MOSAICO PRTG (CUADRITOS DE ALTA DENSIDAD SIN SCROLL)
+          VISTA 1: MOSAICO (CUADRITOS DE ALTA DENSIDAD)
          ═══════════════════════════════════════════════════════════════════════ */}
-      {activeView === 'mosaic' && mosaicGranularity === 'groups' && (
+      {sortedGroups.length > 0 && activeView === 'mosaic' && mosaicGranularity === 'groups' && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))',
@@ -240,8 +318,28 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
             const monitors = group.monitors ?? []
             const downCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'DOWN').length
             const upCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'UP').length
+            const pausedCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'PAUSED').length
+            const maintCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'MAINTENANCE').length
 
-            const tileStyle = getPrtgTileColors(st)
+            // Cuando el usuario filtra explícitamente por "En Pausa" o "Mantenimiento",
+            // reflejamos ese estado visualmente en el mosaico para que coincida 100% con el filtro seleccionado
+            const visualStatus: MonitorStatus =
+              activeFilter === 'paused' && pausedCount > 0
+                ? 'PAUSED'
+                : activeFilter === 'maintenance' && maintCount > 0
+                ? 'MAINTENANCE'
+                : st
+
+            const tileStyle = getPrtgTileColors(visualStatus)
+
+            const badgeText =
+              activeFilter === 'paused' && pausedCount > 0
+                ? `${pausedCount}/${monitors.length} PAUSA`
+                : activeFilter === 'maintenance' && maintCount > 0
+                ? `${maintCount}/${monitors.length} MANT`
+                : downCount > 0
+                ? `${downCount} DOWN`
+                : `${upCount}/${monitors.length}`
 
             return (
               <div
@@ -250,7 +348,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                   setSelectedGroupId(group.id)
                   setSelectedMonitorId(null)
                 }}
-                title={`${group.name} — Estado: ${STATUS_LABEL[st]} (${upCount}/${monitors.length} UP). Clic para ver detalle del grupo.`}
+                title={`${group.name} — Estado: ${STATUS_LABEL[st]} (${upCount}/${monitors.length} UP${pausedCount > 0 ? `, ${pausedCount} en pausa` : ''}${maintCount > 0 ? `, ${maintCount} en mant.` : ''}). Clic para ver detalle del grupo.`}
                 style={{
                   background: tileStyle.bg,
                   border: `1.5px solid ${tileStyle.border}`,
@@ -262,7 +360,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                   justifyContent: 'space-between',
                   cursor: 'pointer',
                   userSelect: 'none',
-                  animation: st === 'DOWN' ? 'tilePulseRed 1.8s infinite' : 'none',
+                  animation: visualStatus === 'DOWN' ? 'tilePulseRed 1.8s infinite' : 'none',
                   transition: 'transform 0.12s ease, filter 0.12s ease',
                   position: 'relative',
                   overflow: 'hidden',
@@ -315,7 +413,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                     padding: '1px 5px',
                     borderRadius: 4,
                   }}>
-                    {downCount > 0 ? `${downCount} DOWN` : `${upCount}/${monitors.length}`}
+                    {badgeText}
                   </span>
                 </div>
               </div>
@@ -324,8 +422,8 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
         </div>
       )}
 
-      {/* Mosaico PRTG por Sensores / Endpoints individuales */}
-      {activeView === 'mosaic' && mosaicGranularity === 'endpoints' && (
+      {/* Mosaico por Sensores / Endpoints individuales */}
+      {sortedGroups.length > 0 && activeView === 'mosaic' && mosaicGranularity === 'endpoints' && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))',
@@ -653,9 +751,9 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          VISTA 2: NOC TARJETAS (DETALLADO POR GRUPO)
+          VISTA 2: TARJETAS (DETALLADO POR GRUPO)
          ═══════════════════════════════════════════════════════════════════════ */}
-      {activeView === 'cards' && (
+      {sortedGroups.length > 0 && activeView === 'cards' && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))',
@@ -663,10 +761,20 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
         }}>
           {sortedGroups.map(group => {
             const st = group.overall_status || 'UNKNOWN'
-            const color = STATUS_COLOR[st] || '#6b7280'
-            const isDown = st === 'DOWN'
-            const isDegraded = st === 'DEGRADED'
             const monitors = group.monitors ?? []
+            const pausedCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'PAUSED').length
+            const maintCount = monitors.filter(m => getMonitorEffectiveStatus(m) === 'MAINTENANCE').length
+
+            const visualStatus: MonitorStatus =
+              activeFilter === 'paused' && pausedCount > 0
+                ? 'PAUSED'
+                : activeFilter === 'maintenance' && maintCount > 0
+                ? 'MAINTENANCE'
+                : st
+
+            const color = STATUS_COLOR[visualStatus] || '#6b7280'
+            const isDown = visualStatus === 'DOWN'
+            const isDegraded = visualStatus === 'DEGRADED'
 
             const allGroupPaused = monitors.length > 0 && monitors.every(m => !m.is_active || m.current_status === 'PAUSED')
             const allGroupMaint = monitors.length > 0 && monitors.every(m => m.is_active && (m.is_maintenance || m.current_status === 'MAINTENANCE'))
@@ -702,7 +810,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                       <span style={{
                         width: 10, height: 10, borderRadius: '50%',
                         background: color,
-                        boxShadow: isDown || st === 'UP' ? `0 0 8px ${color}` : 'none',
+                        boxShadow: isDown || visualStatus === 'UP' ? `0 0 8px ${color}` : 'none',
                         flexShrink: 0,
                       }} />
                       <span style={{
@@ -727,7 +835,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                   </div>
 
                   {/* Controles rápidos de grupo + badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {monitors.length > 0 && (
                       <>
                         <button
@@ -760,9 +868,25 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                         </button>
                       </>
                     )}
+                    {pausedCount > 0 && st !== 'PAUSED' && (
+                      <span style={{
+                        fontSize: 9.5, fontWeight: 800, padding: '2px 6px', borderRadius: 6,
+                        background: 'rgba(100, 116, 139, 0.22)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.35)',
+                      }}>
+                        {pausedCount} PAUSA
+                      </span>
+                    )}
+                    {maintCount > 0 && st !== 'MAINTENANCE' && (
+                      <span style={{
+                        fontSize: 9.5, fontWeight: 800, padding: '2px 6px', borderRadius: 6,
+                        background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.38)',
+                      }}>
+                        {maintCount} MANT.
+                      </span>
+                    )}
                     <span style={{
                       fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 6,
-                      background: `${color}20`, color, border: `1px solid ${color}45`,
+                      background: `${STATUS_COLOR[st]}20`, color: STATUS_COLOR[st], border: `1px solid ${STATUS_COLOR[st]}45`,
                       letterSpacing: '0.03em',
                     }}>
                       {STATUS_LABEL[st]}
@@ -796,6 +920,9 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                       const isPaused = mStatus === 'PAUSED'
                       const isMaint = mStatus === 'MAINTENANCE'
                       const mColor = STATUS_COLOR[mStatus] || '#6b7280'
+                      const isFilterHighlighted =
+                        (activeFilter === 'paused' && isPaused) ||
+                        (activeFilter === 'maintenance' && isMaint)
 
                       return (
                         <div
@@ -807,15 +934,19 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                             gap: 8,
                             padding: '5px 8px',
                             borderRadius: 7,
-                            background: mStatus === 'DOWN'
+                            background: isFilterHighlighted
+                              ? 'rgba(99, 102, 241, 0.14)'
+                              : mStatus === 'DOWN'
                               ? 'rgba(239, 68, 68, 0.14)'
                               : mStatus === 'DEGRADED'
                               ? 'rgba(245, 158, 11, 0.12)'
                               : 'var(--color-bg-primary)',
-                            border: mStatus === 'DOWN'
+                            border: isFilterHighlighted
+                              ? '1px solid rgba(99, 102, 241, 0.55)'
+                              : mStatus === 'DOWN'
                               ? '1px solid rgba(239, 68, 68, 0.45)'
                               : '1px solid var(--color-border)',
-                            opacity: isPaused ? 0.65 : 1,
+                            opacity: isPaused && activeFilter !== 'paused' ? 0.65 : 1,
                           }}
                         >
                           <div

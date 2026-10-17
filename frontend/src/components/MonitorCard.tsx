@@ -72,10 +72,11 @@ interface Props {
   group: MonitorGroup
   onOpenModal: (mode: ModalMode) => void
   searchTerm?: string
+  activeFilter?: string
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
-export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal }: Props) {
+export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal, activeFilter = 'all' }: Props) {
   const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
   const [expanded, setExpanded] = useState<boolean>(false)
   const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
@@ -90,6 +91,8 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
   const groupMetrics = React.useMemo(() => {
     const mons = group.monitors || []
     const active = mons.filter(m => m.is_active !== false && m.current_status !== 'PAUSED')
+    const pausedCount = mons.filter(m => !m.is_active || m.current_status === 'PAUSED').length
+    const maintCount = mons.filter(m => m.is_active !== false && (m.is_maintenance || m.current_status === 'MAINTENANCE')).length
     const upMons = active.filter(m => m.current_status === 'UP' || m.current_status === 'DEGRADED')
     const withLat = upMons.filter(m => (m.current_latency_ms ?? 0) > 0)
     const avgLat = withLat.length > 0
@@ -104,6 +107,8 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
     return {
       total: mons.length,
       activeCount: active.length,
+      pausedCount,
+      maintCount,
       upCount: active.filter(m => m.current_status === 'UP').length,
       avgLat,
       lastTimeStr,
@@ -111,6 +116,13 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
       allMaint,
     }
   }, [group.monitors, groupHistory])
+
+  const stripeStatus: MonitorStatus =
+    activeFilter === 'paused' && groupMetrics.pausedCount > 0
+      ? 'PAUSED'
+      : activeFilter === 'maintenance' && groupMetrics.maintCount > 0
+      ? 'MAINTENANCE'
+      : status
 
   return (
     <>
@@ -132,7 +144,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           {/* Franja de color */}
           <div style={{
             position: 'absolute', left: 0, top: 0, bottom: 0, width: 5,
-            background: statusColor(status),
+            background: statusColor(stripeStatus),
           }} />
 
           {/* Nombre + Tags */}
@@ -193,6 +205,36 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
               <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
               {groupMetrics.activeCount > 0 ? `${groupMetrics.upCount}/${groupMetrics.activeCount}` : groupMetrics.total} ep
             </span>
+
+            {/* Badges adicionales cuando el grupo tiene sensores en Pausa o Mantenimiento */}
+            {groupMetrics.pausedCount > 0 && status !== 'PAUSED' && (
+              <span
+                title={`${groupMetrics.pausedCount} de ${groupMetrics.total} sensores en pausa`}
+                style={{
+                  fontSize: 10.5, fontWeight: 800, padding: '4px 9px', borderRadius: 99,
+                  background: activeFilter === 'paused' ? 'rgba(99, 102, 241, 0.22)' : 'rgba(100, 116, 139, 0.16)',
+                  color: activeFilter === 'paused' ? '#818cf8' : '#94a3b8',
+                  border: activeFilter === 'paused' ? '1px solid rgba(99, 102, 241, 0.45)' : '1px solid rgba(148, 163, 184, 0.3)',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {groupMetrics.pausedCount} EN PAUSA
+              </span>
+            )}
+            {groupMetrics.maintCount > 0 && status !== 'MAINTENANCE' && (
+              <span
+                title={`${groupMetrics.maintCount} de ${groupMetrics.total} sensores en mantenimiento`}
+                style={{
+                  fontSize: 10.5, fontWeight: 800, padding: '4px 9px', borderRadius: 99,
+                  background: 'rgba(59, 130, 246, 0.18)',
+                  color: '#60a5fa',
+                  border: '1px solid rgba(59, 130, 246, 0.38)',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {groupMetrics.maintCount} MANT.
+              </span>
+            )}
 
             {/* Badge de estado */}
             <div style={{ flexShrink: 0 }}>
