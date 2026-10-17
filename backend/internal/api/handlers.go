@@ -131,6 +131,7 @@ func (h *Handlers) ListGroups(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
+	isGlobalMaint := h.engine.IsGlobalMaintenance()
 	// Enrich each monitor with live status from Redis cache.
 	for i := range groups {
 		for j := range groups[i].Monitors {
@@ -140,10 +141,15 @@ func (h *Handlers) ListGroups(c *fiber.Ctx) error {
 				m.CurrentStatus = models.StatusPAUSED
 				m.CurrentLatency = 0
 				m.CurrentMsg = ""
-			} else if m.IsMaintenance {
+			} else if m.IsMaintenance || isGlobalMaint {
+				m.IsMaintenance = true
 				m.CurrentStatus = models.StatusMAINTENANCE
 				m.CurrentLatency = 0
-				m.CurrentMsg = "En Mantenimiento"
+				if isGlobalMaint {
+					m.CurrentMsg = "Mantenimiento Global"
+				} else {
+					m.CurrentMsg = "En Mantenimiento"
+				}
 			} else if statusStr == "UP" || statusStr == "DOWN" || statusStr == "DEGRADED" {
 				m.CurrentStatus = models.MonitorStatus(statusStr)
 				m.CurrentLatency = latency
@@ -587,6 +593,8 @@ func (h *Handlers) GetSettings(c *fiber.Ctx) error {
 
 // UpdateSettings handles PUT /api/settings
 func (h *Handlers) UpdateSettings(c *fiber.Ctx) error {
+	wasGlobalMaint := h.engine.IsGlobalMaintenance()
+
 	var body map[string]string
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -597,9 +605,13 @@ func (h *Handlers) UpdateSettings(c *fiber.Ctx) error {
 	// Notify the notifier to reload settings
 	h.engine.ReloadNotifierConfig(c.Context())
 
-	// If global maintenance was toggled, we want immediate UI feedback.
-	if _, ok := body["global_maintenance"]; ok {
-		h.engine.RestartAll(c.Context())
+	// If global maintenance was changed, immediately apply it across DB, Redis, and SSE
+	if val, ok := body["global_maintenance"]; ok {
+		nowGlobalMaint := val == "true"
+		if nowGlobalMaint != wasGlobalMaint {
+			_ = h.db.SetAllMonitorsMaintenance(c.Context(), nowGlobalMaint)
+			h.engine.ApplyGlobalMaintenance(c.Context(), nowGlobalMaint)
+		}
 	}
 	return c.JSON(fiber.Map{"ok": true})
 }

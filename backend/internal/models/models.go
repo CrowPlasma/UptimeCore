@@ -100,14 +100,15 @@ type CheckResult struct {
 type IncidentEvent struct {
 	MonitorID     int           `json:"monitor_id"`
 	MonitorName   string        `json:"monitor_name"`
-	MonitorType   string        `json:"monitor_type"`
-	MonitorTarget string        `json:"monitor_target"`
+	MonitorType   string        `json:"type"`
+	MonitorTarget string        `json:"target"`
 	GroupID       int           `json:"group_id"`
 	GroupName     string        `json:"group_name"`
 	Status        MonitorStatus `json:"status"`
 	StartedAt     time.Time     `json:"started_at"`
-	EndedAt       *time.Time    `json:"ended_at,omitempty"`
+	ResolvedAt    *time.Time    `json:"resolved_at,omitempty"`
 	DurationSec   int           `json:"duration_sec"`
-	IsResolved    bool          `json:"is_resolved"`
+	IsOngoing     bool          `json:"is_ongoing"`
 	ErrorMsg      string        `json:"error_msg,omitempty"`
 }
+

@@ -149,7 +149,7 @@ export function Dashboard() {
   const [nocMode, setNocMode] = useState<boolean>(() => {
     try { return localStorage.getItem('uptimecore_noc_mode') === '1' } catch { return false }
   })
-  const [sortDownFirst, setSortDownFirst] = useState<boolean>(true)
+  const [sortDownFirst, setSortDownFirst] = useState<boolean>(false)
   const [soundOn, setSoundOn] = useState<boolean>(() => isSoundEnabled())
 
   const handleToggleNoc = () => {

@@ -173,13 +173,18 @@ func (e *Engine) StopMonitor(monitorID int) {
 	}
 }
 
+// IsGlobalMaintenance returns true if global maintenance mode is currently active in settings.
+func (e *Engine) IsGlobalMaintenance() bool {
+	return e.notifier.GetSetting("global_maintenance", "") == "true"
+}
+
 // executeCheck runs the check, saves to DB, updates cache, and triggers alerts.
 func (e *Engine) executeCheck(ctx context.Context, m models.Monitor) {
 	if ctx.Err() != nil || !m.IsActive {
 		return
 	}
 
-	isGlobalMaint := e.notifier.GetSetting("global_maintenance", "") == "true"
+	isGlobalMaint := e.IsGlobalMaintenance()
 	if isGlobalMaint || m.IsMaintenance {
 		msg := "En Mantenimiento"
 		if isGlobalMaint {
@@ -214,8 +219,44 @@ func (e *Engine) executeCheck(ctx context.Context, m models.Monitor) {
 		return
 	}
 
-	result := RunCheck(ctx, m)
-	// Critical: if monitor was paused, put in maintenance, or rescheduled while RunCheck was in flight, discard stale result!
+	retries := m.Retries
+	if retries < 1 {
+		retries = 1
+	}
+
+	var result models.CheckResult
+	for attempt := 1; attempt <= retries; attempt++ {
+		if ctx.Err() != nil {
+			return
+		}
+		result = RunCheck(ctx, m)
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Threshold check for generic MetricValue (e.g. from SNMP)
+		if m.ValueThreshold != nil && *m.ValueThreshold > 0 && result.MetricValue != nil {
+			if *result.MetricValue >= float64(*m.ValueThreshold) {
+				result.Status = models.StatusDEGRADED
+				result.ErrorMsg = fmt.Sprintf("Valor %.2f > Límite %d", *result.MetricValue, *m.ValueThreshold)
+			}
+		}
+
+		// If check succeeded, or we reached max retries, or monitor is already in confirmed DOWN state, stop retrying
+		if result.Status == models.StatusUP || attempt >= retries || e.cache.IsAlerted(ctx, m.ID) {
+			break
+		}
+
+		log.Printf("[RETRY %d/%d] [%-8s] %-30s -> %s (%s)",
+			attempt, retries, m.Type, m.Target, result.Status, result.ErrorMsg)
+
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+	}
+
 	if ctx.Err() != nil {
 		return
 	}
@@ -234,10 +275,11 @@ func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result mod
 		}
 	}
 
-	if m.IsMaintenance {
+	if m.IsMaintenance || e.IsGlobalMaintenance() {
 		result.Status = models.StatusMAINTENANCE
 		result.LatencyMs = 0
 		result.ErrorMsg = "En Mantenimiento"
+		m.IsMaintenance = true
 	}
 
 	isActive := m.IsActive
@@ -264,33 +306,30 @@ func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result mod
 	// Cache latest status in Redis
 	e.cache.SetStatus(ctx, m.ID, statusStr, result.LatencyMs, result.ErrorMsg, result.MetricValue)
 
-		// --- ALERTING LOGIC ---
+	// --- ALERTING LOGIC ---
 	if result.Status == models.StatusDOWN || result.Status == models.StatusDEGRADED {
 		fails := e.cache.IncFails(ctx, m.ID)
-		if fails >= m.Retries {
-			groupName := "Sin Grupo"
-			if m.GroupID != nil {
-				groupName = e.db.GetGroupName(ctx, *m.GroupID)
-			}
+		groupName := "Sin Grupo"
+		if m.GroupID != nil {
+			groupName = e.db.GetGroupName(ctx, *m.GroupID)
+		}
 
-			if !e.cache.IsAlerted(ctx, m.ID) {
-				log.Printf("🚨 ALERT: Monitor %s is %s after %d retries", m.Name, statusStr, fails)
-				e.notifier.Send(m, groupName, statusStr, result.ErrorMsg)
-				e.cache.SetAlerted(ctx, m.ID, true)
-				// Guardar el tiempo exacto en el que caímos
-				e.cache.SetDownSince(ctx, m.ID, time.Now().Unix())
-			} else {
-				// Ya enviamos la alerta inicial. Comprobar escalación.
-				downSince := e.cache.GetDownSince(ctx, m.ID)
-				if downSince > 0 && !e.cache.IsEscalated(ctx, m.ID) {
-					// Leer timeout de escalación (por defecto 30 minutos)
-					thresholdStr := e.notifier.GetSetting("escalation_timeout_minutes", "30")
-					thresholdMinutes, _ := strconv.Atoi(thresholdStr)
-					if thresholdMinutes > 0 && time.Now().Unix() - downSince >= int64(thresholdMinutes * 60) {
-						log.Printf("⚠️  ESCALATION: Monitor %s has been %s for %d minutes", m.Name, statusStr, thresholdMinutes)
-						e.notifier.SendEscalation(m, groupName, statusStr, result.ErrorMsg)
-						e.cache.SetEscalated(ctx, m.ID, true)
-					}
+		if !e.cache.IsAlerted(ctx, m.ID) {
+			log.Printf("🚨 ALERT: Monitor %s is %s (confirmed after %d retries)", m.Name, statusStr, m.Retries)
+			e.notifier.Send(m, groupName, statusStr, result.ErrorMsg)
+			e.cache.SetAlerted(ctx, m.ID, true)
+			e.cache.SetDownSince(ctx, m.ID, time.Now().Unix())
+		} else {
+			// Ya enviamos la alerta inicial. Comprobar escalación.
+			_ = fails
+			downSince := e.cache.GetDownSince(ctx, m.ID)
+			if downSince > 0 && !e.cache.IsEscalated(ctx, m.ID) {
+				thresholdStr := e.notifier.GetSetting("escalation_timeout_minutes", "30")
+				thresholdMinutes, _ := strconv.Atoi(thresholdStr)
+				if thresholdMinutes > 0 && time.Now().Unix()-downSince >= int64(thresholdMinutes*60) {
+					log.Printf("⚠️  ESCALATION: Monitor %s has been %s for %d minutes", m.Name, statusStr, thresholdMinutes)
+					e.notifier.SendEscalation(m, groupName, statusStr, result.ErrorMsg)
+					e.cache.SetEscalated(ctx, m.ID, true)
 				}
 			}
 		}
@@ -302,12 +341,11 @@ func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result mod
 				groupName = e.db.GetGroupName(ctx, *m.GroupID)
 			}
 			e.notifier.Send(m, groupName, "UP", "Servicio recuperado exitosamente.")
-			
-			// Si estaba escalado, enviamos un aviso de recuperación a los escalados también
+
 			if e.cache.IsEscalated(ctx, m.ID) {
 				e.notifier.SendEscalation(m, groupName, "UP", "Servicio recuperado tras escalación.")
 			}
-			
+
 			e.cache.SetAlerted(ctx, m.ID, false)
 			e.cache.SetEscalated(ctx, m.ID, false)
 			e.cache.ClearDownSince(ctx, m.ID)
@@ -326,6 +364,39 @@ func (e *Engine) ReloadNotifierConfig(ctx context.Context) {
 	settings, err := e.db.GetSettings(ctx)
 	if err == nil {
 		e.notifier.UpdateSettings(settings)
+	}
+}
+
+// ApplyGlobalMaintenance immediately transitions all active monitors into or out of maintenance mode without lag or resets.
+func (e *Engine) ApplyGlobalMaintenance(ctx context.Context, enabled bool) {
+	// Cancel all in-flight checks first so nothing overwrites the new state
+	e.StopAll()
+
+	monitors, err := e.db.ListAllActiveMonitors(ctx)
+	if err != nil {
+		return
+	}
+	total := len(monitors)
+	for i, m := range monitors {
+		m.IsMaintenance = enabled
+		intervalSec := m.IntervalSeconds
+		if intervalSec <= 0 {
+			intervalSec = 60
+		}
+
+		if enabled {
+			e.BroadcastStatus(ctx, m.ID, models.StatusMAINTENANCE, 0, "Mantenimiento Global", true, true)
+			e.ScheduleMonitorAfter(m, time.Duration(intervalSec)*time.Second)
+		} else {
+			e.BroadcastStatus(ctx, m.ID, models.StatusUNKNOWN, 0, "", true, false)
+			e.cache.SetStatus(ctx, m.ID, "CHECKING", 0, "", nil)
+			// Fast stagger (0..1.5s total) so all monitors quickly check their live status
+			var fastDelay time.Duration
+			if total > 1 {
+				fastDelay = time.Duration((i*1500)/total) * time.Millisecond
+			}
+			e.scheduleMonitorWithDelay(m, fastDelay, false)
+		}
 	}
 }
 

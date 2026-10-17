@@ -51,11 +51,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await fetch('/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
       })
+      if (!res.ok) throw new Error('Error saving settings')
+      await fetchGroups()
       useToastStore.getState().addToast({ type: 'success', title: 'Guardado', message: 'Los ajustes se guardaron correctamente.' })
       setEditing({}) // close all edit forms
     } catch {

@@ -417,6 +417,16 @@ func (db *DB) SetGroupMonitorsMaintenance(ctx context.Context, groupID int, isMa
 	return db.GetMonitorsByGroup(ctx, groupID)
 }
 
+// SetAllMonitorsMaintenance sets is_maintenance for all active monitors (used by Global Maintenance mode).
+func (db *DB) SetAllMonitorsMaintenance(ctx context.Context, isMaintenance bool) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE monitors
+		SET is_maintenance = $1,
+		    updated_at = NOW()
+		WHERE is_active = true`, isMaintenance)
+	return err
+}
+
 // ListIncidents returns recent DOWN and DEGRADED state transitions with outage durations.
 func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]models.IncidentEvent, error) {
 	var interval string
@@ -460,29 +470,47 @@ func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]
 				LEAD(time) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS ended_at
 			FROM transitions
 			WHERE prev_status IS DISTINCT FROM status
+		),
+		enriched AS (
+			SELECT
+				c.monitor_id,
+				m.name AS monitor_name,
+				m.type AS monitor_type,
+				m.target AS monitor_target,
+				COALESCE(m.group_id, 0) AS group_id,
+				COALESCE(g.name, 'Sin Grupo') AS group_name,
+				c.status,
+				c.started_at,
+				CASE
+					WHEN c.ended_at IS NOT NULL THEN c.ended_at
+					WHEN NOT m.is_active OR m.is_maintenance THEN m.updated_at
+					ELSE NULL
+				END AS resolved_at,
+				CASE
+					WHEN c.ended_at IS NULL AND m.is_active AND NOT m.is_maintenance THEN true
+					ELSE false
+				END AS is_ongoing,
+				c.error_msg
+			FROM changes c
+			JOIN monitors m ON m.id = c.monitor_id
+			LEFT JOIN monitor_groups g ON g.id = m.group_id
+			WHERE c.status IN ('DOWN', 'DEGRADED')
 		)
 		SELECT
-			c.monitor_id,
-			m.name AS monitor_name,
-			m.type AS monitor_type,
-			m.target AS monitor_target,
-			COALESCE(m.group_id, 0) AS group_id,
-			COALESCE(g.name, 'Sin Grupo') AS group_name,
-			c.status,
-			c.started_at,
-			c.ended_at,
-			GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (COALESCE(c.ended_at, NOW()) - c.started_at))::int, 0)) AS duration_sec,
-			CASE
-				WHEN c.ended_at IS NOT NULL THEN true
-				WHEN NOT m.is_active OR m.is_maintenance THEN true
-				ELSE false
-			END AS is_resolved,
-			c.error_msg
-		FROM changes c
-		JOIN monitors m ON m.id = c.monitor_id
-		LEFT JOIN monitor_groups g ON g.id = m.group_id
-		WHERE c.status IN ('DOWN', 'DEGRADED')
-		ORDER BY is_resolved ASC, c.started_at DESC
+			monitor_id,
+			monitor_name,
+			monitor_type,
+			monitor_target,
+			group_id,
+			group_name,
+			status,
+			started_at,
+			resolved_at,
+			GREATEST(1, COALESCE(EXTRACT(EPOCH FROM (COALESCE(resolved_at, NOW()) - started_at))::int, 1)) AS duration_sec,
+			is_ongoing,
+			error_msg
+		FROM enriched
+		ORDER BY is_ongoing DESC, started_at DESC
 		LIMIT $2
 	`, interval, limit)
 	if err != nil {
@@ -502,9 +530,9 @@ func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]
 			&ev.GroupName,
 			&ev.Status,
 			&ev.StartedAt,
-			&ev.EndedAt,
+			&ev.ResolvedAt,
 			&ev.DurationSec,
-			&ev.IsResolved,
+			&ev.IsOngoing,
 			&ev.ErrorMsg,
 		); err == nil {
 			list = append(list, ev)
@@ -515,6 +543,7 @@ func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]
 	}
 	return list, nil
 }
+
 
 // --- History (TimescaleDB hypertable) ---
 

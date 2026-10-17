@@ -265,7 +265,12 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             const newDisk = ev.metric_disk !== undefined ? ev.metric_disk : m.current_disk
             const newValue = ev.metric_value !== undefined ? ev.metric_value : m.current_value
 
-            // Only notify if we transition from a known state
+            // Clean up any active down/degraded alert toast if monitor is paused or put in maintenance
+            if (newStatus === 'PAUSED' || newStatus === 'MAINTENANCE') {
+              useToastStore.getState().removeToast(`monitor-alert-${m.id}`)
+            }
+
+            // Only notify if we transition from a known operational state
             if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED' && newStatus !== 'MAINTENANCE' && newStatus !== 'UNKNOWN') {
               const toastId = `monitor-alert-${m.id}`;
               if (newStatus === 'DOWN') {
@@ -273,23 +278,24 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 useToastStore.getState().addToast({
                   id: toastId,
                   type: 'error',
-                  title: 'Monitor Caído!',
-                  message: `El endpoint "${m.name}" del grupo "${g.name}" ha dejado de responder.`
+                  title: '¡Monitor Caído!',
+                  message: `El endpoint "${m.name}" (${m.target}) del grupo "${g.name}" dejó de responder.`
                 });
-              } else if (newStatus === 'UP' && oldStatus !== 'MAINTENANCE') {
+              } else if (newStatus === 'UP' && (oldStatus === 'DOWN' || oldStatus === 'DEGRADED')) {
                 playRecoveredAlert();
-                useToastStore.getState().removeToast(`monitor-alert-${m.id}`);
+                useToastStore.getState().removeToast(toastId);
                 useToastStore.getState().addToast({
+                  id: `monitor-recovered-${m.id}`,
                   type: 'success',
                   title: 'Monitor Recuperado',
-                  message: `El endpoint "${m.name}" del grupo "${g.name}" vuelve a estar operativo.`
+                  message: `El endpoint "${m.name}" del grupo "${g.name}" vuelve a estar operativo (${newLatency} ms).`
                 });
               } else if (newStatus === 'DEGRADED') {
                 useToastStore.getState().addToast({
-                  id: `monitor-alert-${m.id}`,
+                  id: toastId,
                   type: 'warning',
                   title: 'Rendimiento Degradado',
-                  message: `El endpoint "${m.name}" del grupo "${g.name}" presenta alta latencia.`
+                  message: `El endpoint "${m.name}" del grupo "${g.name}" reporta: ${newError || 'alta latencia'}.`
                 });
               }
             }
