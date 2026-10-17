@@ -376,14 +376,6 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
     }
   }, [appendLine])
 
-  // Auto-iniciar al abrir si ya viene con un sensor seleccionado
-  useEffect(() => {
-    if (initialParsed.host) {
-      executeRun(initialParsed.mode, initialParsed.host, initialParsed.port, 1000, 10, 20)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   // Computed live stats
   const lostCount = Math.max(0, sent - received)
   const lossPercent = sent > 0 ? ((lostCount / sent) * 100).toFixed(1) : '0.0'
@@ -635,7 +627,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 )}
               </div>
               <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
-                Selecciona una herramienta o cambia de enlace para ejecutar la prueba automáticamente en tiempo real
+                Elige la herramienta, el puerto o protocolo deseado y haz clic en <strong>Ejecutar</strong> cuando estés listo
               </p>
             </div>
           </div>
@@ -686,11 +678,11 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 <button
                   key={gm.id}
                   onClick={() => {
+                    stopDiagnostic()
                     setSelectedMonitor(gm)
                     setTarget(parsed.host)
                     setPort(parsed.port)
                     setMode(parsed.mode)
-                    executeRun(parsed.mode, parsed.host, parsed.port, intervalMs, maxProbes, maxHops)
                   }}
                   style={{
                     fontSize: 11,
@@ -716,7 +708,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           </div>
         )}
 
-        {/* ── SELECTOR DE HERRAMIENTA (Autoejecuta al cambiar de pestaña) ── */}
+        {/* ── SELECTOR DE HERRAMIENTA (Solo selecciona el modo sin ejecutar hasta que el usuario lo indique) ── */}
         <div
           style={{
             padding: '10px 24px',
@@ -733,10 +725,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
               <button
                 key={t.id}
                 onClick={() => {
+                  if (isRunning) stopDiagnostic()
                   setMode(t.id)
-                  if (target.trim()) {
-                    executeRun(t.id, target, port, intervalMs, maxProbes, maxHops)
-                  }
                 }}
                 style={{
                   padding: '9px 12px',
@@ -788,7 +778,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 onChange={e => setTarget(e.target.value)}
                 placeholder="Ej. 3.4.20.253 o fortinet.empresa.com"
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && target.trim()) {
+                  if (e.key === 'Enter' && target.trim() && !isRunning) {
                     executeRun(mode, target, port, intervalMs, maxProbes, maxHops)
                   }
                 }}
@@ -819,7 +809,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                   value={port}
                   onChange={e => setPort(Number(e.target.value))}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && target.trim()) {
+                    if (e.key === 'Enter' && target.trim() && !isRunning) {
                       executeRun(mode, target, port, intervalMs, maxProbes, maxHops)
                     }
                   }}
@@ -970,15 +960,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           {(mode === 'PAPING' || mode === 'HTTP') && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={11} /> Probar puerto rápido:
+                <Sparkles size={11} /> Seleccionar puerto rápido:
               </span>
               {selectedMonitor?.port &&
                 !QUICK_PORTS.some(q => q.port === selectedMonitor.port) && (
                   <button
                     onClick={() => {
-                      const p = selectedMonitor.port!
-                      setPort(p)
-                      if (target.trim()) executeRun(mode, target, p, intervalMs, maxProbes, maxHops)
+                      if (isRunning) stopDiagnostic()
+                      setPort(selectedMonitor.port!)
                     }}
                     style={{
                       fontSize: 10.5,
@@ -1006,8 +995,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                   <button
                     key={q.port}
                     onClick={() => {
+                      if (isRunning) stopDiagnostic()
                       setPort(q.port)
-                      if (target.trim()) executeRun(mode, target, q.port, intervalMs, maxProbes, maxHops)
                     }}
                     style={{
                       fontSize: 10.5,
