@@ -1,12 +1,13 @@
 /**
  * components/NocWallboard.tsx
  * Modo Pantalla NOC / Wallboard con 2 Vistas seleccionables:
- *  1. "cards"  (NOC Tarjetas): Tarjetas compactas con lista de endpoints por grupo.
- *  2. "mosaic" (NOC Mosaico PRTG): Vista ultra-compacta de "cuadritos" estilo PRTG
- *     donde caben decenas o cientos de grupos/sensores en una sola pantalla sin scroll.
+ *  1. "mosaic" (NOC Mosaico PRTG): Vista ultra-compacta de "cuadritos" estilo PRTG
+ *     (Por Grupos o Todos los Sensores). Al hacer clic en cualquier cuadrito abre
+ *     la tarjeta de inspección rápida con detalles del grupo y sus sensores.
+ *  2. "cards"  (NOC Tarjetas): Tarjetas compactas con lista de endpoints por grupo.
  */
 import { useState, useMemo } from 'react'
-import { Wrench, Pause, Play, Plus, LayoutGrid, Grid, Layers, X } from 'lucide-react'
+import { Wrench, Pause, Play, Plus, LayoutGrid, Grid, Layers, X, Pencil } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorStatus } from '../types'
 import type { ModalMode } from './MonitorModal'
 import { useMonitorStore } from '../store/monitorStore'
@@ -73,8 +74,9 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
 
   // En modo Mosaico PRTG: permite ver cuadritos por Grupo o todos los Endpoints individuales
   const [mosaicGranularity, setMosaicGranularity] = useState<'groups' | 'endpoints'>('groups')
-  // Grupo seleccionado al hacer clic en un cuadrito del mosaico para inspección rápida
+  // Grupo y sensor seleccionados al hacer clic en un cuadrito del mosaico para inspección rápida
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null)
 
   const sortedGroups = useMemo(() => {
     return [...groups].sort((a, b) => {
@@ -104,6 +106,11 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
     () => groups.find(g => g.id === selectedGroupId) ?? null,
     [groups, selectedGroupId]
   )
+
+  const closeInspector = () => {
+    setSelectedGroupId(null)
+    setSelectedMonitorId(null)
+  }
 
   return (
     <div>
@@ -237,8 +244,11 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
             return (
               <div
                 key={group.id}
-                onClick={() => setSelectedGroupId(group.id)}
-                title={`${group.name} — Estado: ${STATUS_LABEL[st]} (${upCount}/${monitors.length} UP). Clic para detalle rápido.`}
+                onClick={() => {
+                  setSelectedGroupId(group.id)
+                  setSelectedMonitorId(null)
+                }}
+                title={`${group.name} — Estado: ${STATUS_LABEL[st]} (${upCount}/${monitors.length} UP). Clic para ver detalle del grupo.`}
                 style={{
                   background: tileStyle.bg,
                   border: `1.5px solid ${tileStyle.border}`,
@@ -324,8 +334,12 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
             return (
               <div
                 key={m.id}
-                onClick={() => onOpenModal({ type: 'edit_monitor', group, monitor: m })}
-                title={`Grupo: ${group.name}\nSensor: ${m.name}\nDestino: ${m.target}\nEstado: ${STATUS_LABEL[st]} (${m.current_latency_ms ?? 0}ms)`}
+                onClick={() => {
+                  // Abre el mismo inspector detallado de grupo resaltando el sensor seleccionado
+                  setSelectedGroupId(group.id)
+                  setSelectedMonitorId(m.id)
+                }}
+                title={`Grupo: ${group.name}\nSensor: ${m.name}\nDestino: ${m.target}\nEstado: ${STATUS_LABEL[st]} (${m.current_latency_ms ?? 0}ms)\nClic para ver detalles`}
                 style={{
                   background: tileStyle.bg,
                   border: `1.5px solid ${tileStyle.border}`,
@@ -395,11 +409,11 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
         </div>
       )}
 
-      {/* Modal rápido de inspección de Grupo al hacer clic en un cuadrito del Mosaico PRTG */}
+      {/* Modal rápido de inspección de Grupo y Sensores al hacer clic en cualquier cuadrito del Mosaico PRTG */}
       {inspectedGroup && (
         <>
           <div
-            onClick={() => setSelectedGroupId(null)}
+            onClick={closeInspector}
             style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
               backdropFilter: 'blur(3px)', zIndex: 210,
@@ -409,25 +423,36 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
             position: 'fixed', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 211,
-            width: 'min(520px, 94vw)',
+            width: 'min(580px, 95vw)',
             background: 'var(--color-bg-card)',
             border: `2px solid ${STATUS_COLOR[inspectedGroup.overall_status || 'UNKNOWN']}`,
             borderRadius: 14,
             padding: '20px 22px',
             boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                  {inspectedGroup.name}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                    {inspectedGroup.name}
+                  </span>
+                  {inspectedGroup.tags?.map(t => (
+                    <span key={t.id} style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                      background: `${t.color}22`, color: t.color, border: `1px solid ${t.color}44`,
+                    }}>
+                      {t.name}
+                    </span>
+                  ))}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 3 }}>
                   Estado del grupo: <strong style={{ color: STATUS_COLOR[inspectedGroup.overall_status || 'UNKNOWN'] }}>
                     {STATUS_LABEL[inspectedGroup.overall_status || 'UNKNOWN']}
                   </strong>
+                  {inspectedGroup.description ? ` · ${inspectedGroup.description}` : ''}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 <button
                   onClick={() => toggleGroupMaintenance(inspectedGroup.id)}
                   title="Alternar Mantenimiento en todo el grupo"
@@ -451,7 +476,22 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                   <Pause size={12} /> Pausa Grupo
                 </button>
                 <button
-                  onClick={() => setSelectedGroupId(null)}
+                  onClick={() => {
+                    const g = inspectedGroup
+                    closeInspector()
+                    onOpenModal({ type: 'edit_group', group: g })
+                  }}
+                  title="Editar Grupo"
+                  style={{
+                    width: 30, height: 30, borderRadius: 7, border: '1px solid var(--color-border)',
+                    background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  }}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  onClick={closeInspector}
                   style={{
                     width: 30, height: 30, borderRadius: 7, border: '1px solid var(--color-border)',
                     background: 'var(--color-bg-primary)', color: 'var(--color-text-muted)',
@@ -463,69 +503,132 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '62vh', overflowY: 'auto' }}>
               {(inspectedGroup.monitors ?? []).map(m => {
                 const st = getMonitorEffectiveStatus(m)
                 const col = STATUS_COLOR[st]
                 const isPaused = st === 'PAUSED'
                 const isMaint = st === 'MAINTENANCE'
+                const isSelectedSensor = selectedMonitorId === m.id
+                const history = (m.live_history || []).slice(-24)
+
                 return (
                   <div
                     key={m.id}
                     style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '9px 12px', borderRadius: 9,
-                      background: 'var(--color-bg-primary)',
-                      border: `1px solid ${st === 'DOWN' ? '#ef4444' : 'var(--color-border)'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 7,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      background: isSelectedSensor
+                        ? 'rgba(99, 102, 241, 0.10)'
+                        : 'var(--color-bg-primary)',
+                      border: isSelectedSensor
+                        ? '2px solid var(--color-accent)'
+                        : `1px solid ${st === 'DOWN' ? '#ef4444' : 'var(--color-border)'}`,
+                      boxShadow: isSelectedSensor ? '0 0 0 3px rgba(99, 102, 241, 0.18)' : 'none',
                     }}
                   >
-                    <div
-                      onClick={() => { setSelectedGroupId(null); onOpenModal({ type: 'edit_monitor', group: inspectedGroup, monitor: m }) }}
-                      style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: col }} />
-                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)' }}>{m.name}</span>
-                        <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: 'var(--color-bg-card)', color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
-                          {m.type}
-                        </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)' }}>{m.name}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'var(--color-bg-card)', color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
+                            {m.type}
+                          </span>
+                          {isSelectedSensor && (
+                            <span style={{
+                              fontSize: 9.5, fontWeight: 800, padding: '1px 6px', borderRadius: 99,
+                              background: 'var(--color-accent)', color: '#fff',
+                            }}>
+                              Sensor seleccionado
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", marginTop: 3, paddingLeft: 16, wordBreak: 'break-all' }}>
+                          {m.target}{m.port ? `:${m.port}` : ''} · cada {m.interval_seconds}s ({m.retries} reintentos)
+                        </div>
+                        {m.current_msg && (
+                          <div style={{ fontSize: 11.5, color: st === 'DOWN' ? '#f87171' : '#fbbf24', fontFamily: "'JetBrains Mono', monospace", marginTop: 2, paddingLeft: 16, wordBreak: 'break-all' }}>
+                            {m.current_msg}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", marginTop: 2, paddingLeft: 16 }}>
-                        {m.target}{m.port ? `:${m.port}` : ''} {m.current_msg ? `· ${m.current_msg}` : ''}
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 800, color: col, marginRight: 2 }}>
+                          {isPaused ? 'PAUSA' : isMaint ? 'MANT.' : st === 'DOWN' ? 'CAÍDO' : `${m.current_latency_ms ?? 0}ms`}
+                        </span>
+                        <button
+                          onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
+                          title="Alternar Mantenimiento"
+                          style={{
+                            width: 28, height: 28, borderRadius: 6,
+                            border: isMaint ? '1px solid #3b82f6' : '1px solid var(--color-border)',
+                            background: isMaint ? 'rgba(59,130,246,0.2)' : 'var(--color-bg-card)',
+                            color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          }}
+                        >
+                          <Wrench size={12} />
+                        </button>
+                        <button
+                          onClick={() => toggleMonitor(inspectedGroup.id, m.id)}
+                          title={isPaused ? 'Reanudar' : 'Pausar'}
+                          style={{
+                            width: 28, height: 28, borderRadius: 6,
+                            border: isPaused ? '1px solid #22c55e' : '1px solid var(--color-border)',
+                            background: isPaused ? 'rgba(34,197,94,0.2)' : 'var(--color-bg-card)',
+                            color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          }}
+                        >
+                          {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const g = inspectedGroup
+                            closeInspector()
+                            onOpenModal({ type: 'edit_monitor', group: g, monitor: m })
+                          }}
+                          title="Editar configuración del sensor"
+                          style={{
+                            width: 28, height: 28, borderRadius: 6,
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-bg-card)',
+                            color: 'var(--color-text-secondary)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          }}
+                        >
+                          <Pencil size={12} />
+                        </button>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 800, color: col }}>
-                        {isPaused ? 'PAUSA' : isMaint ? 'MANT.' : st === 'DOWN' ? 'CAÍDO' : `${m.current_latency_ms ?? 0}ms`}
-                      </span>
-                      <button
-                        onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
-                        title="Alternar Mantenimiento"
-                        style={{
-                          width: 26, height: 26, borderRadius: 6,
-                          border: isMaint ? '1px solid #3b82f6' : '1px solid var(--color-border)',
-                          background: isMaint ? 'rgba(59,130,246,0.2)' : 'var(--color-bg-card)',
-                          color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        }}
-                      >
-                        <Wrench size={12} />
-                      </button>
-                      <button
-                        onClick={() => toggleMonitor(inspectedGroup.id, m.id)}
-                        title={isPaused ? 'Reanudar' : 'Pausar'}
-                        style={{
-                          width: 26, height: 26, borderRadius: 6,
-                          border: isPaused ? '1px solid #22c55e' : '1px solid var(--color-border)',
-                          background: isPaused ? 'rgba(34,197,94,0.2)' : 'var(--color-bg-card)',
-                          color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        }}
-                      >
-                        {isPaused ? <Play size={12} /> : <Pause size={12} />}
-                      </button>
-                    </div>
+                    {/* Mini barra de historial reciente del sensor */}
+                    {history.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, paddingLeft: 16 }}>
+                        {history.map((pt, idx) => {
+                          const ptColor = STATUS_COLOR[pt.status] || '#6b7280'
+                          return (
+                            <span
+                              key={idx}
+                              title={`${new Date(pt.time).toLocaleTimeString()} — ${pt.status} (${pt.latency_ms}ms)`}
+                              style={{
+                                flex: 1,
+                                height: 6,
+                                maxWidth: 14,
+                                borderRadius: 2,
+                                background: ptColor,
+                                opacity: 0.85,
+                              }}
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -579,7 +682,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
               >
                 {/* Encabezado compacto del grupo */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={() => { setSelectedGroupId(group.id); setSelectedMonitorId(null) }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{
                         width: 10, height: 10, borderRadius: '50%',
@@ -701,9 +804,12 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                           }}
                         >
                           <div
-                            onClick={() => onOpenModal({ type: 'edit_monitor', group, monitor: m })}
+                            onClick={() => {
+                              setSelectedGroupId(group.id)
+                              setSelectedMonitorId(m.id)
+                            }}
                             style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flex: 1, cursor: 'pointer' }}
-                            title={`${m.name} (${m.type}: ${m.target}) — Click para editar`}
+                            title={`${m.name} (${m.type}: ${m.target}) — Clic para ver detalle`}
                           >
                             <span style={{
                               width: 7, height: 7, borderRadius: '50%',
