@@ -15,17 +15,22 @@ import { MonitorModal } from '../components/MonitorModal'
 import type { ModalMode } from '../components/MonitorModal'
 
 // ── Tarjeta de métrica ─────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color }: {
-  icon: React.ReactNode; label: string; value: number; color: string
+function StatCard({ icon, label, value, color, active, onClick }: {
+  icon: React.ReactNode; label: string; value: number; color: string; active?: boolean; onClick?: () => void
 }) {
   return (
-    <div style={{
-      background: 'var(--color-bg-card)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 14, padding: '20px 24px',
-      display: 'flex', alignItems: 'center', gap: 18,
-      boxShadow: 'var(--shadow-card)',
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: 'var(--color-bg-card)',
+        border: active ? `2px solid ${color}` : '1px solid var(--color-border)',
+        borderRadius: 14, padding: '20px 24px',
+        display: 'flex', alignItems: 'center', gap: 18,
+        boxShadow: active ? `0 0 0 3px ${color}22` : 'var(--shadow-card)',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.18s ease',
+      }}
+    >
       <div style={{
         width: 48, height: 48, borderRadius: 14,
         background: color + '1a', display: 'flex',
@@ -51,6 +56,7 @@ function TagFilter({ allTagNames, selected, onChange }: {
 }) {
   const [open, setOpen] = useState(false)
   const label = selected === 'all' ? 'Todas las etiquetas'
+    : selected === 'up' ? 'Operativos'
     : selected === 'down' ? 'Caídos'
     : selected === 'degraded' ? 'Degradados'
     : selected === 'maintenance' ? 'Mantenimiento'
@@ -59,6 +65,7 @@ function TagFilter({ allTagNames, selected, onChange }: {
 
   const options = [
     { label: 'Todas las etiquetas', value: 'all', dot: null },
+    { label: 'Operativos', value: 'up', dot: '#22c55e' },
     { label: 'Caídos', value: 'down', dot: '#ef4444' },
     { label: 'Degradados', value: 'degraded', dot: '#f59e0b' },
     { label: 'Mantenimiento', value: 'maintenance', dot: '#3b82f6' },
@@ -119,8 +126,8 @@ function TagFilter({ allTagNames, selected, onChange }: {
 
 // ── Dashboard principal ────────────────────────────────────────────────────
 export function Dashboard() {
-  const { groups, allTags, loading, error, fetchGroups } = useMonitorStore()
-    const [search, setSearch] = useState('')
+  const { groups, allTags, loading, error, lastEventAt, sseConnected, setSseConnected, fetchGroups } = useMonitorStore()
+  const [search, setSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
   const [tagFilter, setTagFilter] = useState('all')
@@ -146,6 +153,7 @@ export function Dashboard() {
     }
 
     sse.onopen = () => {
+      setSseConnected(true)
       if (!firstOpen) fetchGroups()
       firstOpen = false
     }
@@ -162,6 +170,7 @@ export function Dashboard() {
     }
 
     sse.onerror = () => {
+      setSseConnected(false)
       // Si la conexión SSE se interrumpe o el proxy reconecta, refrescamos el estado por HTTP
       fetchGroups()
     }
@@ -190,8 +199,13 @@ export function Dashboard() {
       if (g.overall_status === 'UP') up++;
       else if (g.overall_status === 'DOWN') down++;
       else if (g.overall_status === 'DEGRADED') degraded++;
-      else if (g.overall_status === 'MAINTENANCE') maintenance++;
-      else if (g.overall_status === 'PAUSED') paused++;
+
+      if (g.overall_status === 'MAINTENANCE' || g.monitors?.some(m => m.current_status === 'MAINTENANCE' || m.is_maintenance)) {
+        maintenance++;
+      }
+      if (g.overall_status === 'PAUSED' || g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED')) {
+        paused++;
+      }
     });
     return { totalGroups: groups.length, up, down, degraded, maintenance, paused };
   }, [groups])
@@ -209,9 +223,10 @@ export function Dashboard() {
       )
     const matchFilter = (() => {
       if (tagFilter === 'all') return true;
+      if (tagFilter === 'up') return g.overall_status === 'UP';
       if (tagFilter === 'down') return g.monitors?.some(m => m.current_status === 'DOWN') || g.overall_status === 'DOWN';
       if (tagFilter === 'degraded') return g.overall_status === 'DEGRADED';
-      if (tagFilter === 'maintenance') return g.monitors?.some(m => m.current_status === 'MAINTENANCE') || g.overall_status === 'MAINTENANCE';
+      if (tagFilter === 'maintenance') return g.monitors?.some(m => m.current_status === 'MAINTENANCE' || m.is_maintenance) || g.overall_status === 'MAINTENANCE';
       if (tagFilter === 'paused') return g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED') || g.overall_status === 'PAUSED';
       return g.tags?.some(t => t.name === tagFilter);
     })();
@@ -226,6 +241,10 @@ export function Dashboard() {
   
   const totalPages = Math.ceil(filtered.length / itemsPerPage)
 
+  const toggleCardFilter = (val: string) => {
+    setTagFilter(prev => prev === val ? 'all' : val)
+    setCurrentPage(1)
+  }
 
   return (
     <div style={{ padding: '0 32px 28px 32px', maxWidth: '100%' }}>
@@ -260,12 +279,12 @@ export function Dashboard() {
           gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
           gap: 16, marginBottom: 24,
         }}>
-          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups}    color="#6366f1" />
-          <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}       color="#22c55e" />
-          <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}     color="#ef4444" />
-          <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded} color="#f59e0b" />
-          <StatCard icon={<Wrench size={22} />} label="Mantenimiento" value={stats.maintenance} color="#3b82f6" />
-          <StatCard icon={<Pause size={22} />} label="En Pausa" value={stats.paused} color="#9ca3af" />
+          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups} color="#6366f1" active={tagFilter === 'all'}         onClick={() => { setTagFilter('all'); setCurrentPage(1) }} />
+          <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}          color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
+          <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}        color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
+          <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded}    color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
+          <StatCard icon={<Wrench size={22} />}        label="Mantenimiento"      value={stats.maintenance} color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
+          <StatCard icon={<Pause size={22} />}         label="En Pausa"           value={stats.paused}      color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
         </div>
 
         {/* ── Barra de controles ──── */}
@@ -283,6 +302,29 @@ export function Dashboard() {
           />
 
           <TagFilter allTagNames={allTagNames} selected={tagFilter} onChange={(v) => { setTagFilter(v); setCurrentPage(1); }} />
+
+          {/* Indicador SSE en Tiempo Real */}
+          <div
+            title={lastEventAt ? `Último evento recibido: ${new Date(lastEventAt).toLocaleTimeString()}` : 'Conectado al stream en tiempo real'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
+              borderRadius: 9, border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-card)', fontSize: 11.5, fontWeight: 600,
+              color: 'var(--color-text-secondary)', fontFamily: "'JetBrains Mono', monospace",
+            }}
+          >
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: sseConnected ? '#22c55e' : '#f59e0b',
+              boxShadow: sseConnected ? '0 0 8px #22c55e' : 'none',
+            }} />
+            <span>{sseConnected ? 'EN VIVO' : 'SYNC'}</span>
+            {lastEventAt && (
+              <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
+                · {new Date(lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
 
           {/* Botón refresh manual */}
           <button onClick={handleRefresh} title="Actualizar ahora" style={{

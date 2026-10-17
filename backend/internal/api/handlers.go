@@ -304,9 +304,12 @@ func (h *Handlers) UpdateMonitor(c *fiber.Ctx) error {
 		// Reset alert state when edited so it can trigger new notifications
 		h.cache.ResetFails(c.Context(), id)
 		h.cache.SetAlerted(c.Context(), id, false)
-		// Removed SetStatus UNKNOWN so the frontend sees a direct UP -> DOWN transition for toasts
 		
-		h.engine.ScheduleMonitor(updated)
+		if updated.IsActive {
+			h.engine.ScheduleMonitor(updated)
+		} else {
+			h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "")
+		}
 	}
 	return c.JSON(fiber.Map{"ok": true})
 }
@@ -330,12 +333,13 @@ func (h *Handlers) ToggleMonitor(c *fiber.Ctx) error {
 	}
 
 	if isActive {
+		h.cache.SetStatus(c.Context(), id, "UNKNOWN", 0, "", nil)
 		if updated, err := h.db.GetMonitor(c.Context(), id); err == nil {
 			h.engine.ScheduleMonitor(updated)
 		}
 	} else {
 		h.engine.StopMonitor(id)
-		h.cache.SetStatus(c.Context(), id, "MAINTENANCE", 0, "", nil)
+		h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "En Pausa")
 	}
 	
 	return c.JSON(fiber.Map{"ok": true, "is_active": isActive})
@@ -350,8 +354,14 @@ func (h *Handlers) ToggleMaintenance(c *fiber.Ctx) error {
 	}
 
 	if updated, err := h.db.GetMonitor(c.Context(), id); err == nil {
-		// Just re-schedule to update the memory struct
-		h.engine.ScheduleMonitor(updated)
+		if isMaint {
+			h.engine.BroadcastStatus(c.Context(), id, models.StatusMAINTENANCE, 0, "En Mantenimiento")
+		} else {
+			h.cache.SetStatus(c.Context(), id, "UNKNOWN", 0, "", nil)
+		}
+		if updated.IsActive {
+			h.engine.ScheduleMonitor(updated)
+		}
 	}
 
 	return c.JSON(fiber.Map{"ok": true, "is_maintenance": isMaint})

@@ -418,13 +418,39 @@ func (db *DB) SaveCheckResultsBulk(ctx context.Context, results []models.CheckRe
 // GetHistory returns time-series data for a monitor within the requested time range.
 // Uses TimescaleDB's time_bucket to downsample data and keep the UI fast.
 func (db *DB) GetHistory(ctx context.Context, monitorID int, rangeStr string) ([]models.HistoryPoint, error) {
+	if rangeStr == "recent" || rangeStr == "" {
+		rows, err := db.pool.Query(ctx, `
+			SELECT time, status, COALESCE(latency_ms, 0) FROM (
+				SELECT time, status, latency_ms
+				FROM monitor_history
+				WHERE monitor_id = $1 AND time >= NOW() - INTERVAL '90 minutes'
+				ORDER BY time DESC
+				LIMIT 120
+			) sub
+			ORDER BY time ASC
+		`, monitorID)
+		if err != nil {
+			return []models.HistoryPoint{}, nil
+		}
+		defer rows.Close()
+
+		var points []models.HistoryPoint
+		for rows.Next() {
+			var p models.HistoryPoint
+			if err := rows.Scan(&p.Time, &p.Status, &p.LatencyMs); err == nil {
+				points = append(points, p)
+			}
+		}
+		if points == nil {
+			return []models.HistoryPoint{}, nil
+		}
+		return points, nil
+	}
+
 	var interval string
 	var bucket string
 
 	switch rangeStr {
-	case "recent":
-		interval = "90 minutes"
-		bucket = "1 minute"
 	case "3h":
 		interval = "3 hours"
 		bucket = "2 minutes"

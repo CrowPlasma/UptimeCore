@@ -73,6 +73,27 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
   const status = group.overall_status ?? 'UNKNOWN'
   const groupHistory = React.useMemo(() => aggregateGroupHistory(group.monitors || []), [group.monitors])
 
+  const groupMetrics = React.useMemo(() => {
+    const mons = group.monitors || []
+    const active = mons.filter(m => m.is_active !== false && m.current_status !== 'PAUSED')
+    const upMons = active.filter(m => m.current_status === 'UP' || m.current_status === 'DEGRADED')
+    const withLat = upMons.filter(m => (m.current_latency_ms ?? 0) > 0)
+    const avgLat = withLat.length > 0
+      ? Math.round(withLat.reduce((acc, m) => acc + (m.current_latency_ms || 0), 0) / withLat.length)
+      : null
+    const lastPt = groupHistory.length > 0 ? groupHistory[groupHistory.length - 1] : null
+    const lastTimeStr = lastPt?.time
+      ? new Date(lastPt.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : null
+    return {
+      total: mons.length,
+      activeCount: active.length,
+      upCount: active.filter(m => m.current_status === 'UP').length,
+      avgLat,
+      lastTimeStr,
+    }
+  }, [group.monitors, groupHistory])
+
   return (
     <>
       <div style={{
@@ -86,7 +107,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
         {/* ══ Cabecera del grupo ══ */}
         <div
           style={{
-            display: 'grid', gridTemplateColumns: '200px 1fr auto', alignItems: 'center', gap: 16, padding: '24px 28px', cursor: 'pointer', position: 'relative',
+            display: 'grid', gridTemplateColumns: '220px 1fr auto', alignItems: 'center', gap: 16, padding: '22px 28px', cursor: 'pointer', position: 'relative',
           }}
           onClick={() => setUserExpanded(prev => prev === null ? !matchesEndpoint : !prev)}
         >
@@ -131,11 +152,28 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
           </div>
 
           {/* Panel derecho */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-            {/* Contador */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14 }}>
+            {/* Latencia promedio y último check en vivo */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 78, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: groupMetrics.avgLat != null ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+              }}>
+                {groupMetrics.avgLat != null ? `${groupMetrics.avgLat} ms` : '—'}
+              </span>
+              {groupMetrics.lastTimeStr && (
+                <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }} title="Última actualización en tiempo real">
+                  {groupMetrics.lastTimeStr}
+                </span>
+              )}
+            </div>
+
+            {/* Contador de endpoints operativos */}
             <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
               <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              {group.monitors?.length ?? 0} endpoint{(group.monitors?.length ?? 0) !== 1 ? 's' : ''}
+              {groupMetrics.activeCount > 0 ? `${groupMetrics.upCount}/${groupMetrics.activeCount}` : groupMetrics.total} ep
             </span>
 
             {/* Badge de estado */}
@@ -357,6 +395,18 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
               </span>
             </div>
           )}
+          {monitor.type === 'SNMP' && monitor.current_value != null && (
+            <div style={{ marginTop: 6 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                Valor OID: {monitor.current_value}
+              </span>
+            </div>
+          )}
+          {(status === 'DOWN' || status === 'DEGRADED') && monitor.current_msg && monitor.type !== 'SSL' && (
+            <div style={{ marginTop: 5, fontSize: 11, color: '#f87171', fontFamily: "'JetBrains Mono', monospace", opacity: 0.9 }}>
+              {monitor.current_msg}
+            </div>
+          )}
         </div>
 
         {/* Barra de uptime */}
@@ -364,11 +414,18 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
           <UptimeBar history={combinedHistory} maxBars={30} />
         </div>
 
-          {/* Panel derecho (Latencia, Badge, Acciones) */}
+          {/* Panel derecho (Latencia + Hora, Badge, Acciones) */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', minWidth: 58, textAlign: 'right', fontWeight: 500 }}>
-              {status === 'DOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 68 }}>
+              <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                {status === 'DOWN' || status === 'PAUSED' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
+              </span>
+              {combinedHistory.length > 0 && (
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {new Date(combinedHistory[combinedHistory.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </div>
 
             <div style={{ flexShrink: 0 }}>
               <StatusBadge status={status} size="sm" />

@@ -39,13 +39,14 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 60 }
       width: '100%',
     }}>
       {padded.map((p, i) => {
+        const isNewest = i === padded.length - 1 && p != null
         const color = p ? (COLOR[p.status] ?? COLOR.UNKNOWN) : '#e2e8f0'
         const title = p
           ? `${new Date(p.time).toLocaleTimeString()} · ${p.status} · ${p.latency_ms}ms`
           : 'Sin datos'
         return (
           <div
-            key={i}
+            key={p ? `${p.time}-${i}` : `empty-${i}`}
             title={title}
             style={{
               flex: 1,
@@ -54,7 +55,8 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 60 }
               background: color,
               opacity: p ? 1 : 0.25,
               cursor: 'default',
-              transition: 'opacity 0.15s',
+              transition: 'all 0.25s ease',
+              boxShadow: isNewest ? `0 0 8px ${color}80` : 'none',
             }}
           />
         )

@@ -80,6 +80,9 @@ interface MonitorStore {
   allTags: Tag[]
   loading: boolean
   error: string | null
+  lastEventAt: number | null
+  sseConnected: boolean
+  setSseConnected: (connected: boolean) => void
 
   // Data fetching
   fetchGroups: () => Promise<void>
@@ -129,6 +132,9 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
   allTags: [],
   loading: true,
   error: null,
+  lastEventAt: null,
+  sseConnected: false,
+  setSseConnected: (connected: boolean) => set({ sseConnected: connected }),
 
   
   fetchTags: async () => {
@@ -246,6 +252,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
 
             return { 
               ...m, 
+              is_active: newStatus === 'PAUSED' ? false : m.is_active,
+              is_maintenance: newStatus === 'MAINTENANCE' ? true : (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED' ? false : m.is_maintenance),
               current_status: newStatus as any, 
               current_latency_ms: newLatency,
               current_msg: newError,
@@ -265,8 +273,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         return g
       })
 
-      if (!anyGroupChanged) return state
-      return { groups }
+      if (!anyGroupChanged) return { lastEventAt: Date.now() }
+      return { groups, lastEventAt: Date.now() }
     })
   },
 
@@ -362,7 +370,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
           }
           return m
         })
-        return { ...g, monitors: newMonitors }
+        return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
       })
       return { groups }
     })
@@ -385,7 +393,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
           }
           return m
         })
-        return { ...g, monitors: newMonitors }
+        return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
       })
       return { groups }
     })

@@ -22,15 +22,23 @@ import (
 )
 
 // CheckHTTP performs an HTTP or HTTPS availability check.
-func CheckHTTP(target string, timeoutSec int) models.CheckResult {
+func CheckHTTP(target string, defaultScheme string, timeoutSec int) models.CheckResult {
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
+
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		if defaultScheme == "" {
+			defaultScheme = "http"
+		}
+		target = defaultScheme + "://" + target
+	}
 
 	client := &http.Client{
 		Timeout: time.Duration(timeoutSec) * time.Second,
 		Transport: &http.Transport{
 			TLSHandshakeTimeout: time.Duration(timeoutSec) * time.Second,
 			DisableKeepAlives:   true,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
@@ -46,6 +54,9 @@ func CheckHTTP(target string, timeoutSec int) models.CheckResult {
 		resp, err = client.Get(target)
 	}
 	r.LatencyMs = int(time.Since(start).Milliseconds())
+	if r.LatencyMs == 0 {
+		r.LatencyMs = 1
+	}
 
 	if err != nil {
 		r.ErrorMsg = err.Error()
@@ -53,7 +64,7 @@ func CheckHTTP(target string, timeoutSec int) models.CheckResult {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+	if resp.StatusCode >= 200 && resp.StatusCode < 404 {
 		r.Status = models.StatusUP
 	} else {
 		r.ErrorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
@@ -102,7 +113,10 @@ func CheckPing(host string, timeoutSec int) models.CheckResult {
 		return r
 	}
 	latF, _ := strconv.ParseFloat(matches[1], 64)
-	r.LatencyMs = int(latF)
+	r.LatencyMs = int(latF + 0.5)
+	if r.LatencyMs == 0 && latF > 0 {
+		r.LatencyMs = 1
+	}
 	r.Status = models.StatusUP
 	return r
 }
@@ -220,7 +234,11 @@ func RunCheck(m models.Monitor) models.CheckResult {
 
 	switch m.Type {
 	case "HTTP", "HTTPS":
-		r = CheckHTTP(m.Target, m.TimeoutSeconds)
+		scheme := "http"
+		if m.Type == "HTTPS" {
+			scheme = "https"
+		}
+		r = CheckHTTP(m.Target, scheme, m.TimeoutSeconds)
 	case "TCP", "TCP_PING":
 		port := 80
 		if m.Port != nil {

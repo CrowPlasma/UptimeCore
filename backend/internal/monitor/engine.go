@@ -57,14 +57,28 @@ func (e *Engine) Start(ctx context.Context) {
 		log.Printf("⚠️  Engine: could not load monitors: %v", err)
 		return
 	}
-	for _, m := range monitors {
-		e.ScheduleMonitor(m)
+	total := len(monitors)
+	for i, m := range monitors {
+		intervalMs := m.IntervalSeconds * 1000
+		if intervalMs <= 0 {
+			intervalMs = 60000
+		}
+		// Distribute monitors evenly across the full interval so checks stream continuously every second
+		var staggerDelay time.Duration
+		if total > 1 {
+			staggerDelay = time.Duration((i*intervalMs)/total) * time.Millisecond
+		}
+		e.scheduleMonitorWithDelay(m, staggerDelay, true)
 	}
-	log.Printf("🚀 Engine: scheduling %d monitors", len(monitors))
+	log.Printf("🚀 Engine: scheduling %d monitors (staggered evenly across interval)", total)
 }
 
-// ScheduleMonitor adds or replaces a monitor in the polling scheduler.
+// ScheduleMonitor adds or replaces a monitor in the polling scheduler and runs an immediate check (0ms delay).
 func (e *Engine) ScheduleMonitor(m models.Monitor) {
+	e.scheduleMonitorWithDelay(m, 0, false)
+}
+
+func (e *Engine) scheduleMonitorWithDelay(m models.Monitor, initialDelay time.Duration, isBoot bool) {
 	e.mu.Lock()
 	if stop, ok := e.jobs[m.ID]; ok {
 		close(stop)
@@ -74,34 +88,44 @@ func (e *Engine) ScheduleMonitor(m models.Monitor) {
 	e.mu.Unlock()
 
 	go func() {
-		// JITTER: random offset to prevent the "thundering herd" problem
-		// Capped at 5 seconds so the UI doesn't look frozen on startup
-		if m.IntervalSeconds > 0 {
-			maxJitter := m.IntervalSeconds
-			if maxJitter > 5 {
-				maxJitter = 5
+		// On boot, if Redis has no cached status yet, run a quick warm-up check first
+		if isBoot && initialDelay > 3*time.Second {
+			st, _, _, _ := e.cache.GetStatus(context.Background(), m.ID)
+			if st == "UNKNOWN" || st == "" {
+				warmJitter := time.Duration(rand.Intn(3000)) * time.Millisecond
+				select {
+				case <-time.After(warmJitter):
+					e.executeCheck(context.Background(), m)
+				case <-stop:
+					return
+				}
 			}
-			jitter := time.Duration(rand.Intn(maxJitter*1000)) * time.Millisecond
+		}
+
+		if initialDelay > 0 {
 			select {
-			case <-time.After(jitter):
+			case <-time.After(initialDelay):
 			case <-stop:
 				return
 			}
 		}
 
-		// Prevent execution if stopped during jitter
+		// Prevent execution if stopped during initialDelay
 		select {
 		case <-stop:
 			return
 		default:
 		}
 
-		// Run immediately on first schedule
+		// Run check and start periodic ticker
 		e.executeCheck(context.Background(), m)
-		ticker := time.NewTicker(time.Duration(m.IntervalSeconds) * time.Second)
+		intervalSec := m.IntervalSeconds
+		if intervalSec <= 0 {
+			intervalSec = 60
+		}
+		ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
 		defer ticker.Stop()
 		for {
-			// Prevent ghost goroutines by prioritizing the stop signal
 			select {
 			case <-stop:
 				return
@@ -116,6 +140,20 @@ func (e *Engine) ScheduleMonitor(m models.Monitor) {
 			}
 		}
 	}()
+}
+
+// BroadcastStatus immediately updates Redis and pushes a status change over SSE (e.g. PAUSED / MAINTENANCE).
+func (e *Engine) BroadcastStatus(ctx context.Context, monitorID int, status models.MonitorStatus, latencyMs int, msg string) {
+	e.cache.SetStatus(ctx, monitorID, string(status), latencyMs, msg, nil)
+	if e.broadcaster != nil {
+		e.broadcaster.Broadcast(models.CheckResult{
+			MonitorID: monitorID,
+			Status:    status,
+			LatencyMs: latencyMs,
+			ErrorMsg:  msg,
+			CheckedAt: time.Now(),
+		})
+	}
 }
 
 // StopMonitor terminates the goroutine for a specific monitor.
@@ -249,14 +287,23 @@ func (e *Engine) ReloadNotifierConfig(ctx context.Context) {
 	}
 }
 
-// RestartAll stops and reschedules all monitors to force an immediate check.
+// RestartAll stops and reschedules all monitors with uniform staggering.
 func (e *Engine) RestartAll(ctx context.Context) {
 	monitors, err := e.db.ListAllActiveMonitors(ctx)
 	if err != nil {
 		return
 	}
-	for _, m := range monitors {
-		e.ScheduleMonitor(m)
+	total := len(monitors)
+	for i, m := range monitors {
+		intervalMs := m.IntervalSeconds * 1000
+		if intervalMs <= 0 {
+			intervalMs = 60000
+		}
+		var staggerDelay time.Duration
+		if total > 1 {
+			staggerDelay = time.Duration((i*intervalMs)/total) * time.Millisecond
+		}
+		e.scheduleMonitorWithDelay(m, staggerDelay, false)
 	}
 }
 
@@ -267,7 +314,7 @@ const maxPendingBatch = 50000
 // If an insert fails the batch is kept and retried, so a transient DB problem
 // does not silently drop history.
 func (e *Engine) batchWriter(ctx context.Context) {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	var batch []models.CheckResult
 	var lastFail time.Time
