@@ -154,7 +154,7 @@ func (e *Engine) executeCheck(ctx context.Context, m models.Monitor) {
 
 func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result models.CheckResult) {
 	// Threshold check for generic MetricValue (e.g. from SNMP)
-	if m.ValueThreshold != nil && result.MetricValue != nil {
+	if m.ValueThreshold != nil && *m.ValueThreshold > 0 && result.MetricValue != nil {
 		if *result.MetricValue >= float64(*m.ValueThreshold) {
 			result.Status = models.StatusDEGRADED
 			result.ErrorMsg = fmt.Sprintf("Valor %.2f > Límite %d", *result.MetricValue, *m.ValueThreshold)
