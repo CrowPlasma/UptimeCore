@@ -21,7 +21,7 @@ interface Props {
   maxBars?: number
 }
 
-export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 20 }: Props) {
+export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 22 }: Props) {
   // Tomar los últimos N puntos
   const points = history.slice(-maxBars)
 
@@ -34,11 +34,10 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 20 }
   return (
     <div style={{
       display: 'flex',
-      gap: 4,
+      gap: 5,
       alignItems: 'flex-end',
       height: 26,
       width: '100%',
-      maxWidth: 420,
     }}>
       {padded.map((p, i) => {
         const isNewest = i === padded.length - 1 && p != null

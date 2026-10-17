@@ -522,7 +522,7 @@ export function Dashboard() {
 
       {/* ── Lista de grupos o Modo NOC Wallboard ──── */}
       {!loading || groups.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filtered.length === 0 && search === "" && !loading ? (
             <div style={{
               textAlign: 'center', padding: '80px 20px',

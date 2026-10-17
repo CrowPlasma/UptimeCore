@@ -89,6 +89,13 @@ func resolveIPv4(host string) string {
 	return addrs[0].String()
 }
 
+func formatHostDisplay(host, resolvedIP string) string {
+	if resolvedIP == "" || host == resolvedIP {
+		return host
+	}
+	return fmt.Sprintf("%s (%s)", host, resolvedIP)
+}
+
 // RunDiagnosticProbe executes a live diagnostic probe according to req.Mode.
 func RunDiagnosticProbe(ctx context.Context, req DiagnosticRequest) DiagnosticResponse {
 	mode := strings.ToUpper(strings.TrimSpace(req.Mode))
@@ -98,7 +105,7 @@ func RunDiagnosticProbe(ctx context.Context, req DiagnosticRequest) DiagnosticRe
 		if detectedPort > 0 {
 			port = detectedPort
 		} else {
-			port = 80
+			port = 443
 		}
 	}
 	timeoutMs := req.TimeoutMs
@@ -130,7 +137,7 @@ func RunDiagnosticProbe(ctx context.Context, req DiagnosticRequest) DiagnosticRe
 	}
 }
 
-// runPapingProbe connects via TCP to host:port and measures exact handshake RTT in milliseconds (with 2 decimal places).
+// runPapingProbe connects via TCP to host:port and measures exact handshake RTT in milliseconds.
 func runPapingProbe(ctx context.Context, host string, port int, seq int, timeoutMs int) DiagnosticResponse {
 	res := DiagnosticResponse{
 		Mode:      "PAPING",
@@ -142,6 +149,7 @@ func runPapingProbe(ctx context.Context, host string, port int, seq int, timeout
 
 	resolvedIP := resolveIPv4(host)
 	res.ResolvedIP = resolvedIP
+	hostDisp := formatHostDisplay(host, resolvedIP)
 
 	start := time.Now()
 	dialer := net.Dialer{Timeout: time.Duration(timeoutMs) * time.Millisecond}
@@ -156,23 +164,23 @@ func runPapingProbe(ctx context.Context, host string, port int, seq int, timeout
 		res.Timeout = true
 		res.LatencyMs = 0
 		res.ErrorMsg = err.Error()
-		errFriendly := "Tiempo de espera agotado (Puerto filtrado / Host inalcanzable)"
+		errFriendly := "Tiempo agotado (Puerto filtrado o host inalcanzable)"
 		errLower := strings.ToLower(err.Error())
 		if strings.Contains(errLower, "refused") {
-			errFriendly = "Conexión rechazada (Host activo, pero puerto TCP cerrado)"
+			errFriendly = "Conexión rechazada (Host activo, puerto TCP cerrado)"
 		} else if strings.Contains(errLower, "no such host") {
-			errFriendly = "No se pudo resolver el nombre DNS del host"
+			errFriendly = "No se pudo resolver el nombre DNS"
 		} else if strings.Contains(errLower, "network is unreachable") || strings.Contains(errLower, "no route to host") {
-			errFriendly = "Sin ruta hacia el host (Inalcanzable en red)"
+			errFriendly = "Sin ruta hacia el host (Inalcanzable)"
 		}
-		res.RawLine = fmt.Sprintf("[#%02d] Conectando a %s (%s) en TCP %d: FALLÓ — %s", seq, host, resolvedIP, port, errFriendly)
+		res.RawLine = fmt.Sprintf("[#%02d] TCP %s:%d  →  FALLÓ: %s", seq, hostDisp, port, errFriendly)
 		return res
 	}
 	_ = conn.Close()
 
 	res.Ok = true
 	res.LatencyMs = float64(int(elapsedMs*100+0.5)) / 100.0
-	res.RawLine = fmt.Sprintf("[#%02d] Conectando a %s (%s) en TCP %d: ¡Conectado! tiempo=%.2fms protocolo=TCP puerto=%d", seq, host, resolvedIP, port, res.LatencyMs, port)
+	res.RawLine = fmt.Sprintf("[#%02d] Conectado a %s:%d  →  tiempo=%.2f ms  protocolo=TCP  puerto=%d", seq, hostDisp, port, res.LatencyMs, port)
 	return res
 }
 
@@ -187,6 +195,7 @@ func runPingProbe(parentCtx context.Context, host string, seq int, timeoutMs int
 
 	resolvedIP := resolveIPv4(host)
 	res.ResolvedIP = resolvedIP
+	hostDisp := formatHostDisplay(host, resolvedIP)
 
 	timeoutSec := timeoutMs / 1000
 	if timeoutSec < 1 {
@@ -209,7 +218,7 @@ func runPingProbe(parentCtx context.Context, host string, seq int, timeoutMs int
 		res.Ok = false
 		res.Timeout = true
 		res.ErrorMsg = err.Error()
-		res.RawLine = fmt.Sprintf("[#%02d] Respuesta desde %s (%s): Tiempo de espera agotado para ICMP (Paquete perdido)", seq, host, resolvedIP)
+		res.RawLine = fmt.Sprintf("[#%02d] ICMP %s  →  Tiempo de espera agotado (Paquete perdido)", seq, hostDisp)
 		return res
 	}
 
@@ -235,12 +244,12 @@ func runPingProbe(parentCtx context.Context, host string, seq int, timeoutMs int
 	if res.LatencyMs <= 0 {
 		res.LatencyMs = 0.1
 	}
-	res.RawLine = fmt.Sprintf("[#%02d] 64 bytes desde %s (%s): icmp_seq=%d ttl=%d tiempo=%.2f ms", seq, host, resolvedIP, seq, ttl, res.LatencyMs)
+	res.RawLine = fmt.Sprintf("[#%02d] 64 bytes desde %s: icmp_seq=%d  ttl=%d  tiempo=%.2f ms", seq, hostDisp, seq, ttl, res.LatencyMs)
 	return res
 }
 
-// runTracerouteHopProbe probes a single TTL hop (1..30) using traceroute -f <hop> -m <hop> (with ping -t <hop> fallback).
-func runTracerouteHopProbe(parentCtx context.Context, host string, hop int, timeoutMs int) DiagnosticResponse {
+// runTracerouteHopProbe probes a single TTL hop (1..30) using ICMP traceroute (-I), UDP traceroute, and ping -t fallback.
+func runTracerouteHopProbe(parentCtx context.Context, host string, hop int, _ int) DiagnosticResponse {
 	if hop < 1 {
 		hop = 1
 	}
@@ -257,56 +266,80 @@ func runTracerouteHopProbe(parentCtx context.Context, host string, hop int, time
 		CheckedAt:  time.Now().Format("15:04:05"),
 	}
 
-	ctx, cancel := context.WithTimeout(parentCtx, 3500*time.Millisecond)
-	defer cancel()
-
-	// Try BusyBox/Linux traceroute for this exact hop: -n (no DNS lag), -w 1 (1s wait), -q 2 (2 probes), -f hop, -m hop
-	start := time.Now()
-	cmd := exec.CommandContext(ctx, "traceroute", "-n", "-w", "1", "-q", "2", "-f", strconv.Itoa(hop), "-m", strconv.Itoa(hop), host)
-	outBytes, _ := cmd.CombinedOutput()
-	out := string(outBytes)
-
 	reIP := regexp.MustCompile(`(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})`)
 	reTime := regexp.MustCompile(`(\d+\.?\d*)\s*ms`)
 
-	lines := strings.Split(out, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(strings.ToLower(trimmed), "traceroute to") {
-			continue
-		}
-		ips := reIP.FindAllString(trimmed, -1)
-		if len(ips) > 0 {
-			hopIP := ips[0]
-			var latF float64
-			if tm := reTime.FindStringSubmatch(trimmed); len(tm) >= 2 {
-				latF, _ = strconv.ParseFloat(tm[1], 64)
-			} else {
-				latF = float64(time.Since(start).Microseconds()) / 1000.0
+	// Helper to parse traceroute output
+	parseTraceOut := func(out string, elapsedMs float64) (string, float64, bool) {
+		for _, line := range strings.Split(out, "\n") {
+			trimmed := strings.TrimSpace(line)
+			lower := strings.ToLower(trimmed)
+			if trimmed == "" || strings.HasPrefix(lower, "traceroute to") {
+				continue
 			}
-			res.Ok = true
-			res.HopIP = hopIP
-			res.LatencyMs = float64(int(latF*100+0.5)) / 100.0
-			res.Reached = (hopIP == resolvedIP)
-			tag := ""
-			if res.Reached {
-				tag = "  ✅ [DESTINO ALCANZADO]"
+			ips := reIP.FindAllString(trimmed, -1)
+			if len(ips) > 0 {
+				hopIP := ips[0]
+				latF := elapsedMs
+				if tm := reTime.FindStringSubmatch(trimmed); len(tm) >= 2 {
+					if parsed, err2 := strconv.ParseFloat(tm[1], 64); err2 == nil {
+						latF = parsed
+					}
+				}
+				return hopIP, latF, true
 			}
-			res.RawLine = fmt.Sprintf("Salto %02d   %-18s   %7.2f ms%s", hop, hopIP, res.LatencyMs, tag)
-			return res
 		}
+		return "", 0, false
 	}
 
-	// Fallback: try ping -c 1 -W 1 -t <hop> <host> in case UDP traceroute is filtered by firewall
-	ctxPing, cancelPing := context.WithTimeout(parentCtx, 2000*time.Millisecond)
-	defer cancelPing()
-	startPing := time.Now()
-	pingCmd := exec.CommandContext(ctxPing, "ping", "-c", "1", "-W", "1", "-t", strconv.Itoa(hop), host)
-	pingBytes, _ := pingCmd.CombinedOutput()
-	pingOut := string(pingBytes)
-	elapsedPing := float64(time.Since(startPing).Microseconds()) / 1000.0
+	// 1. Try ICMP traceroute (-I) first (best through enterprise firewalls/MPLS)
+	ctx1, cancel1 := context.WithTimeout(parentCtx, 2200*time.Millisecond)
+	defer cancel1()
+	start1 := time.Now()
+	cmd1 := exec.CommandContext(ctx1, "traceroute", "-I", "-n", "-w", "1", "-q", "1", "-f", strconv.Itoa(hop), "-m", strconv.Itoa(hop), host)
+	out1, _ := cmd1.CombinedOutput()
+	if hopIP, latF, ok := parseTraceOut(string(out1), float64(time.Since(start1).Microseconds())/1000.0); ok {
+		res.Ok = true
+		res.HopIP = hopIP
+		res.LatencyMs = float64(int(latF*100+0.5)) / 100.0
+		res.Reached = (hopIP == resolvedIP)
+		tag := ""
+		if res.Reached {
+			tag = "   ✅ [DESTINO ALCANZADO]"
+		}
+		res.RawLine = fmt.Sprintf("Salto %02d   %-16s   %7.2f ms%s", hop, hopIP, res.LatencyMs, tag)
+		return res
+	}
 
-	for _, line := range strings.Split(pingOut, "\n") {
+	// 2. Try standard UDP traceroute
+	ctx2, cancel2 := context.WithTimeout(parentCtx, 2200*time.Millisecond)
+	defer cancel2()
+	start2 := time.Now()
+	cmd2 := exec.CommandContext(ctx2, "traceroute", "-n", "-w", "1", "-q", "1", "-f", strconv.Itoa(hop), "-m", strconv.Itoa(hop), host)
+	out2, _ := cmd2.CombinedOutput()
+	if hopIP, latF, ok := parseTraceOut(string(out2), float64(time.Since(start2).Microseconds())/1000.0); ok {
+		res.Ok = true
+		res.HopIP = hopIP
+		res.LatencyMs = float64(int(latF*100+0.5)) / 100.0
+		res.Reached = (hopIP == resolvedIP)
+		tag := ""
+		if res.Reached {
+			tag = "   ✅ [DESTINO ALCANZADO]"
+		}
+		res.RawLine = fmt.Sprintf("Salto %02d   %-16s   %7.2f ms%s", hop, hopIP, res.LatencyMs, tag)
+		return res
+	}
+
+	// 3. Fallback: ping with TTL (-t <hop>)
+	ctx3, cancel3 := context.WithTimeout(parentCtx, 1800*time.Millisecond)
+	defer cancel3()
+	start3 := time.Now()
+	cmd3 := exec.CommandContext(ctx3, "ping", "-c", "1", "-W", "1", "-t", strconv.Itoa(hop), host)
+	out3Bytes, _ := cmd3.CombinedOutput()
+	out3 := string(out3Bytes)
+	elapsed3 := float64(time.Since(start3).Microseconds()) / 1000.0
+
+	for _, line := range strings.Split(out3, "\n") {
 		trimmed := strings.TrimSpace(line)
 		lower := strings.ToLower(trimmed)
 		if strings.HasPrefix(lower, "ping ") || trimmed == "" {
@@ -316,7 +349,7 @@ func runTracerouteHopProbe(parentCtx context.Context, host string, hop int, time
 			ips := reIP.FindAllString(trimmed, -1)
 			if len(ips) > 0 {
 				hopIP := ips[0]
-				latF := elapsedPing
+				latF := elapsed3
 				if tm := reTime.FindStringSubmatch(trimmed); len(tm) >= 2 {
 					if parsed, err2 := strconv.ParseFloat(tm[1], 64); err2 == nil {
 						latF = parsed
@@ -328,24 +361,23 @@ func runTracerouteHopProbe(parentCtx context.Context, host string, hop int, time
 				res.Reached = (hopIP == resolvedIP) || strings.Contains(lower, "bytes from")
 				tag := ""
 				if res.Reached {
-					tag = "  ✅ [DESTINO ALCANZADO]"
+					tag = "   ✅ [DESTINO ALCANZADO]"
 				}
-				res.RawLine = fmt.Sprintf("Salto %02d   %-18s   %7.2f ms%s", hop, hopIP, res.LatencyMs, tag)
+				res.RawLine = fmt.Sprintf("Salto %02d   %-16s   %7.2f ms%s", hop, hopIP, res.LatencyMs, tag)
 				return res
 			}
 		}
 	}
 
-	// Hop timed out (* * *)
 	res.Ok = false
 	res.Timeout = true
 	res.HopIP = "*"
 	res.LatencyMs = 0
-	res.RawLine = fmt.Sprintf("Salto %02d   * * *                Sin respuesta ICMP/UDP (Salto oculto o firewall)", hop)
+	res.RawLine = fmt.Sprintf("Salto %02d   * * *              Sin respuesta ICMP/UDP (Salto oculto por firewall)", hop)
 	return res
 }
 
-// runHTTPDiagnostic inspects HTTP/HTTPS status, headers, response latency, and TLS certificate metadata.
+// runHTTPDiagnostic inspects HTTP/HTTPS status, headers, response latency, and TLS certificate metadata (even on custom ports).
 func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port int, timeoutMs int) DiagnosticResponse {
 	res := DiagnosticResponse{
 		Mode:      "HTTP",
@@ -359,10 +391,41 @@ func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port 
 	resolvedIP := resolveIPv4(host)
 	res.ResolvedIP = resolvedIP
 
+	// First check if TLS is active on host:port (works on 443, 8443, 20754, etc.)
+	tlsStart := time.Now()
+	tlsDialer := &net.Dialer{Timeout: time.Duration(timeoutMs) * time.Millisecond}
+	var peerCertSubject, peerCertIssuer, peerCertExpiry string
+	var peerCertDaysLeft int
+	hasTLS := false
+
+	if tlsConn, errTLS := tls.DialWithDialer(tlsDialer, "tcp", net.JoinHostPort(host, strconv.Itoa(port)), &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         host,
+	}); errTLS == nil {
+		hasTLS = true
+		certs := tlsConn.ConnectionState().PeerCertificates
+		if len(certs) > 0 {
+			cert := certs[0]
+			peerCertSubject = cert.Subject.CommonName
+			if peerCertSubject == "" && len(cert.DNSNames) > 0 {
+				peerCertSubject = cert.DNSNames[0]
+			}
+			if len(cert.Issuer.Organization) > 0 {
+				peerCertIssuer = strings.Join(cert.Issuer.Organization, ", ")
+			} else {
+				peerCertIssuer = cert.Issuer.CommonName
+			}
+			peerCertExpiry = cert.NotAfter.Format("2006-01-02")
+			peerCertDaysLeft = int(time.Until(cert.NotAfter).Hours() / 24)
+		}
+		_ = tlsConn.Close()
+	}
+	tlsLatencyMs := float64(time.Since(tlsStart).Microseconds()) / 1000.0
+
 	targetURL := strings.TrimSpace(rawTarget)
 	if !strings.HasPrefix(strings.ToLower(targetURL), "http://") && !strings.HasPrefix(strings.ToLower(targetURL), "https://") {
 		scheme := "http"
-		if port == 443 || port == 8443 {
+		if hasTLS || port == 443 || port == 8443 {
 			scheme = "https"
 		}
 		if (scheme == "http" && port == 80) || (scheme == "https" && port == 443) {
@@ -390,6 +453,7 @@ func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port 
 		res.Ok = false
 		res.ErrorMsg = err.Error()
 		res.RawLine = fmt.Sprintf("❌ URL inválida (%s): %v", targetURL, err)
+		res.RawLines = []string{res.RawLine}
 		return res
 	}
 	req.Header.Set("User-Agent", "UptimeCore-Diagnostic/2.0")
@@ -399,6 +463,18 @@ func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port 
 	res.LatencyMs = float64(int(elapsedMs*100+0.5)) / 100.0
 
 	if err != nil {
+		// Even if HTTP GET failed, if TLS handshake succeeded on custom port, report TLS info!
+		if hasTLS {
+			res.Ok = true
+			res.LatencyMs = float64(int(tlsLatencyMs*100+0.5)) / 100.0
+			res.RawLines = append(res.RawLines,
+				fmt.Sprintf("✅ Conexión TLS/SSL establecida con %s:%d en %.2f ms", host, port, res.LatencyMs),
+				fmt.Sprintf("🔒 Certificado SSL  : %s (Emisor: %s)", peerCertSubject, peerCertIssuer),
+				fmt.Sprintf("📅 Vigencia SSL     : Vence el %s (%d días restantes)", peerCertExpiry, peerCertDaysLeft),
+			)
+			res.RawLine = strings.Join(res.RawLines, "\n")
+			return res
+		}
 		res.Ok = false
 		res.ErrorMsg = err.Error()
 		res.RawLine = fmt.Sprintf("❌ Error conectando a %s (%s): %v", targetURL, resolvedIP, err)
@@ -407,40 +483,29 @@ func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port 
 	}
 	defer resp.Body.Close()
 
-	res.Ok = resp.StatusCode >= 200 && resp.StatusCode < 404
+	res.Ok = resp.StatusCode >= 200 && resp.StatusCode < 500
 	res.StatusCode = resp.StatusCode
 	res.Details["url"] = targetURL
 	res.Details["status"] = fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	res.Details["protocol"] = resp.Proto
-	if srv := resp.Header.Get("Server"); srv != "" {
-		res.Details["server"] = srv
-	}
-	if ct := resp.Header.Get("Content-Type"); ct != "" {
-		res.Details["content_type"] = ct
-	}
 
 	res.RawLines = append(res.RawLines,
 		fmt.Sprintf("🌐 URL Probada      : %s (IP: %s)", targetURL, resolvedIP),
-		fmt.Sprintf("⚡ Estado HTTP      : %d %s (%s) en %.2f ms", resp.StatusCode, http.StatusText(resp.StatusCode), resp.Proto, res.LatencyMs),
+		fmt.Sprintf("⚡ Respuesta HTTP   : %d %s (%s) — Tiempo: %.2f ms", resp.StatusCode, http.StatusText(resp.StatusCode), resp.Proto, res.LatencyMs),
 	)
 	if srv := resp.Header.Get("Server"); srv != "" {
+		res.Details["server"] = srv
 		res.RawLines = append(res.RawLines, fmt.Sprintf("🖥️ Servidor Web     : %s", srv))
 	}
 
-	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
-		cert := resp.TLS.PeerCertificates[0]
-		daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
-		res.Details["ssl_subject"] = cert.Subject.CommonName
-		if len(cert.Issuer.Organization) > 0 {
-			res.Details["ssl_issuer"] = strings.Join(cert.Issuer.Organization, ", ")
-		} else {
-			res.Details["ssl_issuer"] = cert.Issuer.CommonName
-		}
-		res.Details["ssl_expires"] = cert.NotAfter.Format("2006-01-02 15:04 MST")
-		res.Details["ssl_days_left"] = strconv.Itoa(daysLeft)
+	if hasTLS && (peerCertSubject != "" || peerCertIssuer != "") {
+		res.Details["ssl_subject"] = peerCertSubject
+		res.Details["ssl_issuer"] = peerCertIssuer
+		res.Details["ssl_expires"] = peerCertExpiry
+		res.Details["ssl_days_left"] = strconv.Itoa(peerCertDaysLeft)
 		res.RawLines = append(res.RawLines,
-			fmt.Sprintf("🔒 Certificado SSL  : %s (Emisor: %s)", cert.Subject.CommonName, res.Details["ssl_issuer"]),
-			fmt.Sprintf("📅 Vigencia SSL     : Vence el %s (%d días restantes)", cert.NotAfter.Format("2006-01-02"), daysLeft),
+			fmt.Sprintf("🔒 Certificado SSL  : %s (Emisor: %s)", peerCertSubject, peerCertIssuer),
+			fmt.Sprintf("📅 Vigencia SSL     : Vence el %s (%d días restantes)", peerCertExpiry, peerCertDaysLeft),
 		)
 	}
 
@@ -462,17 +527,16 @@ func runDNSDiagnostic(ctx context.Context, host string) DiagnosticResponse {
 	resolver := net.Resolver{}
 
 	if ip := net.ParseIP(host); ip != nil {
-		// Reverse DNS (PTR) + confirm IP
 		res.ResolvedIP = ip.String()
 		names, err := resolver.LookupAddr(ctx, host)
 		elapsedMs := float64(time.Since(start).Microseconds()) / 1000.0
 		res.LatencyMs = float64(int(elapsedMs*100+0.5)) / 100.0
 		res.Ok = true
-		res.RawLines = append(res.RawLines, fmt.Sprintf("🔎 Consulta DNS Inversa (PTR) para IP: %s (%.2f ms)", host, res.LatencyMs))
+		res.RawLines = append(res.RawLines, fmt.Sprintf("🔎 Consulta DNS Inversa (PTR) para IP %s (%.2f ms):", host, res.LatencyMs))
 		if err == nil && len(names) > 0 {
 			res.Details["ptr"] = strings.Join(names, ", ")
 			for _, n := range names {
-				res.RawLines = append(res.RawLines, fmt.Sprintf("   PTR  →  %s", n))
+				res.RawLines = append(res.RawLines, fmt.Sprintf("   PTR  →  %s", strings.TrimSuffix(n, ".")))
 			}
 		} else {
 			res.RawLines = append(res.RawLines, "   ℹ️ Sin registro PTR inverso público configurado para esta IP.")
@@ -499,7 +563,7 @@ func runDNSDiagnostic(ctx context.Context, host string) DiagnosticResponse {
 
 	if cname, errC := resolver.LookupCNAME(ctx, host); errC == nil && cname != "" && strings.TrimSuffix(cname, ".") != host {
 		res.Details["cname"] = cname
-		res.RawLines = append(res.RawLines, fmt.Sprintf("   CNAME  →  %s", cname))
+		res.RawLines = append(res.RawLines, fmt.Sprintf("   CNAME  →  %s", strings.TrimSuffix(cname, ".")))
 	}
 
 	var ipStrings []string

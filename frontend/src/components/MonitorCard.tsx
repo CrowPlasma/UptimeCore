@@ -125,7 +125,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
         {/* ══ Cabecera del grupo ══ */}
         <div
           style={{
-            display: 'grid', gridTemplateColumns: '240px 1fr auto', alignItems: 'center', gap: 18, padding: '20px 26px', cursor: 'pointer', position: 'relative',
+            display: 'grid', gridTemplateColumns: '300px 1fr auto', alignItems: 'center', gap: 22, padding: '15px 24px', cursor: 'pointer', position: 'relative',
           }}
           onClick={() => setExpanded(prev => !prev)}
         >
@@ -136,9 +136,9 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           }} />
 
           {/* Nombre + Tags */}
-          <div style={{ paddingLeft: 12, paddingRight: 12, wordBreak: 'break-word' }}>
+          <div style={{ paddingLeft: 10, paddingRight: 8, wordBreak: 'break-word' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--color-text-primary)' }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)' }}>
                 {group.name}
               </span>
               {group.tags?.slice(0, 3).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
@@ -149,21 +149,21 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
               )}
             </div>
             {group.description && (
-              <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', marginTop: 6, lineHeight: 1.4 }}>
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.35 }}>
                 {group.description}
               </p>
             )}
           </div>
 
-          {/* Barra de uptime compacta (20 cuadritos) */}
-          <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+          {/* Barra de uptime que aprovecha todo el espacio central */}
+          <div style={{ minWidth: 0, width: '100%' }}>
             {group.monitors && group.monitors.length > 0 ? (
               <UptimeBar
                 history={groupHistory}
-                maxBars={20}
+                maxBars={22}
               />
             ) : (
-              <div style={{ height: 34, display: 'flex', alignItems: 'center' }}>
+              <div style={{ height: 28, display: 'flex', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sin endpoints</span>
               </div>
             )}
@@ -205,8 +205,11 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
                 <>
                   <Btn
                     icon={<Terminal size={13} strokeWidth={2.3} />}
-                    title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
-                    onClick={() => setDiagnosticMonitor(group.monitors[0])}
+                    title="Diagnóstico en Vivo del Grupo (Paping / Ping / Traceroute)"
+                    onClick={() => {
+                      const firstActive = group.monitors.find(m => m.is_active !== false && m.current_status !== 'PAUSED') || group.monitors[0]
+                      setDiagnosticMonitor(firstActive)
+                    }}
                     customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
                   />
                   <Btn
@@ -293,6 +296,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
         <DiagnosticModal
           initialMonitor={diagnosticMonitor}
           initialGroupName={group.name}
+          groupMonitors={group.monitors}
           onClose={() => setDiagnosticMonitor(null)}
         />
       )}
@@ -528,7 +532,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       {/* Fila principal */}
       <div
         style={{
-          display: 'grid', gridTemplateColumns: '14px 14px 230px 1fr auto', alignItems: 'center', gap: 16, padding: '20px 26px 20px 44px',
+          display: 'grid', gridTemplateColumns: '14px 14px 236px 1fr auto', alignItems: 'center', gap: 14, padding: '14px 24px 14px 40px',
           cursor: 'pointer',
           background: isActive ? 'var(--color-bg-primary)' : 'transparent',
           transition: 'background 0.15s',
@@ -540,7 +544,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           {status === 'UNKNOWN' ? (
             <Loader2 size={14} color="var(--color-text-muted)" className="animate-spin" />
           ) : (
-            <div style={{ width: 4, height: 38, borderRadius: 4, background: statusColor(status) }} />
+            <div style={{ width: 4, height: 34, borderRadius: 4, background: statusColor(status) }} />
           )}
         </div>
 
@@ -550,11 +554,11 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
         </span>
 
         {/* Nombre + target */}
-        <div style={{ paddingRight: 12, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>
+        <div style={{ paddingRight: 8, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
+          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--color-text-primary)' }}>
             {monitor.name}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 5, fontSize: 12.5, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4, fontSize: 12, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
             <span style={{
               fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '1px 6px', borderRadius: 4,
               color: 'var(--color-accent)', background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.3)',
@@ -598,9 +602,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           )}
         </div>
 
-        {/* Barra de uptime compacta (20 cuadritos) */}
-        <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center', opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
-          <UptimeBar history={combinedHistory} maxBars={20} />
+        {/* Barra de uptime alineada con la cabecera */}
+        <div style={{ minWidth: 0, width: '100%', opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
+          <UptimeBar history={combinedHistory} maxBars={22} />
         </div>
 
         {/* Panel derecho (Latencia + Hora, Badge, Acciones con Diagnóstico) */}

@@ -1,12 +1,15 @@
 /**
  * components/DiagnosticModal.tsx
- * Consola Interactiva de Diagnóstico en Vivo (estilo PAPING / PING / TRACEROUTE / HTTP-SSL / DNS)
- * Permite diagnosticar cualquier endpoint o IP/Host arbitrario en tiempo real.
+ * Consola Interactiva de Diagnóstico en Vivo (PAPING TCP / PING ICMP / TRACEROUTE / HTTP-SSL / DNS)
+ * - Diseño panorámico (1180px) sin cortes de línea
+ * - Selector rápido de sensores del grupo
+ * - Autoinicio inteligente al abrir o cambiar de herramienta
+ * - Copia de Texto compatible con HTTP (fallback textarea) + Descarga .TXT + Captura en Imagen (.PNG)
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   X, Play, Square, Terminal, Wifi, Activity, Route, Globe, Search,
-  Copy, Check, Trash2, Sparkles
+  Copy, Check, Trash2, Sparkles, FileText, Camera, Server
 } from 'lucide-react'
 import type { Monitor } from '../types'
 
@@ -26,6 +29,7 @@ interface ConsoleLine {
 interface Props {
   initialMonitor?: Monitor | null
   initialGroupName?: string
+  groupMonitors?: Monitor[]
   onClose: () => void
 }
 
@@ -39,44 +43,90 @@ const QUICK_PORTS = [
   { port: 5432, label: '5432 (PG)' },
 ]
 
-export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: Props) {
-  // Determine default tool mode & port from initialMonitor
-  const defaultMode: DiagnosticToolMode = (() => {
-    if (!initialMonitor) return 'PAPING'
-    const t = initialMonitor.type.toUpperCase()
-    if (t === 'TCP' || t === 'TCP_PING') return 'PAPING'
-    if (t === 'PING') return 'PING'
-    if (t === 'HTTP' || t === 'HTTPS' || t === 'SSL') return 'PAPING'
-    return 'PAPING'
-  })()
+/** Extrae host limpio y puerto si vienen juntos (ej. "192.168.70.100:443" o "https://sitio.com:8443/login") */
+function parseMonitorTargetAndPort(m?: Monitor | null): { host: string; port: number; mode: DiagnosticToolMode } {
+  if (!m) return { host: '', port: 443, mode: 'PAPING' }
 
-  const defaultPort = (() => {
-    if (initialMonitor?.port && initialMonitor.port > 0) return initialMonitor.port
-    if (initialMonitor?.type === 'HTTPS' || initialMonitor?.type === 'SSL') return 443
-    if (initialMonitor?.type === 'HTTP') return 80
-    // Try extracting :port from target URL/host
-    const m = initialMonitor?.target?.match(/:(\d+)/)
-    if (m) return Number(m[1])
-    return 443
-  })()
+  let raw = (m.target || '').trim()
+  let detectedPort = m.port && m.port > 0 ? m.port : 0
 
-  const [mode, setMode] = useState<DiagnosticToolMode>(defaultMode)
-  const [target, setTarget] = useState<string>(initialMonitor?.target || '')
-  const [port, setPort] = useState<number>(defaultPort)
+  if (/^https:\/\//i.test(raw)) {
+    if (!detectedPort) detectedPort = 443
+    raw = raw.replace(/^https:\/\//i, '')
+  } else if (/^http:\/\//i.test(raw)) {
+    if (!detectedPort) detectedPort = 80
+    raw = raw.replace(/^http:\/\//i, '')
+  }
+
+  const slashIdx = raw.indexOf('/')
+  if (slashIdx !== -1) raw = raw.slice(0, slashIdx)
+
+  const colonMatch = raw.match(/^([^:]+):(\d+)$/)
+  if (colonMatch) {
+    raw = colonMatch[1]
+    if (!detectedPort) detectedPort = Number(colonMatch[2])
+  }
+
+  if (!detectedPort) {
+    detectedPort = m.type === 'HTTP' ? 80 : 443
+  }
+
+  const t = (m.type || '').toUpperCase()
+  const mode: DiagnosticToolMode =
+    t === 'PING' ? 'PING' : t === 'HTTP' || t === 'HTTPS' || t === 'SSL' ? 'PAPING' : 'PAPING'
+
+  return { host: raw, port: detectedPort, mode }
+}
+
+/** Copia texto al portapapeles funcionando tanto en HTTPS como en HTTP (ej. http://192.168.40.30) */
+async function copyTextSafe(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fallback below
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    ta.style.top = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitors, onClose }: Props) {
+  const initialParsed = parseMonitorTargetAndPort(initialMonitor)
+
+  const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(initialMonitor ?? null)
+  const [mode, setMode] = useState<DiagnosticToolMode>(initialParsed.mode)
+  const [target, setTarget] = useState<string>(initialParsed.host)
+  const [port, setPort] = useState<number>(initialParsed.port)
   const [intervalMs, setIntervalMs] = useState<number>(1000)
-  const [maxProbes, setMaxProbes] = useState<number>(0) // 0 = continuo (hasta detener o 100)
+  const [maxProbes, setMaxProbes] = useState<number>(10) // Por defecto 10 muestras (o continuo)
   const [maxHops, setMaxHops] = useState<number>(20)
 
   const [isRunning, setIsRunning] = useState<boolean>(false)
   const [lines, setLines] = useState<ConsoleLine[]>([])
-  const [copied, setCopied] = useState<boolean>(false)
+  const [copiedTxt, setCopiedTxt] = useState<boolean>(false)
+  const [exportedImg, setExportedImg] = useState<boolean>(false)
 
-  // Live stats for PAPING / PING
+  // Live stats
   const [sent, setSent] = useState<number>(0)
   const [received, setReceived] = useState<number>(0)
   const [latencies, setLatencies] = useState<number[]>([])
 
-  const stopRef = useRef<boolean>(false)
+  const runIdRef = useRef<number>(0)
   const consoleEndRef = useRef<HTMLDivElement | null>(null)
   const lineIdRef = useRef<number>(1)
 
@@ -108,12 +158,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
   // Stop running loop on unmount
   useEffect(() => {
     return () => {
-      stopRef.current = true
+      runIdRef.current++
     }
   }, [])
 
   const stopDiagnostic = useCallback(() => {
-    stopRef.current = true
+    runIdRef.current++
     setIsRunning(false)
   }, [])
 
@@ -126,23 +176,30 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-  const startDiagnostic = async () => {
-    const cleanTarget = target.trim()
+  const executeRun = useCallback(async (
+    runMode: DiagnosticToolMode,
+    runTarget: string,
+    runPort: number,
+    runIntervalMs: number,
+    runMaxProbes: number,
+    runMaxHops: number
+  ) => {
+    const cleanTarget = runTarget.trim()
     if (!cleanTarget) return
 
-    stopRef.current = false
+    const myRunId = ++runIdRef.current
     setIsRunning(true)
     setLines([])
     setSent(0)
     setReceived(0)
     setLatencies([])
 
-    if (mode === 'PAPING' || mode === 'PING') {
-      const limit = maxProbes > 0 ? maxProbes : 100
+    if (runMode === 'PAPING' || runMode === 'PING') {
+      const limit = runMaxProbes > 0 ? runMaxProbes : 100
       const headerDesc =
-        mode === 'PAPING'
-          ? `Iniciando PAPING (TCP Port Ping) hacia ${cleanTarget} en puerto TCP ${port}...`
-          : `Iniciando PING (ICMP Echo) hacia ${cleanTarget} con 64 bytes de datos...`
+        runMode === 'PAPING'
+          ? `▶ Ejecutando PAPING (TCP Port Ping) hacia ${cleanTarget} en puerto TCP ${runPort} (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`
+          : `▶ Ejecutando PING (ICMP Echo) hacia ${cleanTarget} con 64 bytes de datos (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`
       appendLine(headerDesc, 'info')
 
       let localSent = 0
@@ -150,22 +207,22 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
       const localLats: number[] = []
 
       for (let seq = 1; seq <= limit; seq++) {
-        if (stopRef.current) break
+        if (runIdRef.current !== myRunId) break
 
         try {
           const resp = await fetch('/api/diagnostics/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              mode,
+              mode: runMode,
               target: cleanTarget,
-              port: Number(port) || 80,
+              port: Number(runPort) || 80,
               seq,
               timeout_ms: 2500,
             }),
           })
           const data = await resp.json()
-          if (stopRef.current) break
+          if (runIdRef.current !== myRunId) break
 
           localSent++
           setSent(localSent)
@@ -187,48 +244,46 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
               'err'
             )
           }
-        } catch (err) {
-          if (stopRef.current) break
+        } catch {
+          if (runIdRef.current !== myRunId) break
           localSent++
           setSent(localSent)
           appendLine(`[#${seq}] Error de comunicación con el servidor de diagnóstico`, 'err')
         }
 
-        if (seq < limit && !stopRef.current) {
-          await sleep(intervalMs)
+        if (seq < limit && runIdRef.current === myRunId) {
+          await sleep(runIntervalMs)
         }
       }
 
-      const lost = localSent - localRecv
-      const lossPct = localSent > 0 ? ((lost / localSent) * 100).toFixed(1) : '0.0'
-      const minLat = localLats.length > 0 ? Math.min(...localLats).toFixed(2) : '0'
-      const maxLat = localLats.length > 0 ? Math.max(...localLats).toFixed(2) : '0'
-      const avgLat =
-        localLats.length > 0
-          ? (localLats.reduce((a, b) => a + b, 0) / localLats.length).toFixed(2)
-          : '0'
+      if (runIdRef.current === myRunId || localSent > 0) {
+        const lost = localSent - localRecv
+        const lossPct = localSent > 0 ? ((lost / localSent) * 100).toFixed(1) : '0.0'
+        const minLat = localLats.length > 0 ? Math.min(...localLats).toFixed(2) : '0'
+        const maxLat = localLats.length > 0 ? Math.max(...localLats).toFixed(2) : '0'
+        const avgLat =
+          localLats.length > 0
+            ? (localLats.reduce((a, b) => a + b, 0) / localLats.length).toFixed(2)
+            : '0'
 
-      appendLine(
-        `─── Estadísticas de ${mode} para ${cleanTarget}${mode === 'PAPING' ? `:${port}` : ''} ───`,
-        'info'
-      )
-      appendLine(
-        `Paquetes: Enviados = ${localSent}, Recibidos = ${localRecv}, Perdidos = ${lost} (${lossPct}% pérdida) | Mín = ${minLat}ms, Prom = ${avgLat}ms, Máx = ${maxLat}ms`,
-        lost === 0 ? 'ok' : lost === localSent ? 'err' : 'warn'
-      )
-      setIsRunning(false)
+        appendLine(
+          `─── Resumen ${runMode} (${cleanTarget}${runMode === 'PAPING' ? `:${runPort}` : ''}): Enviados=${localSent}, Exitosos=${localRecv}, Perdidos=${lost} (${lossPct}%) | Mín=${minLat}ms · Prom=${avgLat}ms · Máx=${maxLat}ms ───`,
+          lost === 0 ? 'ok' : lost === localSent ? 'err' : 'warn'
+        )
+      }
+      if (runIdRef.current === myRunId) setIsRunning(false)
       return
     }
 
-    if (mode === 'TRACEROUTE') {
+    if (runMode === 'TRACEROUTE') {
       appendLine(
-        `Iniciando Traza de Ruta (TRACEROUTE) hacia ${cleanTarget} (máx. ${maxHops} saltos)...`,
+        `▶ Ejecutando Traza de Ruta (TRACEROUTE ICMP/UDP) hacia ${cleanTarget} (máx. ${runMaxHops} saltos)...`,
         'info'
       )
-      appendLine(`Salto   IP del Router / Nodo   Latencia RTT   Estado`, 'info')
+      appendLine(`Salto      IP del Router / Nodo      Latencia RTT`, 'info')
 
-      for (let hop = 1; hop <= maxHops; hop++) {
-        if (stopRef.current) break
+      for (let hop = 1; hop <= runMaxHops; hop++) {
+        if (runIdRef.current !== myRunId) break
 
         try {
           const resp = await fetch('/api/diagnostics/run', {
@@ -242,7 +297,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             }),
           })
           const data = await resp.json()
-          if (stopRef.current) break
+          if (runIdRef.current !== myRunId) break
 
           setSent(hop)
           if (data.ok) {
@@ -274,20 +329,20 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             )
           }
         } catch {
-          if (stopRef.current) break
+          if (runIdRef.current !== myRunId) break
           appendLine(`Salto ${hop}: Error consultando salto`, 'err')
         }
       }
 
-      setIsRunning(false)
+      if (runIdRef.current === myRunId) setIsRunning(false)
       return
     }
 
-    if (mode === 'HTTP' || mode === 'DNS') {
+    if (runMode === 'HTTP' || runMode === 'DNS') {
       appendLine(
-        mode === 'HTTP'
-          ? `Inspeccionando respuesta HTTP/HTTPS y Certificado SSL de ${cleanTarget} (Puerto ${port})...`
-          : `Resolviendo registros DNS directos/inversos para ${cleanTarget}...`,
+        runMode === 'HTTP'
+          ? `▶ Inspeccionando respuesta HTTP/HTTPS y Certificado SSL de ${cleanTarget} (Puerto ${runPort})...`
+          : `▶ Resolviendo registros DNS directos e inversos (PTR) para ${cleanTarget}...`,
         'info'
       )
       try {
@@ -295,13 +350,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mode,
+            mode: runMode,
             target: cleanTarget,
-            port: Number(port) || 443,
+            port: Number(runPort) || 443,
             timeout_ms: 5000,
           }),
         })
         const data = await resp.json()
+        if (runIdRef.current !== myRunId) return
         setSent(1)
         if (data.ok) {
           setReceived(1)
@@ -313,11 +369,20 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             : [data.raw_line || 'Sin salida']
         outLines.forEach(l => appendLine(l, data.ok ? 'ok' : 'err'))
       } catch {
-        appendLine('Error ejecutando prueba diagnóstica en el servidor.', 'err')
+        if (runIdRef.current !== myRunId) return
+        appendLine('❌ Error ejecutando prueba diagnóstica en el servidor.', 'err')
       }
-      setIsRunning(false)
+      if (runIdRef.current === myRunId) setIsRunning(false)
     }
-  }
+  }, [appendLine])
+
+  // Auto-iniciar al abrir si ya viene con un sensor seleccionado
+  useEffect(() => {
+    if (initialParsed.host) {
+      executeRun(initialParsed.mode, initialParsed.host, initialParsed.port, 1000, 10, 20)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Computed live stats
   const lostCount = Math.max(0, sent - received)
@@ -337,35 +402,160 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
     return (diffSum / (latencies.length - 1)).toFixed(2)
   })()
 
-  const copyOutput = () => {
+  const buildReportText = () => {
     const header = [
-      `=== UptimeCore Diagnóstico en Vivo (${mode}) ===`,
-      `Objetivo : ${target}${mode === 'PAPING' || mode === 'HTTP' ? ` (Puerto TCP: ${port})` : ''}`,
-      initialMonitor ? `Sensor   : ${initialMonitor.name}${initialGroupName ? ` (${initialGroupName})` : ''}` : '',
-      `Fecha    : ${new Date().toLocaleString('es-MX')}`,
-      `Resumen  : Enviados=${sent} | Recibidos=${received} | Pérdida=${lossPercent}% | Mín=${minLatency}ms | Prom=${avgLatency}ms | Máx=${maxLatency}ms | Jitter=${jitterMs}ms`,
-      `----------------------------------------`,
+      `====================================================================`,
+      `  UPTIMECORE - REPORTE DE DIAGNÓSTICO EN VIVO (${mode})`,
+      `====================================================================`,
+      selectedMonitor ? `Sitio / Sensor : ${initialGroupName ? `${initialGroupName} · ` : ''}${selectedMonitor.name}` : '',
+      `Objetivo       : ${target}${mode === 'PAPING' || mode === 'HTTP' ? ` (Puerto TCP: ${port})` : ''}`,
+      `Fecha y Hora   : ${new Date().toLocaleString('es-MX')}`,
+      ` Estadísticas  : Enviados=${sent} | Exitosos=${received} | Pérdida=${lossPercent}% | Mín=${minLatency}ms | Prom=${avgLatency}ms | Máx=${maxLatency}ms | Jitter=${jitterMs}ms`,
+      `--------------------------------------------------------------------`,
     ]
       .filter(Boolean)
-      .join('\n')
+      .join('\r\n')
 
-    const body = lines.map(l => `[${l.timestamp}] ${l.text}`).join('\n')
-    navigator.clipboard.writeText(`${header}\n${body}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    const body = lines.map(l => `[${l.timestamp}] ${l.text}`).join('\r\n')
+    return `${header}\r\n${body}\r\n`
+  }
+
+  // 1. Copiar Texto al Portapapeles (con soporte HTTP)
+  const handleCopyText = async () => {
+    const txt = buildReportText()
+    const ok = await copyTextSafe(txt)
+    if (ok) {
+      setCopiedTxt(true)
+      setTimeout(() => setCopiedTxt(false), 2500)
+    }
+  }
+
+  // 2. Descargar archivo .TXT
+  const handleDownloadTxt = () => {
+    const txt = buildReportText()
+    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const safeHost = (target || 'host').replace(/[^a-zA-Z0-9._-]/g, '_')
+    a.href = url
+    a.download = `Diagnostico_${mode}_${safeHost}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // 3. Capturar y Descargar Imagen (.PNG) lista para pegar en Ticket / WhatsApp / Teams
+  const handleExportImagePng = () => {
+    const visibleLines = lines.slice(-28)
+    const width = 1060
+    const rowHeight = 22
+    const headerHeight = 165
+    const footerHeight = 36
+    const height = Math.max(360, headerHeight + visibleLines.length * rowHeight + footerHeight)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width * 2 // Retina 2x
+    canvas.height = height * 2
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.scale(2, 2)
+
+    // Background
+    ctx.fillStyle = '#070b14'
+    ctx.fillRect(0, 0, width, height)
+
+    // Top banner
+    ctx.fillStyle = '#0f172a'
+    ctx.fillRect(0, 0, width, 74)
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1)
+
+    // Title
+    ctx.fillStyle = '#38bdf8'
+    ctx.font = 'bold 16px Consolas, monospace'
+    ctx.fillText(`UPTIMECORE · DIAGNÓSTICO EN VIVO [${mode}]`, 24, 30)
+
+    ctx.fillStyle = '#cbd5e1'
+    ctx.font = '12.5px Consolas, monospace'
+    const subtitle = `${selectedMonitor ? `${initialGroupName ? initialGroupName + ' · ' : ''}${selectedMonitor.name}  |  ` : ''}Host: ${target}${mode === 'PAPING' || mode === 'HTTP' ? `:${port}` : ''}  |  ${new Date().toLocaleString('es-MX')}`
+    ctx.fillText(subtitle, 24, 54)
+
+    // KPI boxes
+    const kpis = [
+      { label: mode === 'TRACEROUTE' ? 'SALTOS' : 'ENVIADOS', val: String(sent), color: '#f8fafc' },
+      { label: mode === 'TRACEROUTE' ? 'RESPONDIERON' : 'EXITOSOS', val: String(received), color: '#4ade80' },
+      { label: 'PÉRDIDA', val: `${lossPercent}%`, color: Number(lossPercent) > 0 ? '#f87171' : '#4ade80' },
+      { label: 'MÍNIMO', val: minLatency === '—' ? '—' : `${minLatency} ms`, color: '#38bdf8' },
+      { label: 'PROMEDIO', val: avgLatency === '—' ? '—' : `${avgLatency} ms`, color: '#c084fc' },
+      { label: 'MÁXIMO', val: maxLatency === '—' ? '—' : `${maxLatency} ms`, color: '#fbbf24' },
+      { label: 'JITTER', val: `${jitterMs} ms`, color: '#2dd4bf' },
+    ]
+    const boxW = (width - 48 - 6 * 8) / 7
+    kpis.forEach((k, idx) => {
+      const bx = 24 + idx * (boxW + 8)
+      const by = 86
+      ctx.fillStyle = '#111c33'
+      ctx.fillRect(bx, by, boxW, 50)
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'
+      ctx.strokeRect(bx, by, boxW, 50)
+
+      ctx.fillStyle = '#64748b'
+      ctx.font = 'bold 9.5px Consolas, monospace'
+      ctx.fillText(k.label, bx + 10, by + 18)
+
+      ctx.fillStyle = k.color
+      ctx.font = 'bold 13px Consolas, monospace'
+      ctx.fillText(k.val, bx + 10, by + 39)
+    })
+
+    // Console lines
+    let y = headerHeight
+    visibleLines.forEach(l => {
+      ctx.fillStyle = '#475569'
+      ctx.font = '11.5px Consolas, monospace'
+      ctx.fillText(`[${l.timestamp}]`, 24, y)
+
+      ctx.fillStyle =
+        l.status === 'ok'
+          ? '#4ade80'
+          : l.status === 'err'
+          ? '#f87171'
+          : l.status === 'warn'
+          ? '#fbbf24'
+          : '#93c5fd'
+      ctx.font = '12px Consolas, monospace'
+      ctx.fillText(l.text.slice(0, 118), 108, y)
+      y += rowHeight
+    })
+
+    canvas.toBlob(blob => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const safeHost = (target || 'host').replace(/[^a-zA-Z0-9._-]/g, '_')
+      a.href = url
+      a.download = `Diagnostico_${mode}_${safeHost}.png`
+      a.click()
+      URL.revokeObjectURL(url)
+      setExportedImg(true)
+      setTimeout(() => setExportedImg(false), 2500)
+    }, 'image/png')
   }
 
   const TOOLS: { id: DiagnosticToolMode; label: string; sub: string; icon: React.ReactNode }[] = [
-    { id: 'PAPING', label: 'PAPING (TCP)', sub: 'Ping a puerto TCP', icon: <Wifi size={15} /> },
-    { id: 'PING', label: 'PING (ICMP)', sub: 'Ping estándar en vivo', icon: <Activity size={15} /> },
-    { id: 'TRACEROUTE', label: 'TRACEROUTE', sub: 'Traza salto a salto', icon: <Route size={15} /> },
-    { id: 'HTTP', label: 'HTTP / SSL', sub: 'Headers y vigencia SSL', icon: <Globe size={15} /> },
-    { id: 'DNS', label: 'DNS / PTR', sub: 'Resolución de nombres', icon: <Search size={15} /> },
+    { id: 'PAPING', label: 'PAPING (TCP)', sub: 'Ping a puerto TCP específico', icon: <Wifi size={15} /> },
+    { id: 'PING', label: 'PING (ICMP)', sub: 'Ping ICMP estándar en vivo', icon: <Activity size={15} /> },
+    { id: 'TRACEROUTE', label: 'TRACEROUTE', sub: 'Traza de ruta salto a salto', icon: <Route size={15} /> },
+    { id: 'HTTP', label: 'HTTP / SSL', sub: 'Respuesta web y vigencia SSL', icon: <Globe size={15} /> },
+    { id: 'DNS', label: 'DNS / PTR', sub: 'Resolución directa e inversa', icon: <Search size={15} /> },
   ]
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => {
+        stopDiagnostic()
+        onClose()
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -375,19 +565,19 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
+        padding: '16px 24px',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%',
-          maxWidth: 920,
+          width: '95vw',
+          maxWidth: 1180,
           maxHeight: '92vh',
           background: '#0f172a',
-          border: '1px solid rgba(56, 189, 248, 0.28)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
           borderRadius: 18,
-          boxShadow: '0 25px 70px rgba(0,0,0,0.75)',
+          boxShadow: '0 25px 70px rgba(0,0,0,0.8)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -397,8 +587,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
         {/* ── HEADER ── */}
         <div
           style={{
-            padding: '16px 22px',
-            background: 'linear-gradient(90deg, rgba(14,165,233,0.14), rgba(30,41,59,0.6))',
+            padding: '14px 24px',
+            background: 'linear-gradient(90deg, rgba(14,165,233,0.15), rgba(30,41,59,0.65))',
             borderBottom: '1px solid rgba(148,163,184,0.14)',
             display: 'flex',
             alignItems: 'center',
@@ -409,9 +599,9 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 11,
+                width: 38,
+                height: 38,
+                borderRadius: 10,
                 background: 'rgba(14, 165, 233, 0.16)',
                 border: '1px solid rgba(56, 189, 248, 0.35)',
                 display: 'flex',
@@ -420,14 +610,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                 color: '#38bdf8',
               }}
             >
-              <Terminal size={20} />
+              <Terminal size={19} />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, letterSpacing: '-0.02em' }}>
+                <h2 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: '-0.02em' }}>
                   Consola de Diagnóstico en Vivo
                 </h2>
-                {initialMonitor && (
+                {selectedMonitor && (
                   <span
                     style={{
                       fontSize: 11,
@@ -440,12 +630,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                     }}
                   >
                     {initialGroupName ? `${initialGroupName} · ` : ''}
-                    {initialMonitor.name}
+                    {selectedMonitor.name}
                   </span>
                 )}
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Pruebas interactivas en tiempo real estilo <strong>paping</strong> (TCP por puerto), <strong>ping</strong>, <strong>traceroute</strong>, <strong>HTTP/SSL</strong> y <strong>DNS</strong>
+              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
+                Selecciona una herramienta o cambia de enlace para ejecutar la prueba automáticamente en tiempo real
               </p>
             </div>
           </div>
@@ -473,10 +663,63 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           </button>
         </div>
 
-        {/* ── SELECTOR DE HERRAMIENTA ── */}
+        {/* ── SELECTOR RÁPIDO DE SENSORES DEL GRUPO (si el grupo tiene varios endpoints) ── */}
+        {groupMonitors && groupMonitors.length > 1 && (
+          <div
+            style={{
+              padding: '8px 24px',
+              background: '#090f1d',
+              borderBottom: '1px solid rgba(148,163,184,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5, marginRight: 4 }}>
+              <Server size={12} /> Sensores del grupo:
+            </span>
+            {groupMonitors.map(gm => {
+              const isSel = selectedMonitor?.id === gm.id
+              const parsed = parseMonitorTargetAndPort(gm)
+              return (
+                <button
+                  key={gm.id}
+                  onClick={() => {
+                    setSelectedMonitor(gm)
+                    setTarget(parsed.host)
+                    setPort(parsed.port)
+                    setMode(parsed.mode)
+                    executeRun(parsed.mode, parsed.host, parsed.port, intervalMs, maxProbes, maxHops)
+                  }}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: 7,
+                    cursor: 'pointer',
+                    border: isSel ? '1px solid #38bdf8' : '1px solid rgba(148,163,184,0.18)',
+                    background: isSel ? 'rgba(14,165,233,0.2)' : 'rgba(30,41,59,0.5)',
+                    color: isSel ? '#38bdf8' : '#cbd5e1',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span>{gm.name}</span>
+                  <span style={{ fontSize: 10, color: isSel ? '#bae6fd' : '#64748b', fontFamily: 'monospace' }}>
+                    ({parsed.host}{gm.type === 'TCP' || gm.type === 'TCP_PING' || gm.port ? `:${parsed.port}` : ''})
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── SELECTOR DE HERRAMIENTA (Autoejecuta al cambiar de pestaña) ── */}
         <div
           style={{
-            padding: '12px 22px',
+            padding: '10px 24px',
             background: 'rgba(15,23,42,0.75)',
             borderBottom: '1px solid rgba(148,163,184,0.1)',
             display: 'grid',
@@ -490,11 +733,13 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
               <button
                 key={t.id}
                 onClick={() => {
-                  if (isRunning) stopDiagnostic()
                   setMode(t.id)
+                  if (target.trim()) {
+                    executeRun(t.id, target, port, intervalMs, maxProbes, maxHops)
+                  }
                 }}
                 style={{
-                  padding: '9px 11px',
+                  padding: '9px 12px',
                   borderRadius: 10,
                   border: active
                     ? '1px solid #38bdf8'
@@ -523,18 +768,18 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
         {/* ── PARÁMETROS DE PRUEBA (IP/Host, Puerto TCP estilo Paping, Intervalo) ── */}
         <div
           style={{
-            padding: '14px 22px',
+            padding: '12px 24px',
             background: 'rgba(30,41,59,0.35)',
             borderBottom: '1px solid rgba(148,163,184,0.1)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 9,
           }}
         >
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
             {/* Host / IP */}
-            <div style={{ flex: '1 1 240px' }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
                 HOST / DIRECCIÓN IP / DOMINIO
               </label>
               <input
@@ -542,13 +787,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                 value={target}
                 onChange={e => setTarget(e.target.value)}
                 placeholder="Ej. 3.4.20.253 o fortinet.empresa.com"
-                disabled={isRunning}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !isRunning) startDiagnostic()
+                  if (e.key === 'Enter' && target.trim()) {
+                    executeRun(mode, target, port, intervalMs, maxProbes, maxHops)
+                  }
                 }}
                 style={{
                   width: '100%',
-                  padding: '9px 12px',
+                  padding: '8px 12px',
                   borderRadius: 9,
                   background: '#090d16',
                   border: '1px solid rgba(148,163,184,0.25)',
@@ -563,7 +809,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             {/* Puerto TCP (para PAPING y HTTP/SSL) */}
             {(mode === 'PAPING' || mode === 'HTTP') && (
               <div style={{ width: 130 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#38bdf8', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#38bdf8', marginBottom: 4 }}>
                   PUERTO TCP
                 </label>
                 <input
@@ -572,10 +818,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                   max={65535}
                   value={port}
                   onChange={e => setPort(Number(e.target.value))}
-                  disabled={isRunning}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && target.trim()) {
+                      executeRun(mode, target, port, intervalMs, maxProbes, maxHops)
+                    }
+                  }}
                   style={{
                     width: '100%',
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: 9,
                     background: '#090d16',
                     border: '1px solid rgba(56, 189, 248, 0.45)',
@@ -592,17 +842,16 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             {/* Intervalo y Cantidad para PAPING / PING */}
             {(mode === 'PAPING' || mode === 'PING') && (
               <>
-                <div style={{ width: 120 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ width: 125 }}>
+                  <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
                     INTERVALO
                   </label>
                   <select
                     value={intervalMs}
                     onChange={e => setIntervalMs(Number(e.target.value))}
-                    disabled={isRunning}
                     style={{
                       width: '100%',
-                      padding: '9px 10px',
+                      padding: '8px 10px',
                       borderRadius: 9,
                       background: '#090d16',
                       border: '1px solid rgba(148,163,184,0.25)',
@@ -617,17 +866,16 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                   </select>
                 </div>
 
-                <div style={{ width: 135 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ width: 145 }}>
+                  <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
                     MUESTRAS
                   </label>
                   <select
                     value={maxProbes}
                     onChange={e => setMaxProbes(Number(e.target.value))}
-                    disabled={isRunning}
                     style={{
                       width: '100%',
-                      padding: '9px 10px',
+                      padding: '8px 10px',
                       borderRadius: 9,
                       background: '#090d16',
                       border: '1px solid rgba(148,163,184,0.25)',
@@ -636,10 +884,10 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                       fontWeight: 600,
                     }}
                   >
-                    <option value={0}>Continuo (∞)</option>
                     <option value={10}>10 paquetes</option>
                     <option value={25}>25 paquetes</option>
                     <option value={50}>50 paquetes</option>
+                    <option value={0}>Continuo (∞)</option>
                   </select>
                 </div>
               </>
@@ -648,16 +896,15 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             {/* Max Hops para TRACEROUTE */}
             {mode === 'TRACEROUTE' && (
               <div style={{ width: 140 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
                   MÁX. SALTOS (TTL)
                 </label>
                 <select
                   value={maxHops}
                   onChange={e => setMaxHops(Number(e.target.value))}
-                  disabled={isRunning}
                   style={{
                     width: '100%',
-                    padding: '9px 10px',
+                    padding: '8px 10px',
                     borderRadius: 9,
                     background: '#090d16',
                     border: '1px solid rgba(148,163,184,0.25)',
@@ -677,10 +924,10 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             <div style={{ display: 'flex', gap: 8 }}>
               {!isRunning ? (
                 <button
-                  onClick={startDiagnostic}
+                  onClick={() => executeRun(mode, target, port, intervalMs, maxProbes, maxHops)}
                   disabled={!target.trim()}
                   style={{
-                    padding: '9px 18px',
+                    padding: '8px 18px',
                     borderRadius: 9,
                     border: 'none',
                     background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
@@ -694,13 +941,13 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                     boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)',
                   }}
                 >
-                  <Play size={15} fill="#fff" /> Iniciar {mode}
+                  <Play size={14} fill="#fff" /> Ejecutar {mode}
                 </button>
               ) : (
                 <button
                   onClick={stopDiagnostic}
                   style={{
-                    padding: '9px 18px',
+                    padding: '8px 18px',
                     borderRadius: 9,
                     border: '1px solid rgba(239,68,68,0.5)',
                     background: 'rgba(239,68,68,0.2)',
@@ -713,7 +960,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                     gap: 7,
                   }}
                 >
-                  <Square size={14} fill="#f87171" /> Detener
+                  <Square size={13} fill="#f87171" /> Detener
                 </button>
               )}
             </div>
@@ -723,30 +970,34 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           {(mode === 'PAPING' || mode === 'HTTP') && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={11} /> Puertos rápidos:
+                <Sparkles size={11} /> Probar puerto rápido:
               </span>
-              {initialMonitor?.port &&
-                !QUICK_PORTS.some(q => q.port === initialMonitor.port) && (
+              {selectedMonitor?.port &&
+                !QUICK_PORTS.some(q => q.port === selectedMonitor.port) && (
                   <button
-                    onClick={() => !isRunning && setPort(initialMonitor.port!)}
+                    onClick={() => {
+                      const p = selectedMonitor.port!
+                      setPort(p)
+                      if (target.trim()) executeRun(mode, target, p, intervalMs, maxProbes, maxHops)
+                    }}
                     style={{
-                      fontSize: 10,
+                      fontSize: 10.5,
                       fontWeight: 700,
-                      padding: '2px 8px',
+                      padding: '2px 9px',
                       borderRadius: 6,
                       border:
-                        port === initialMonitor.port
+                        port === selectedMonitor.port
                           ? '1px solid #38bdf8'
                           : '1px solid rgba(148,163,184,0.2)',
                       background:
-                        port === initialMonitor.port
+                        port === selectedMonitor.port
                           ? 'rgba(56,189,248,0.2)'
                           : 'rgba(15,23,42,0.6)',
-                      color: port === initialMonitor.port ? '#38bdf8' : '#cbd5e1',
-                      cursor: isRunning ? 'not-allowed' : 'pointer',
+                      color: port === selectedMonitor.port ? '#38bdf8' : '#cbd5e1',
+                      cursor: 'pointer',
                     }}
                   >
-                    {initialMonitor.port} (Del Sensor)
+                    {selectedMonitor.port} (Del Sensor)
                   </button>
                 )}
               {QUICK_PORTS.map(q => {
@@ -754,11 +1005,14 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                 return (
                   <button
                     key={q.port}
-                    onClick={() => !isRunning && setPort(q.port)}
+                    onClick={() => {
+                      setPort(q.port)
+                      if (target.trim()) executeRun(mode, target, q.port, intervalMs, maxProbes, maxHops)
+                    }}
                     style={{
-                      fontSize: 10,
+                      fontSize: 10.5,
                       fontWeight: 700,
-                      padding: '2px 8px',
+                      padding: '2px 9px',
                       borderRadius: 6,
                       border: activePort
                         ? '1px solid #38bdf8'
@@ -767,7 +1021,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                         ? 'rgba(56,189,248,0.18)'
                         : 'rgba(15,23,42,0.6)',
                       color: activePort ? '#38bdf8' : '#94a3b8',
-                      cursor: isRunning ? 'not-allowed' : 'pointer',
+                      cursor: 'pointer',
                     }}
                   >
                     {q.label}
@@ -778,15 +1032,15 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           )}
         </div>
 
-        {/* ── TARJETAS DE MÉTRICAS EN VIVO (Enviados, Recibidos, Pérdida, Mín/Prom/Máx, Jitter) ── */}
+        {/* ── TARJETAS DE MÉTRICAS EN VIVO ── */}
         <div
           style={{
-            padding: '10px 22px',
+            padding: '10px 24px',
             background: '#0b1120',
             borderBottom: '1px solid rgba(148,163,184,0.1)',
             display: 'grid',
             gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-            gap: 8,
+            gap: 10,
           }}
         >
           {[
@@ -805,8 +1059,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
             <div
               key={stat.label}
               style={{
-                padding: '7px 10px',
-                borderRadius: 9,
+                padding: '6px 10px',
+                borderRadius: 8,
                 background: 'rgba(30,41,59,0.45)',
                 border: '1px solid rgba(148,163,184,0.1)',
                 textAlign: 'center',
@@ -815,22 +1069,23 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
               <div style={{ fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: '0.04em' }}>
                 {stat.label}
               </div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: stat.color, fontFamily: 'monospace', marginTop: 2 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: stat.color, fontFamily: 'monospace', marginTop: 2 }}>
                 {stat.val}
               </div>
             </div>
           ))}
         </div>
 
-        {/* ── CONSOLA EN TIEMPO REAL ── */}
+        {/* ── CONSOLA EN TIEMPO REAL (Sin cortes de línea feos) ── */}
         <div
           ref={consoleEndRef}
           style={{
             flex: 1,
-            minHeight: 280,
-            maxHeight: 380,
+            minHeight: 270,
+            maxHeight: 370,
             overflowY: 'auto',
-            padding: '14px 20px',
+            overflowX: 'auto',
+            padding: '14px 24px',
             background: '#050811',
             fontFamily: '"JetBrains Mono", "Fira Code", Consolas, monospace',
             fontSize: 12.5,
@@ -840,7 +1095,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           {lines.length === 0 ? (
             <div
               style={{
-                height: 240,
+                height: 230,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -850,16 +1105,9 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                 gap: 8,
               }}
             >
-              <Terminal size={32} style={{ opacity: 0.45 }} />
+              <Terminal size={30} style={{ opacity: 0.45 }} />
               <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>
-                Consola lista para diagnosticar{' '}
-                <span style={{ color: '#38bdf8' }}>{target || 'cualquier IP / Host'}</span>
-                {(mode === 'PAPING' || mode === 'HTTP') && (
-                  <span style={{ color: '#38bdf8' }}>:{port}</span>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: '#475569', maxWidth: 460 }}>
-                Haz clic en <strong>Iniciar {mode}</strong> para ver la salida en tiempo real paquete por paquete o salto por salto.
+                Escribe una IP o dominio arriba y presiona <strong>Ejecutar {mode}</strong>
               </div>
             </div>
           ) : (
@@ -877,42 +1125,57 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                   key={line.id}
                   style={{
                     display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 10,
-                    padding: '2px 0',
-                    borderBottom: '1px dashed rgba(30,41,59,0.5)',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    padding: '2.5px 0',
+                    borderBottom: '1px dashed rgba(30,41,59,0.45)',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  <span style={{ color: '#475569', fontSize: 11, userSelect: 'none', flexShrink: 0 }}>
-                    [{line.timestamp}]
-                  </span>
-                  <span style={{ color, whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 }}>
-                    {line.text}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+                    <span style={{ color: '#475569', fontSize: 11, userSelect: 'none', flexShrink: 0 }}>
+                      [{line.timestamp}]
+                    </span>
+                    <span style={{ color }}>
+                      {line.text}
+                    </span>
+                  </div>
+
                   {typeof line.latencyMs === 'number' && line.latencyMs > 0 && (
                     <div
                       style={{
-                        width: 90,
-                        height: 6,
-                        background: 'rgba(30,41,59,0.8)',
-                        borderRadius: 999,
-                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
                         flexShrink: 0,
                       }}
-                      title={`${line.latencyMs} ms`}
                     >
+                      <span style={{ fontSize: 10.5, color: '#64748b', width: 58, textAlign: 'right' }}>
+                        {line.latencyMs.toFixed(1)} ms
+                      </span>
                       <div
                         style={{
-                          width: `${Math.min(100, Math.max(8, (line.latencyMs / 300) * 100))}%`,
-                          height: '100%',
-                          background:
-                            line.latencyMs > 200
-                              ? '#f59e0b'
-                              : line.latencyMs > 80
-                              ? '#38bdf8'
-                              : '#22c55e',
+                          width: 90,
+                          height: 6,
+                          background: 'rgba(30,41,59,0.85)',
+                          borderRadius: 999,
+                          overflow: 'hidden',
                         }}
-                      />
+                      >
+                        <div
+                          style={{
+                            width: `${Math.min(100, Math.max(8, (line.latencyMs / 300) * 100))}%`,
+                            height: '100%',
+                            background:
+                              line.latencyMs > 200
+                                ? '#f59e0b'
+                                : line.latencyMs > 80
+                                ? '#38bdf8'
+                                : '#22c55e',
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -928,7 +1191,6 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                   borderRadius: '50%',
                   background: '#38bdf8',
                   display: 'inline-block',
-                  animation: 'pulse 1s infinite',
                 }}
               />
               Ejecutando {mode} en tiempo real...
@@ -936,19 +1198,20 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
           )}
         </div>
 
-        {/* ── FOOTER ACCIONES (Limpiar, Copiar Reporte, Cerrar) ── */}
+        {/* ── FOOTER ACCIONES CLARAS (Copiar Texto, Descargar .TXT, Capturar Imagen .PNG) ── */}
         <div
           style={{
-            padding: '12px 22px',
+            padding: '12px 24px',
             background: '#0f172a',
             borderTop: '1px solid rgba(148,163,184,0.14)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
             gap: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={clearConsole}
               disabled={lines.length === 0 || isRunning}
@@ -961,7 +1224,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: lines.length === 0 || isRunning ? 'not-allowed' : 'pointer',
-                opacity: lines.length === 0 || isRunning ? 0.5 : 1,
+                opacity: lines.length === 0 || isRunning ? 0.45 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -970,26 +1233,75 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, onClose }: P
               <Trash2 size={13} /> Limpiar
             </button>
 
+            {/* 1. Copiar Texto al Portapapeles */}
             <button
-              onClick={copyOutput}
+              onClick={handleCopyText}
               disabled={lines.length === 0}
               style={{
-                padding: '7px 12px',
+                padding: '7px 13px',
                 borderRadius: 8,
-                border: '1px solid rgba(56,189,248,0.3)',
-                background: 'rgba(14,165,233,0.12)',
-                color: '#38bdf8',
+                border: copiedTxt ? '1px solid #22c55e' : '1px solid rgba(56,189,248,0.35)',
+                background: copiedTxt ? 'rgba(34,197,94,0.18)' : 'rgba(14,165,233,0.12)',
+                color: copiedTxt ? '#4ade80' : '#38bdf8',
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: lines.length === 0 ? 'not-allowed' : 'pointer',
-                opacity: lines.length === 0 ? 0.5 : 1,
+                opacity: lines.length === 0 ? 0.45 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
               }}
+              title="Copia el reporte en formato TEXTO al portapapeles para pegarlo con Ctrl+V"
             >
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? '¡Copiado al portapapeles!' : 'Copiar resultado para Ticket'}
+              {copiedTxt ? <Check size={14} /> : <Copy size={13} />}
+              {copiedTxt ? '¡Texto copiado (Ctrl+V)!' : 'Copiar Texto (Portapapeles)'}
+            </button>
+
+            {/* 2. Descargar archivo .TXT */}
+            <button
+              onClick={handleDownloadTxt}
+              disabled={lines.length === 0}
+              style={{
+                padding: '7px 13px',
+                borderRadius: 8,
+                border: '1px solid rgba(148,163,184,0.25)',
+                background: 'rgba(30,41,59,0.65)',
+                color: '#e2e8f0',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: lines.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: lines.length === 0 ? 0.45 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+              title="Descarga el resultado como archivo de texto (.txt)"
+            >
+              <FileText size={13} /> Descargar .TXT
+            </button>
+
+            {/* 3. Capturar y Descargar Imagen (.PNG) */}
+            <button
+              onClick={handleExportImagePng}
+              disabled={lines.length === 0}
+              style={{
+                padding: '7px 13px',
+                borderRadius: 8,
+                border: exportedImg ? '1px solid #22c55e' : '1px solid rgba(168,85,247,0.4)',
+                background: exportedImg ? 'rgba(34,197,94,0.18)' : 'rgba(168,85,247,0.14)',
+                color: exportedImg ? '#4ade80' : '#c084fc',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: lines.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: lines.length === 0 ? 0.45 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+              title="Genera y descarga una captura en IMAGEN (.PNG) de la consola y sus métricas"
+            >
+              {exportedImg ? <Check size={14} /> : <Camera size={13} />}
+              {exportedImg ? '¡Imagen .PNG descargada!' : 'Descargar Imagen (.PNG)'}
             </button>
           </div>
 
