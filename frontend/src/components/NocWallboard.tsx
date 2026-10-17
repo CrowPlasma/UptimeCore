@@ -7,9 +7,10 @@
  *  2. "cards"  (NOC Tarjetas): Tarjetas compactas con lista de endpoints por grupo.
  */
 import { useState, useMemo } from 'react'
-import { Wrench, Pause, Play, Plus, LayoutGrid, Grid, Layers, X, Pencil } from 'lucide-react'
+import { Wrench, Pause, Play, Plus, LayoutGrid, Grid, Layers, X, Pencil, Terminal } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorStatus } from '../types'
 import type { ModalMode } from './MonitorModal'
+import { DiagnosticModal } from './DiagnosticModal'
 import { useMonitorStore } from '../store/monitorStore'
 
 export type NocViewType = 'cards' | 'mosaic'
@@ -77,6 +78,7 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
   // Grupo y sensor seleccionados al hacer clic en un cuadrito del mosaico para inspección rápida
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null)
+  const [diagnosticTarget, setDiagnosticTarget] = useState<{ monitor: Monitor; groupName: string } | null>(null)
 
   const sortedGroups = useMemo(() => {
     return [...groups].sort((a, b) => {
@@ -562,6 +564,19 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                           {isPaused ? 'PAUSA' : isMaint ? 'MANT.' : st === 'DOWN' ? 'CAÍDO' : `${m.current_latency_ms ?? 0}ms`}
                         </span>
                         <button
+                          onClick={() => setDiagnosticTarget({ monitor: m, groupName: inspectedGroup.name })}
+                          title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+                          style={{
+                            width: 28, height: 28, borderRadius: 6,
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            background: 'rgba(14, 165, 233, 0.14)',
+                            color: '#38bdf8',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                          }}
+                        >
+                          <Terminal size={12} />
+                        </button>
+                        <button
                           onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
                           title="Alternar Mantenimiento"
                           style={{
@@ -848,6 +863,19 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
                             </span>
 
                             <button
+                              onClick={() => setDiagnosticTarget({ monitor: m, groupName: group.name })}
+                              title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+                              style={{
+                                width: 20, height: 20, borderRadius: 4, border: 'none',
+                                background: 'rgba(14, 165, 233, 0.16)',
+                                color: '#38bdf8',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Terminal size={10} />
+                            </button>
+                            <button
                               onClick={() => toggleMaintenance(group.id, m.id)}
                               title={m.is_maintenance ? 'Salir de Mantenimiento' : 'Mantenimiento'}
                               style={{
@@ -883,6 +911,14 @@ export function NocWallboard({ groups, onOpenModal, viewType: externalView, onCh
             )
           })}
         </div>
+      )}
+
+      {diagnosticTarget && (
+        <DiagnosticModal
+          initialMonitor={diagnosticTarget.monitor}
+          initialGroupName={diagnosticTarget.groupName}
+          onClose={() => setDiagnosticTarget(null)}
+        />
       )}
     </div>
   )

@@ -11,11 +11,12 @@ import {
 import type { HistoryPoint, TimeRange } from '../types'
 
 const RANGES: { label: string; value: TimeRange }[] = [
-  { label: 'Recent', value: 'recent' },
-  { label: '3h',     value: '3h' },
-  { label: '6h',     value: '6h' },
-  { label: '24h',    value: '24h' },
-  { label: '1w',     value: '1w' },
+  { label: 'Reciente', value: 'recent' },
+  { label: '3h',       value: '3h' },
+  { label: '6h',       value: '6h' },
+  { label: '24h',      value: '24h' },
+  { label: '7d (Sem)', value: '1w' },
+  { label: '30d (Mes)', value: '30d' },
 ]
 
 interface Props {
@@ -32,6 +33,14 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
     onRangeChange?.(r)
   }
 
+  const formatXAxis = (val: number) => {
+    const d = new Date(val)
+    if (range === '1w' || range === '30d') {
+      return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) + ' ' +
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
 
   // Formatear datos para recharts usando timestamps
   const chartData = data.map((p, index) => {
@@ -81,29 +90,44 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
   return (
     <div>
       {/* Selector de rango */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginBottom: 10 }}>
-        {RANGES.map(r => (
-          <button
-            key={r.value}
-            onClick={() => handleRange(r.value)}
-            style={{
-              padding: '3px 10px',
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 600,
-              background: range === r.value ? 'var(--color-accent)' : 'var(--color-bg-primary)',
-              color: range === r.value ? '#fff' : 'var(--color-text-secondary)',
-              border: `1px solid ${range === r.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              transition: 'all 0.15s',
-            }}
-          >
-            {r.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'var(--color-text-muted)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: '#22c55e', display: 'inline-block' }} /> Latencia (ms)
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#f87171', display: 'inline-block' }} /> Ventana Caída
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#60a5fa', display: 'inline-block' }} /> Mantenimiento
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => handleRange(r.value)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background: range === r.value ? 'var(--color-accent)' : 'var(--color-bg-primary)',
+                color: range === r.value ? '#fff' : 'var(--color-text-secondary)',
+                border: `1px solid ${range === r.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                transition: 'all 0.15s',
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Gráfica */}
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" height={190}>
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="latencyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -111,7 +135,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
               <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
             </linearGradient>
           </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           {maintenanceBlocks.map((b, i) => (
             <ReferenceArea
               key={`maint-${i}`}
@@ -135,7 +159,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
             type="number"
             scale="time"
             domain={['dataMin', 'dataMax']}
-            tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            tickFormatter={formatXAxis}
             tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
             tickLine={false}
             interval="preserveStartEnd"
@@ -153,10 +177,17 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelFormatter={(label) => new Date(label).toLocaleTimeString()}
-            formatter={(val: number, name: string, props: any) => {
+            labelFormatter={(label) => new Date(label).toLocaleString('es-MX')}
+            formatter={(val: number, _name: string, props: any) => {
               const status = props.payload.status;
-              const suffix = status === 'MAINTENANCE' ? ' (En Mantenimiento)' : (status === 'DOWN' ? ' (Caído)' : '');
+              const suffix =
+                status === 'MAINTENANCE'
+                  ? ' (En Mantenimiento)'
+                  : status === 'DOWN'
+                  ? ' (Caído)'
+                  : status === 'DEGRADED'
+                  ? ' (Degradado)'
+                  : '';
               return [`${val} ms${suffix}`, 'Latencia'];
             }}
           />

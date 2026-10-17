@@ -5,7 +5,7 @@
  */
 
 /** Estado operacional de un monitor o endpoint */
-export type MonitorStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN' | 'MAINTENANCE'
+export type MonitorStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN' | 'MAINTENANCE' | 'PAUSED'
 
 /** Tipo de protocolo de monitoreo */
 export type MonitorType = 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'TCP_PING' | 'POSTGRESQL' | 'MYSQL' | 'REDIS' | 'SNMP' | 'SSL'
@@ -61,5 +61,6 @@ export interface HistoryPoint {
   latency_ms: number
 }
 
-/** Rangos de tiempo disponibles para la gráfica (igual que Uptime Kuma) */
-export type TimeRange = 'recent' | '3h' | '6h' | '24h' | '1w'
+/** Rangos de tiempo disponibles para la gráfica */
+export type TimeRange = 'recent' | '3h' | '6h' | '24h' | '1w' | '30d'
+

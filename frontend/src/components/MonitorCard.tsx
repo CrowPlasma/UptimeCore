@@ -9,7 +9,8 @@
 import React, { useState, useEffect } from 'react'
 import {
   ChevronDown, ChevronUp, Plus, Pencil, Trash2,
-  Globe, Wifi, Activity, Clock, TrendingUp, Loader2, Pause, Play, Wrench
+  Globe, Wifi, Activity, Clock, TrendingUp, Loader2, Pause, Play, Wrench,
+  Terminal, Download, ShieldCheck, AlertTriangle
 } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorStatus, HistoryPoint, TimeRange } from '../types'
 import type { ModalMode } from './MonitorModal'
@@ -18,6 +19,7 @@ import { UptimeBar } from './UptimeBar'
 import { LatencyChart } from './LatencyChart'
 import { useMonitorStore, aggregateGroupHistory } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
+import { DiagnosticModal } from './DiagnosticModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function statusColor(s?: MonitorStatus) {
@@ -27,6 +29,27 @@ function statusColor(s?: MonitorStatus) {
   if (s === 'MAINTENANCE') return '#3b82f6'
   if (s === 'PAUSED') return '#6366f1'
   return '#94a3b8'
+}
+
+const RANGE_LABELS: Record<TimeRange, string> = {
+  recent: 'Últimos 90 min (Reciente)',
+  '3h': 'Últimas 3 Horas',
+  '6h': 'Últimas 6 Horas',
+  '24h': 'Últimas 24 Horas (Diario)',
+  '1w': 'Últimos 7 Días (Semanal)',
+  '30d': 'Últimos 30 Días (Mensual)',
+}
+
+function formatDurationHuman(totalSec: number): string {
+  if (totalSec <= 0) return '0s (Sin caídas)'
+  const d = Math.floor(totalSec / 86400)
+  const h = Math.floor((totalSec % 86400) / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = Math.floor(totalSec % 60)
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
 }
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
@@ -56,6 +79,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
   const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
   const [expanded, setExpanded] = useState<boolean>(false)
   const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
+  const [diagnosticMonitor, setDiagnosticMonitor] = useState<Monitor | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
   >(null)
@@ -101,7 +125,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
         {/* ══ Cabecera del grupo ══ */}
         <div
           style={{
-            display: 'grid', gridTemplateColumns: '220px 1fr auto', alignItems: 'center', gap: 16, padding: '22px 28px', cursor: 'pointer', position: 'relative',
+            display: 'grid', gridTemplateColumns: '240px 1fr auto', alignItems: 'center', gap: 18, padding: '20px 26px', cursor: 'pointer', position: 'relative',
           }}
           onClick={() => setExpanded(prev => !prev)}
         >
@@ -112,7 +136,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           }} />
 
           {/* Nombre + Tags */}
-          <div style={{ paddingLeft: 12, paddingRight: 16, wordBreak: 'break-word' }}>
+          <div style={{ paddingLeft: 12, paddingRight: 12, wordBreak: 'break-word' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--color-text-primary)' }}>
                 {group.name}
@@ -131,12 +155,12 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
             )}
           </div>
 
-          {/* Barra de uptime (flexible) */}
-          <div style={{ minWidth: 0 }}>
+          {/* Barra de uptime compacta (20 cuadritos) */}
+          <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>
             {group.monitors && group.monitors.length > 0 ? (
               <UptimeBar
                 history={groupHistory}
-                maxBars={30}
+                maxBars={20}
               />
             ) : (
               <div style={{ height: 34, display: 'flex', alignItems: 'center' }}>
@@ -148,7 +172,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           {/* Panel derecho */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14 }}>
             {/* Latencia promedio y último check en vivo */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 78, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 74, flexShrink: 0 }}>
               <span style={{
                 fontSize: 13,
                 fontWeight: 700,
@@ -179,6 +203,12 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
             <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
               {groupMetrics.total > 0 && (
                 <>
+                  <Btn
+                    icon={<Terminal size={13} strokeWidth={2.3} />}
+                    title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+                    onClick={() => setDiagnosticMonitor(group.monitors[0])}
+                    customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
+                  />
                   <Btn
                     icon={<Wrench size={12} strokeWidth={2.5} />}
                     title={groupMetrics.allMaint ? "Quitar Mantenimiento a todo el grupo" : "Poner todo el grupo en Mantenimiento"}
@@ -237,6 +267,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
                   onToggle={() => setActiveMonitorId(id => id === monitor.id ? null : monitor.id)}
                   onEdit={() => onOpenModal({ type: 'edit_monitor', group, monitor })}
                   onDelete={() => setConfirmDelete({ type: 'monitor', monitorId: monitor.id })}
+                  onDiagnose={() => setDiagnosticMonitor(monitor)}
                 />
               ))
             )}
@@ -257,14 +288,22 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
         )}
       </div>
 
-        {/* Confirmación de borrado (GRUPO) */}
+      {/* Modal de Diagnóstico en Vivo */}
+      {diagnosticMonitor && (
+        <DiagnosticModal
+          initialMonitor={diagnosticMonitor}
+          initialGroupName={group.name}
+          onClose={() => setDiagnosticMonitor(null)}
+        />
+      )}
+
+      {/* Confirmación de borrado (GRUPO) */}
       {confirmDelete?.type === 'group' && (
         <ConfirmDialog
           title={`¿Eliminar GRUPO "${group.name}"?`}
           message="⚠️ ATENCIÓN: Se eliminará todo el grupo, incluyendo todos sus endpoints y el historial completo. Esta acción no se puede deshacer."
           confirmLabel="Eliminar Grupo Completo"
           onConfirm={async () => {
-            console.log('🗑️ Eliminando grupo:', group.id)
             await deleteGroup(group.id)
             setConfirmDelete(null)
           }}
@@ -280,7 +319,6 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
           confirmLabel="Eliminar Endpoint"
           onConfirm={async () => {
             const mid = (confirmDelete as { type: 'monitor'; monitorId: number }).monitorId
-            console.log('🗑️ Eliminando monitor:', mid, 'del grupo:', group.id)
             await deleteMonitor(group.id, mid)
             setConfirmDelete(null)
             if (activeMonitorId === mid) setActiveMonitorId(null)
@@ -293,13 +331,14 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal 
 })
 
 // ── Fila de endpoint hijo ─────────────────────────────────────────────────
-function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
+function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDiagnose }: {
   monitor: Monitor
   group: MonitorGroup
   isActive: boolean
   onToggle: () => void
   onEdit: () => void
   onDelete: () => void
+  onDiagnose: () => void
 }) {
   const { toggleMonitor, toggleMaintenance } = useMonitorStore()
   const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
@@ -324,7 +363,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
     try {
       const res = await fetch(`/api/monitors/${monitor.id}/history?range=${range}`)
       const data: HistoryPoint[] = await res.json()
-      setHistory(data)
+      setHistory(Array.isArray(data) ? data : [])
     } catch {
       setHistory([])
     } finally {
@@ -332,24 +371,154 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
     }
   }
 
-  // Combine fetched history with live_history (SSE)
-  const combinedHistory = (() => {
+  // Combine fetched history with live_history (SSE) for 'recent'
+  const combinedHistory = React.useMemo(() => {
     const live = monitor.live_history || []
+    if (histRange !== 'recent' && history.length > 0) return history
     if (history.length === 0) return live
     if (live.length === 0) return history
     const lastFetchedTime = new Date(history[history.length - 1].time).getTime()
     const newLive = live.filter(h => new Date(h.time).getTime() > lastFetchedTime)
     return [...history, ...newLive]
-  })()
+  }, [history, monitor.live_history, histRange])
 
-  // Calcular uptime % del historial
-  const uptimePct = combinedHistory.length
-    ? Math.round(combinedHistory.filter(h => h.status === 'UP').length / combinedHistory.length * 100)
-    : null
+  // ── Cálculo enriquecido de SLA, Disponibilidad, Tiempo Caído, Jitter y P95 ──
+  const slaStats = React.useMemo(() => {
+    // Excluir muestras en mantenimiento/pausa del cálculo de penalización SLA
+    const operational = combinedHistory.filter(
+      h => h.status !== 'MAINTENANCE' && h.status !== 'PAUSED' && h.status !== 'UNKNOWN'
+    )
+    const upSamples = operational.filter(h => h.status === 'UP' || h.status === 'DEGRADED').length
+    const downSamples = operational.filter(h => h.status === 'DOWN').length
+    const degradedSamples = operational.filter(h => h.status === 'DEGRADED').length
 
-  const avgLatency = combinedHistory.length
-    ? Math.round(combinedHistory.filter(h => h.latency_ms > 0).reduce((a, h) => a + h.latency_ms, 0) / Math.max(1, combinedHistory.filter(h => h.latency_ms > 0).length))
-    : null
+    const slaPctNum = operational.length > 0 ? (upSamples / operational.length) * 100 : null
+    const slaPctFormatted = slaPctNum != null ? slaPctNum.toFixed(2) : null
+
+    // Contar cortes (transiciones a DOWN) y estimar segundos de caída en el periodo
+    let outagesCount = 0
+    let downtimeSec = 0
+    const defaultStepSec =
+      histRange === 'recent'
+        ? monitor.interval_seconds || 60
+        : histRange === '3h'
+        ? 120
+        : histRange === '6h'
+        ? 300
+        : histRange === '24h'
+        ? 900
+        : histRange === '1w'
+        ? 7200
+        : 21600 // 30d bucket = 6h
+
+    for (let i = 0; i < combinedHistory.length; i++) {
+      const cur = combinedHistory[i]
+      const prev = i > 0 ? combinedHistory[i - 1] : null
+      if (cur.status === 'DOWN') {
+        if (!prev || prev.status !== 'DOWN') {
+          outagesCount++
+        }
+        if (prev) {
+          const deltaSec = Math.max(
+            1,
+            Math.round((new Date(cur.time).getTime() - new Date(prev.time).getTime()) / 1000)
+          )
+          // Cap single gap to 2x defaultStepSec so app restarts don't inflate downtime
+          downtimeSec += Math.min(deltaSec, defaultStepSec * 2)
+        } else {
+          downtimeSec += defaultStepSec
+        }
+      }
+    }
+
+    // Latencias válidas (> 0 y no DOWN)
+    const validLats = combinedHistory
+      .filter(h => h.status !== 'DOWN' && h.latency_ms > 0)
+      .map(h => h.latency_ms)
+
+    const minLat = validLats.length > 0 ? Math.min(...validLats) : null
+    const maxLat = validLats.length > 0 ? Math.max(...validLats) : null
+    const avgLat =
+      validLats.length > 0
+        ? Math.round(validLats.reduce((a, b) => a + b, 0) / validLats.length)
+        : null
+
+    // Percentil P95
+    const p95Lat = (() => {
+      if (validLats.length === 0) return null
+      const sorted = [...validLats].sort((a, b) => a - b)
+      const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))
+      return sorted[idx]
+    })()
+
+    // Jitter (variación media entre muestras consecutivas)
+    const jitterMs = (() => {
+      if (validLats.length < 2) return 0
+      let sumDiff = 0
+      for (let i = 1; i < validLats.length; i++) {
+        sumDiff += Math.abs(validLats[i] - validLats[i - 1])
+      }
+      return Math.round((sumDiff / (validLats.length - 1)) * 10) / 10
+    })()
+
+    return {
+      totalSamples: operational.length,
+      upSamples,
+      downSamples,
+      degradedSamples,
+      slaPctNum,
+      slaPctFormatted,
+      outagesCount,
+      downtimeSec,
+      minLat,
+      maxLat,
+      avgLat,
+      p95Lat,
+      jitterMs,
+    }
+  }, [combinedHistory, histRange, monitor.interval_seconds])
+
+  // Exportar Reporte SLA + Historial del sensor en CSV
+  const exportMonitorSlaCsv = () => {
+    const rows: string[][] = [
+      ['REPORTE DE DISPONIBILIDAD Y SLA - UPTIMECORE'],
+      ['Sitio / Grupo', group.name],
+      ['Sensor / Enlace', monitor.name],
+      ['Objetivo (IP/Host)', `${monitor.target}${monitor.port ? ':' + monitor.port : ''}`],
+      ['Protocolo', monitor.type],
+      ['Periodo Evaluado', RANGE_LABELS[histRange] || histRange],
+      ['Disponibilidad SLA (%)', slaStats.slaPctFormatted ? `${slaStats.slaPctFormatted}%` : 'N/A'],
+      ['Tiempo Caido Estimado', formatDurationHuman(slaStats.downtimeSec)],
+      ['Cortes Registrados', String(slaStats.outagesCount)],
+      ['Latencia Promedio (ms)', slaStats.avgLat != null ? String(slaStats.avgLat) : 'N/A'],
+      ['Latencia Minima (ms)', slaStats.minLat != null ? String(slaStats.minLat) : 'N/A'],
+      ['Latencia Maxima Pico (ms)', slaStats.maxLat != null ? String(slaStats.maxLat) : 'N/A'],
+      ['Percentil P95 (ms)', slaStats.p95Lat != null ? String(slaStats.p95Lat) : 'N/A'],
+      ['Jitter Estabilidad (ms)', String(slaStats.jitterMs)],
+      [],
+      ['Fecha y Hora', 'Estado', 'Latencia (ms)'],
+      ...combinedHistory.map(h => [
+        new Date(h.time).toLocaleString('es-MX'),
+        h.status,
+        String(h.latency_ms ?? 0),
+      ]),
+    ]
+
+    const csvContent =
+      '\uFEFF' +
+      rows
+        .map(r => r.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+        .join('\r\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const safeName = `${group.name}_${monitor.name}_${histRange}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+    a.href = url
+    a.download = `SLA_${safeName}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div style={{ 
@@ -359,7 +528,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
       {/* Fila principal */}
       <div
         style={{
-          display: 'grid', gridTemplateColumns: '14px 14px 220px 1fr auto', alignItems: 'center', gap: 16, padding: '22px 28px 22px 48px',
+          display: 'grid', gridTemplateColumns: '14px 14px 230px 1fr auto', alignItems: 'center', gap: 16, padding: '20px 26px 20px 44px',
           cursor: 'pointer',
           background: isActive ? 'var(--color-bg-primary)' : 'transparent',
           transition: 'background 0.15s',
@@ -381,7 +550,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
         </span>
 
         {/* Nombre + target */}
-        <div style={{ paddingRight: 16, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
+        <div style={{ paddingRight: 12, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>
             {monitor.name}
           </div>
@@ -415,10 +584,10 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
               </span>
             </div>
           )}
-          {monitor.type === 'SNMP' && monitor.current_value != null && !isPaused && !isMaint && (
+          {monitor.type === 'SNMP' && (monitor as any).current_value != null && !isPaused && !isMaint && (
             <div style={{ marginTop: 6 }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
-                Valor OID: {monitor.current_value}
+                Valor OID: {(monitor as any).current_value}
               </span>
             </div>
           )}
@@ -429,97 +598,251 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
           )}
         </div>
 
-        {/* Barra de uptime */}
-        <div style={{ minWidth: 0, opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
-          <UptimeBar history={combinedHistory} maxBars={30} />
+        {/* Barra de uptime compacta (20 cuadritos) */}
+        <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center', opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
+          <UptimeBar history={combinedHistory} maxBars={20} />
         </div>
 
-          {/* Panel derecho (Latencia + Hora, Badge, Acciones) */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 68 }}>
-              <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
-                {status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
-              </span>
-              {status === 'PAUSED' ? (
-                <span style={{ fontSize: 10, color: '#818cf8', marginTop: 2, fontWeight: 600 }}>
-                  En pausa
-                </span>
-              ) : status === 'MAINTENANCE' ? (
-                <span style={{ fontSize: 10, color: '#60a5fa', marginTop: 2, fontWeight: 600 }}>
-                  Mantenimiento
-                </span>
-              ) : status === 'UNKNOWN' ? (
-                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                  Verificando...
-                </span>
-              ) : combinedHistory.length > 0 ? (
-                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
-                  {new Date(combinedHistory[combinedHistory.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-              ) : null}
-            </div>
-
-            <div style={{ flexShrink: 0 }}>
-              <StatusBadge status={status} size="sm" />
-            </div>
-
-            {/* Acciones */}
-            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-              <Btn 
-                icon={<Wrench size={12} strokeWidth={2.5} />} 
-                title={isMaint ? "Quitar Mantenimiento" : "Modo Mantenimiento"} 
-                onClick={() => toggleMaintenance(group.id, monitor.id)} 
-                customColor={isMaint 
-                  ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
-                  : undefined
-                }
-              />
-              <Btn 
-                icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
-                title={!isPaused ? "Pausar monitoreo" : "Reanudar monitoreo"} 
-                onClick={() => toggleMonitor(group.id, monitor.id)} 
-                customColor={isPaused 
-                  ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
-                  : undefined
-                }
-              />
-              <Btn icon={<Pencil size={12} />} title="Editar" onClick={onEdit} />
-              <Btn icon={<Trash2 size={12} />} title="Eliminar" danger onClick={onDelete} />
-            </div>
-
-            <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
-              {isActive ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        {/* Panel derecho (Latencia + Hora, Badge, Acciones con Diagnóstico) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 66 }}>
+            <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+              {status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
             </span>
+            {status === 'PAUSED' ? (
+              <span style={{ fontSize: 10, color: '#818cf8', marginTop: 2, fontWeight: 600 }}>
+                En pausa
+              </span>
+            ) : status === 'MAINTENANCE' ? (
+              <span style={{ fontSize: 10, color: '#60a5fa', marginTop: 2, fontWeight: 600 }}>
+                Mantenimiento
+              </span>
+            ) : status === 'UNKNOWN' ? (
+              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                Verificando...
+              </span>
+            ) : combinedHistory.length > 0 ? (
+              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+                {new Date(combinedHistory[combinedHistory.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            ) : null}
           </div>
+
+          <div style={{ flexShrink: 0 }}>
+            <StatusBadge status={status} size="sm" />
+          </div>
+
+          {/* Acciones del sensor (incluye botón de Diagnóstico en Vivo estilo Paping/Traceroute) */}
+          <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+            <Btn
+              icon={<Terminal size={13} strokeWidth={2.3} />}
+              title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+              onClick={onDiagnose}
+              customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
+            />
+            <Btn 
+              icon={<Wrench size={12} strokeWidth={2.5} />} 
+              title={isMaint ? "Quitar Mantenimiento" : "Modo Mantenimiento"} 
+              onClick={() => toggleMaintenance(group.id, monitor.id)} 
+              customColor={isMaint 
+                ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
+                : undefined
+              }
+            />
+            <Btn 
+              icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
+              title={!isPaused ? "Pausar monitoreo" : "Reanudar monitoreo"} 
+              onClick={() => toggleMonitor(group.id, monitor.id)} 
+              customColor={isPaused 
+                ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
+                : undefined
+              }
+            />
+            <Btn icon={<Pencil size={12} />} title="Editar" onClick={onEdit} />
+            <Btn icon={<Trash2 size={12} />} title="Eliminar" danger onClick={onDelete} />
+          </div>
+
+          <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
+            {isActive ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </div>
       </div>
 
-      {/* Panel expandido: estadísticas + gráfica */}
+      {/* ══ Panel expandido: Resumen Ejecutivo de SLA, Calidad de Enlace + Gráfica ══ */}
       {isActive && (
         <div style={{
-          padding: '24px 32px 28px 56px',
+          padding: '20px 30px 26px 48px',
           background: 'var(--color-bg-primary)',
           borderTop: '1px solid var(--color-border)',
         }}>
-          {/* Stats rápidas */}
-          <div style={{ display: 'flex', gap: 32, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <QuickStat label="Ping actual"    value={status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`} />
-            <QuickStat label="Avg. Ping"      value={avgLatency != null ? `${avgLatency} ms` : '—'} />
-            <QuickStat
-              label="Uptime"
-              value={uptimePct != null ? `${uptimePct}%` : '—'}
-              color={uptimePct == null ? undefined : uptimePct > 99 ? '#22c55e' : uptimePct > 95 ? '#f59e0b' : '#ef4444'}
-            />
-            <QuickStat label="Intervalo"      value={`${monitor.interval_seconds}s`} />
-            <QuickStat label="Reintentos"     value={String(monitor.retries)} />
-            <QuickStat label="Tipo"           value={monitor.type} />
-            {histLoading && (
-              <span style={{ fontSize: 12, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <TrendingUp size={13} /> Cargando historial...
+          {/* Barra superior del panel: Periodo SLA + Cumplimiento + Botones Diagnóstico y Exportar CSV */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            marginBottom: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
+                📊 Resumen de Disponibilidad y SLA · <span style={{ color: 'var(--color-accent)' }}>{RANGE_LABELS[histRange]}</span>
               </span>
-            )}
+
+              {slaStats.slaPctNum != null && (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: 999,
+                  background:
+                    slaStats.slaPctNum >= 99.9
+                      ? 'rgba(34, 197, 94, 0.14)'
+                      : slaStats.slaPctNum >= 99.0
+                      ? 'rgba(245, 158, 11, 0.15)'
+                      : 'rgba(239, 68, 68, 0.15)',
+                  color:
+                    slaStats.slaPctNum >= 99.9
+                      ? '#22c55e'
+                      : slaStats.slaPctNum >= 99.0
+                      ? '#f59e0b'
+                      : '#ef4444',
+                  border: `1px solid ${
+                    slaStats.slaPctNum >= 99.9
+                      ? 'rgba(34, 197, 94, 0.35)'
+                      : slaStats.slaPctNum >= 99.0
+                      ? 'rgba(245, 158, 11, 0.35)'
+                      : 'rgba(239, 68, 68, 0.35)'
+                  }`,
+                }}>
+                  {slaStats.slaPctNum >= 99.0 ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
+                  {slaStats.slaPctNum >= 99.9
+                    ? 'SLA Óptimo (≥99.9%)'
+                    : slaStats.slaPctNum >= 99.0
+                    ? 'SLA Aceptable (≥99.0%)'
+                    : 'SLA Crítico (<99.0%)'}
+                </span>
+              )}
+
+              {histLoading && (
+                <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <TrendingUp size={13} /> Actualizando periodo...
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={onDiagnose}
+                style={{
+                  padding: '5px 11px',
+                  borderRadius: 7,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(14, 165, 233, 0.14)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                }}
+              >
+                <Terminal size={13} /> Diagnóstico en Vivo (Paping / Traza)
+              </button>
+
+              <button
+                onClick={exportMonitorSlaCsv}
+                style={{
+                  padding: '5px 11px',
+                  borderRadius: 7,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'var(--color-bg-card)',
+                  color: 'var(--color-text-secondary)',
+                  border: '1px solid var(--color-border)',
+                }}
+                title="Descargar reporte CSV de SLA e historial de este enlace"
+              >
+                <Download size={13} /> Exportar SLA (CSV)
+              </button>
+            </div>
           </div>
 
-          {/* Gráfica */}
+          {/* Grid de 6 Tarjetas de Métricas Enriquecidas */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))',
+            gap: 10,
+            marginBottom: 18,
+          }}>
+            <SlaMetricCard
+              label="DISPONIBILIDAD / SLA"
+              value={slaStats.slaPctFormatted != null ? `${slaStats.slaPctFormatted}%` : '—'}
+              sub={`${slaStats.upSamples}/${slaStats.totalSamples} muestras OK`}
+              color={
+                slaStats.slaPctNum == null
+                  ? undefined
+                  : slaStats.slaPctNum >= 99.9
+                  ? '#22c55e'
+                  : slaStats.slaPctNum >= 99.0
+                  ? '#f59e0b'
+                  : '#ef4444'
+              }
+            />
+            <SlaMetricCard
+              label="TIEMPO CAÍDO (DOWNTIME)"
+              value={formatDurationHuman(slaStats.downtimeSec)}
+              sub={
+                slaStats.outagesCount === 0
+                  ? '0 incidentes en el periodo'
+                  : `${slaStats.outagesCount} ${slaStats.outagesCount === 1 ? 'corte registrado' : 'cortes registrados'}`
+              }
+              color={slaStats.downtimeSec > 0 ? '#f87171' : '#22c55e'}
+            />
+            <SlaMetricCard
+              label="LATENCIA ACTUAL / PROM"
+              value={
+                status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN'
+                  ? '—'
+                  : `${monitor.current_latency_ms ?? '?'} ms`
+              }
+              sub={`Promedio: ${slaStats.avgLat != null ? `${slaStats.avgLat} ms` : '—'}`}
+            />
+            <SlaMetricCard
+              label="MÍNIMA / PICO MÁXIMO"
+              value={
+                slaStats.minLat != null && slaStats.maxLat != null
+                  ? `${slaStats.minLat} / ${slaStats.maxLat} ms`
+                  : '—'
+              }
+              sub={
+                slaStats.degradedSamples > 0
+                  ? `${slaStats.degradedSamples} muestras con lentitud`
+                  : 'Sin picos fuera de umbral'
+              }
+            />
+            <SlaMetricCard
+              label="ESTABILIDAD (JITTER / P95)"
+              value={`${slaStats.jitterMs} ms`}
+              sub={`Percentil P95: ${slaStats.p95Lat != null ? `${slaStats.p95Lat} ms` : '—'}`}
+              color={slaStats.jitterMs > 35 ? '#f59e0b' : '#38bdf8'}
+            />
+            <SlaMetricCard
+              label="CONFIGURACIÓN SENSOR"
+              value={`${monitor.type}${monitor.port ? `:${monitor.port}` : ''}`}
+              sub={`Cada ${monitor.interval_seconds}s · ${monitor.retries} reintentos`}
+            />
+          </div>
+
+          {/* Gráfica interactiva con selector Reciente | 3h | 6h | 24h | 7d | 30d */}
           <LatencyChart
             data={combinedHistory}
             onRangeChange={(r) => setHistRange(r)}
@@ -553,16 +876,36 @@ function Btn({ icon, title, onClick, danger, customColor }: {
   )
 }
 
-// ── Estadística rápida ────────────────────────────────────────────────────
-function QuickStat({ label, value, color }: { label: string; value: string; color?: string }) {
+// ── Tarjeta de métrica SLA enriquecida ─────────────────────────────────────
+function SlaMetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 20, fontWeight: 800, color: color ?? 'var(--color-text-primary)', lineHeight: 1 }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 4, fontWeight: 500 }}>
+    <div style={{
+      padding: '10px 13px',
+      borderRadius: 10,
+      background: 'var(--color-bg-card)',
+      border: '1px solid var(--color-border)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+      gap: 4,
+    }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>
         {label}
       </div>
+      <div style={{
+        fontSize: 16,
+        fontWeight: 800,
+        color: color ?? 'var(--color-text-primary)',
+        fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+        lineHeight: 1.2,
+      }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 10.5, color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+          {sub}
+        </div>
+      )}
     </div>
   )
 }

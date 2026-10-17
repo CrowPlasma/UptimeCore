@@ -629,9 +629,12 @@ func (db *DB) GetHistory(ctx context.Context, monitorID int, rangeStr string) ([
 	case "24h":
 		interval = "24 hours"
 		bucket = "15 minutes"
-	case "1w":
+	case "1w", "7d":
 		interval = "7 days"
 		bucket = "2 hours"
+	case "30d", "1m":
+		interval = "30 days"
+		bucket = "6 hours"
 	default:
 		interval = "90 minutes"
 		bucket = "1 minute"

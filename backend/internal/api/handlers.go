@@ -561,6 +561,19 @@ func (h *Handlers) TestMonitor(c *fiber.Ctx) error {
 	})
 }
 
+// RunDiagnostic handles POST /api/diagnostics/run (live PAPING, PING, TRACEROUTE_HOP, HTTP/SSL, DNS probes)
+func (h *Handlers) RunDiagnostic(c *fiber.Ctx) error {
+	var req monitor.DiagnosticRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if strings.TrimSpace(req.Target) == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "target is required"})
+	}
+	res := monitor.RunDiagnosticProbe(c.Context(), req)
+	return c.JSON(res)
+}
+
 // ListIncidents handles GET /api/incidents?range=24h
 func (h *Handlers) ListIncidents(c *fiber.Ctx) error {
 	rangeStr := c.Query("range", "24h")

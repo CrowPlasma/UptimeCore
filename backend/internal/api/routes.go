@@ -55,8 +55,9 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	api.Delete("/monitors/:id", h.DeleteMonitor)
 	api.Get("/monitors/:id/history", h.GetHistory)
 
-	// Incident Log
+	// Incident Log & Live Diagnostics
 	api.Get("/incidents", h.ListIncidents)
+	api.Post("/diagnostics/run", h.RunDiagnostic)
 
 	api.Delete("/system/wipe", h.WipeAllData)
 

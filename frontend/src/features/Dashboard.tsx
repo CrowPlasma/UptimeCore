@@ -7,12 +7,13 @@
  * - Estado de carga y error
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2 } from 'lucide-react'
+import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { MonitorCard } from '../components/MonitorCard'
 import { MonitorModal } from '../components/MonitorModal'
 import { IncidentLogModal } from '../components/IncidentLogModal'
+import { DiagnosticModal } from '../components/DiagnosticModal'
 import { NocWallboard } from '../components/NocWallboard'
 import { isSoundEnabled, setSoundEnabled, playTestSound } from '../utils/soundAlert'
 import type { ModalMode } from '../components/MonitorModal'
@@ -146,6 +147,7 @@ export function Dashboard() {
   const [modal, setModal] = useState<ModalMode | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showIncidentLog, setShowIncidentLog] = useState(false)
+  const [showDiagnosticModal, setShowDiagnosticModal] = useState(false)
   const [nocMode, setNocMode] = useState<boolean>(() => {
     try { return localStorage.getItem('uptimecore_noc_mode') === '1' } catch { return false }
   })
@@ -398,6 +400,23 @@ export function Dashboard() {
             )}
           </button>
 
+          {/* Consola de Diagnóstico en Vivo (Paping / Ping / Traceroute) */}
+          <button
+            onClick={() => setShowDiagnosticModal(true)}
+            title="Abrir Consola de Diagnóstico en Vivo (Paping TCP por Puerto, Ping ICMP, Traceroute, HTTP/SSL, DNS)"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 13px', borderRadius: 9,
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              background: 'rgba(14, 165, 233, 0.12)',
+              color: '#38bdf8',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            <Terminal size={14} />
+            Diagnóstico
+          </button>
+
           {/* Modo Pantalla NOC / Wallboard */}
           <button
             onClick={handleToggleNoc}
@@ -544,6 +563,9 @@ export function Dashboard() {
 
       {/* ── Modal Bitácora de Eventos ──── */}
       {showIncidentLog && <IncidentLogModal onClose={() => setShowIncidentLog(false)} />}
+
+      {/* ── Modal Diagnóstico en Vivo ──── */}
+      {showDiagnosticModal && <DiagnosticModal onClose={() => setShowDiagnosticModal(false)} />}
     </div>
   )
 }
