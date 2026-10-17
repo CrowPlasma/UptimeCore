@@ -7,11 +7,14 @@
  * - Estado de carga y error
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag } from 'lucide-react'
+import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2 } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { MonitorCard } from '../components/MonitorCard'
 import { MonitorModal } from '../components/MonitorModal'
+import { IncidentLogModal } from '../components/IncidentLogModal'
+import { NocWallboard } from '../components/NocWallboard'
+import { isSoundEnabled, setSoundEnabled, playTestSound } from '../utils/soundAlert'
 import type { ModalMode } from '../components/MonitorModal'
 
 // ── Tarjeta de métrica ─────────────────────────────────────────────────────
@@ -125,6 +128,15 @@ function TagFilter({ allTagNames, selected, onChange }: {
 }
 
 // ── Dashboard principal ────────────────────────────────────────────────────
+const STATUS_ORDER: Record<string, number> = {
+  DOWN: 0,
+  DEGRADED: 1,
+  MAINTENANCE: 2,
+  UP: 3,
+  UNKNOWN: 4,
+  PAUSED: 5,
+}
+
 export function Dashboard() {
   const { groups, allTags, loading, error, lastEventAt, sseConnected, setSseConnected, fetchGroups } = useMonitorStore()
   const [search, setSearch] = useState('')
@@ -133,6 +145,37 @@ export function Dashboard() {
   const [tagFilter, setTagFilter] = useState('all')
   const [modal, setModal] = useState<ModalMode | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [showIncidentLog, setShowIncidentLog] = useState(false)
+  const [nocMode, setNocMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('uptimecore_noc_mode') === '1' } catch { return false }
+  })
+  const [sortDownFirst, setSortDownFirst] = useState<boolean>(true)
+  const [soundOn, setSoundOn] = useState<boolean>(() => isSoundEnabled())
+
+  const handleToggleNoc = () => {
+    setNocMode(prev => {
+      const next = !prev
+      try { localStorage.setItem('uptimecore_noc_mode', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
+
+  const handleToggleSound = () => {
+    const next = !soundOn
+    setSoundOn(next)
+    setSoundEnabled(next)
+    if (next) {
+      playTestSound()
+    }
+  }
+
+  const handleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {})
+    } else {
+      document.exitFullscreen?.().catch(() => {})
+    }
+  }
 
   // Carga inicial + SSE (Real-Time)
   useEffect(() => {
@@ -210,28 +253,38 @@ export function Dashboard() {
     return { totalGroups: groups.length, up, down, degraded, maintenance, paused };
   }, [groups])
 
-  const filtered = useMemo(() => groups.filter(g => {
-    const term = search.trim().toLowerCase()
-    const matchSearch = !term ||
-      g.name.toLowerCase().includes(term) ||
-      (g.description ? g.description.toLowerCase().includes(term) : false) ||
-      g.tags?.some(t => t.name.toLowerCase().includes(term)) ||
-      g.monitors?.some(m =>
-        m.name.toLowerCase().includes(term) ||
-        m.target.toLowerCase().includes(term) ||
-        (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
-      )
-    const matchFilter = (() => {
-      if (tagFilter === 'all') return true;
-      if (tagFilter === 'up') return g.overall_status === 'UP';
-      if (tagFilter === 'down') return g.monitors?.some(m => m.is_active !== false && !m.is_maintenance && m.current_status === 'DOWN') || g.overall_status === 'DOWN';
-      if (tagFilter === 'degraded') return g.overall_status === 'DEGRADED';
-      if (tagFilter === 'maintenance') return g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)) || g.overall_status === 'MAINTENANCE';
-      if (tagFilter === 'paused') return g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED') || g.overall_status === 'PAUSED';
-      return g.tags?.some(t => t.name === tagFilter);
-    })();
-    return matchSearch && matchFilter
-  }), [groups, search, tagFilter])
+  const filtered = useMemo(() => {
+    const list = groups.filter(g => {
+      const term = search.trim().toLowerCase()
+      const matchSearch = !term ||
+        g.name.toLowerCase().includes(term) ||
+        (g.description ? g.description.toLowerCase().includes(term) : false) ||
+        g.tags?.some(t => t.name.toLowerCase().includes(term)) ||
+        g.monitors?.some(m =>
+          m.name.toLowerCase().includes(term) ||
+          m.target.toLowerCase().includes(term) ||
+          (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
+        )
+      const matchFilter = (() => {
+        if (tagFilter === 'all') return true;
+        if (tagFilter === 'up') return g.overall_status === 'UP';
+        if (tagFilter === 'down') return g.monitors?.some(m => m.is_active !== false && !m.is_maintenance && m.current_status === 'DOWN') || g.overall_status === 'DOWN';
+        if (tagFilter === 'degraded') return g.overall_status === 'DEGRADED';
+        if (tagFilter === 'maintenance') return g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)) || g.overall_status === 'MAINTENANCE';
+        if (tagFilter === 'paused') return g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED') || g.overall_status === 'PAUSED';
+        return g.tags?.some(t => t.name === tagFilter);
+      })();
+      return matchSearch && matchFilter
+    })
+
+    if (!sortDownFirst) return list
+    return [...list].sort((a, b) => {
+      const pa = STATUS_ORDER[a.overall_status] ?? 4
+      const pb = STATUS_ORDER[b.overall_status] ?? 4
+      if (pa !== pb) return pa - pb
+      return 0
+    })
+  }, [groups, search, tagFilter, sortDownFirst])
 
   // Paginación para Alta Concurrencia
   const paginatedGroups = useMemo(() => {
@@ -288,20 +341,111 @@ export function Dashboard() {
         </div>
 
         {/* ── Barra de controles ──── */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="text"
             placeholder="🔍  Buscar por nombre o IP..."
             value={search}
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
             style={{
-              flex: 1, minWidth: 220, padding: '9px 14px', borderRadius: 9,
+              flex: 1, minWidth: 200, padding: '9px 14px', borderRadius: 9,
               border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
               color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
             }}
           />
 
           <TagFilter allTagNames={allTagNames} selected={tagFilter} onChange={(v) => { setTagFilter(v); setCurrentPage(1); }} />
+
+          {/* Priorizar Caídos 1º */}
+          <button
+            onClick={() => setSortDownFirst(v => !v)}
+            title="Ordenar automáticamente los grupos Caídos y Degradados al principio de la lista"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 12px', borderRadius: 9,
+              border: sortDownFirst ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid var(--color-border)',
+              background: sortDownFirst ? 'rgba(239, 68, 68, 0.12)' : 'var(--color-bg-card)',
+              color: sortDownFirst ? '#f87171' : 'var(--color-text-secondary)',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            <ArrowUpNarrowWide size={14} />
+            Caídos 1º
+          </button>
+
+          {/* Bitácora de Eventos / Historial de Caídas */}
+          <button
+            onClick={() => setShowIncidentLog(true)}
+            title="Abrir Bitácora de Eventos e Historial de Caídas"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 13px', borderRadius: 9,
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-card)',
+              color: 'var(--color-text-primary)',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            <ClipboardList size={14} color="var(--color-accent)" />
+            Bitácora
+            {(stats.down + stats.degraded) > 0 && (
+              <span style={{
+                background: '#ef4444', color: '#fff', fontSize: 10.5, fontWeight: 800,
+                padding: '1px 6px', borderRadius: 99, lineHeight: 1.3,
+              }}>
+                {stats.down + stats.degraded}
+              </span>
+            )}
+          </button>
+
+          {/* Modo Pantalla NOC / Wallboard */}
+          <button
+            onClick={handleToggleNoc}
+            title="Alternar Modo Pantalla NOC / Wallboard compacto de alta densidad"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 13px', borderRadius: 9,
+              border: nocMode ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+              background: nocMode ? 'var(--color-accent)' : 'var(--color-bg-card)',
+              color: nocMode ? '#fff' : 'var(--color-text-primary)',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            <MonitorIcon size={14} />
+            Modo NOC
+          </button>
+
+          {nocMode && (
+            <button
+              onClick={handleFullscreen}
+              title="Pantalla completa para monitor de pared"
+              style={{
+                width: 36, height: 36, borderRadius: 9,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
+                color: 'var(--color-text-secondary)', cursor: 'pointer',
+              }}
+            >
+              <Maximize2 size={14} />
+            </button>
+          )}
+
+          {/* Alerta Sonora opcional */}
+          <button
+            onClick={handleToggleSound}
+            title={soundOn ? 'Alerta sonora ACTIVADA (suena al caer o recuperarse un monitor)' : 'Activar alerta sonora para caídas en vivo'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 12px', borderRadius: 9,
+              border: soundOn ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid var(--color-border)',
+              background: soundOn ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-bg-card)',
+              color: soundOn ? '#4ade80' : 'var(--color-text-muted)',
+              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            {soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+            {soundOn ? 'Sonido ON' : 'Silencio'}
+          </button>
 
           {/* Indicador SSE en Tiempo Real */}
           <div
@@ -357,7 +501,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* ── Lista de grupos ──── */}
+      {/* ── Lista de grupos o Modo NOC Wallboard ──── */}
       {!loading || groups.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {filtered.length === 0 && search === "" && !loading ? (
@@ -378,6 +522,8 @@ export function Dashboard() {
                 + Crear primer monitor
               </button>
             </div>
+          ) : nocMode ? (
+            <NocWallboard groups={filtered} onOpenModal={setModal} />
           ) : (
             paginatedGroups.map(group => (
               <MonitorCard key={group.id} group={group} onOpenModal={setModal} searchTerm={search} />
@@ -389,12 +535,15 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore · {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización cada 15s
+          UptimeCore · {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
         </div>
       )}
 
-      {/* ── Modal ──── */}
+      {/* ── Modal Crear/Editar ──── */}
       {modal && <MonitorModal mode={modal} onClose={() => setModal(null)} />}
+
+      {/* ── Modal Bitácora de Eventos ──── */}
+      {showIncidentLog && <IncidentLogModal onClose={() => setShowIncidentLog(false)} />}
     </div>
   )
 }

@@ -52,25 +52,13 @@ interface Props {
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
-export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal, searchTerm }: Props) {
-  const { deleteGroup, deleteMonitor } = useMonitorStore()
-  const [userExpanded, setUserExpanded] = useState<boolean | null>(null)
+export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal }: Props) {
+  const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
+  const [expanded, setExpanded] = useState<boolean>(false)
   const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
   >(null)
-
-  const matchesEndpoint = React.useMemo(() => {
-    if (!searchTerm || !searchTerm.trim()) return false
-    const term = searchTerm.trim().toLowerCase()
-    return group.monitors?.some(m => 
-      m.name.toLowerCase().includes(term) ||
-      m.target.toLowerCase().includes(term) ||
-      (m.port ? `${m.target}:${m.port}`.toLowerCase().includes(term) : false)
-    )
-  }, [searchTerm, group.monitors])
-
-  const expanded = userExpanded !== null ? userExpanded : !!matchesEndpoint
 
   const status = group.overall_status ?? 'UNKNOWN'
   const groupHistory = React.useMemo(() => aggregateGroupHistory(group.monitors || []), [group.monitors])
@@ -87,12 +75,16 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
     const lastTimeStr = lastPt?.time
       ? new Date(lastPt.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       : null
+    const allPaused = mons.length > 0 && active.length === 0
+    const allMaint = mons.length > 0 && mons.every(m => m.is_active !== false && (m.is_maintenance || m.current_status === 'MAINTENANCE'))
     return {
       total: mons.length,
       activeCount: active.length,
       upCount: active.filter(m => m.current_status === 'UP').length,
       avgLat,
       lastTimeStr,
+      allPaused,
+      allMaint,
     }
   }, [group.monitors, groupHistory])
 
@@ -111,7 +103,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
           style={{
             display: 'grid', gridTemplateColumns: '220px 1fr auto', alignItems: 'center', gap: 16, padding: '22px 28px', cursor: 'pointer', position: 'relative',
           }}
-          onClick={() => setUserExpanded(prev => prev === null ? !matchesEndpoint : !prev)}
+          onClick={() => setExpanded(prev => !prev)}
         >
           {/* Franja de color */}
           <div style={{
@@ -183,9 +175,31 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
               <StatusBadge status={status} />
             </div>
 
-            {/* Acciones */}
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); setUserExpanded(true) }} />
+            {/* Acciones de Grupo Completo */}
+            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+              {groupMetrics.total > 0 && (
+                <>
+                  <Btn
+                    icon={<Wrench size={12} strokeWidth={2.5} />}
+                    title={groupMetrics.allMaint ? "Quitar Mantenimiento a todo el grupo" : "Poner todo el grupo en Mantenimiento"}
+                    onClick={() => toggleGroupMaintenance(group.id)}
+                    customColor={groupMetrics.allMaint
+                      ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
+                      : undefined
+                    }
+                  />
+                  <Btn
+                    icon={!groupMetrics.allPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />}
+                    title={!groupMetrics.allPaused ? "Pausar todo el grupo" : "Reanudar todo el grupo"}
+                    onClick={() => toggleGroup(group.id)}
+                    customColor={groupMetrics.allPaused
+                      ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
+                      : undefined
+                    }
+                  />
+                </>
+              )}
+              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); setExpanded(true) }} />
               <Btn icon={<Pencil size={13} />} title="Editar grupo"      onClick={() => onOpenModal({ type: 'edit_group', group })} />
               <Btn icon={<Trash2 size={13} />} title="Eliminar grupo"    danger onClick={() => setConfirmDelete({ type: 'group' })} />
             </div>

@@ -95,3 +95,19 @@ type CheckResult struct {
 	MetricDisk    *float64      `json:"metric_disk,omitempty"`
 	MetricValue   *float64      `json:"metric_value,omitempty"`
 }
+
+// IncidentEvent represents a state transition or outage window for the Incident Log.
+type IncidentEvent struct {
+	MonitorID     int           `json:"monitor_id"`
+	MonitorName   string        `json:"monitor_name"`
+	MonitorType   string        `json:"monitor_type"`
+	MonitorTarget string        `json:"monitor_target"`
+	GroupID       int           `json:"group_id"`
+	GroupName     string        `json:"group_name"`
+	Status        MonitorStatus `json:"status"`
+	StartedAt     time.Time     `json:"started_at"`
+	EndedAt       *time.Time    `json:"ended_at,omitempty"`
+	DurationSec   int           `json:"duration_sec"`
+	IsResolved    bool          `json:"is_resolved"`
+	ErrorMsg      string        `json:"error_msg,omitempty"`
+}

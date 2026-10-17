@@ -389,6 +389,133 @@ func (db *DB) ToggleMonitorActive(ctx context.Context, id int) (bool, error) {
 	return isActive, err
 }
 
+// SetGroupMonitorsActive sets is_active for all monitors in a group and clears is_maintenance.
+func (db *DB) SetGroupMonitorsActive(ctx context.Context, groupID int, isActive bool) ([]models.Monitor, error) {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE monitors
+		SET is_active = $1,
+		    is_maintenance = false,
+		    updated_at = NOW()
+		WHERE group_id = $2`, isActive, groupID)
+	if err != nil {
+		return nil, err
+	}
+	return db.GetMonitorsByGroup(ctx, groupID)
+}
+
+// SetGroupMonitorsMaintenance sets is_maintenance for all monitors in a group and ensures is_active is true.
+func (db *DB) SetGroupMonitorsMaintenance(ctx context.Context, groupID int, isMaintenance bool) ([]models.Monitor, error) {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE monitors
+		SET is_maintenance = $1,
+		    is_active = true,
+		    updated_at = NOW()
+		WHERE group_id = $2`, isMaintenance, groupID)
+	if err != nil {
+		return nil, err
+	}
+	return db.GetMonitorsByGroup(ctx, groupID)
+}
+
+// ListIncidents returns recent DOWN and DEGRADED state transitions with outage durations.
+func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]models.IncidentEvent, error) {
+	var interval string
+	switch rangeStr {
+	case "3h":
+		interval = "3 hours"
+	case "6h":
+		interval = "6 hours"
+	case "24h":
+		interval = "24 hours"
+	case "7d", "1w":
+		interval = "7 days"
+	case "30d":
+		interval = "30 days"
+	default:
+		interval = "24 hours"
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 250
+	}
+
+	rows, err := db.pool.Query(ctx, `
+		WITH transitions AS (
+			SELECT
+				time,
+				monitor_id,
+				status,
+				COALESCE(error_msg, '') AS error_msg,
+				LAG(status) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS prev_status
+			FROM monitor_history
+			WHERE time >= NOW() - $1::interval
+			  AND status IN ('UP', 'DOWN', 'DEGRADED', 'MAINTENANCE')
+		),
+		changes AS (
+			SELECT
+				time AS started_at,
+				monitor_id,
+				status,
+				error_msg,
+				prev_status,
+				LEAD(time) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS ended_at
+			FROM transitions
+			WHERE prev_status IS DISTINCT FROM status
+		)
+		SELECT
+			c.monitor_id,
+			m.name AS monitor_name,
+			m.type AS monitor_type,
+			m.target AS monitor_target,
+			COALESCE(m.group_id, 0) AS group_id,
+			COALESCE(g.name, 'Sin Grupo') AS group_name,
+			c.status,
+			c.started_at,
+			c.ended_at,
+			GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (COALESCE(c.ended_at, NOW()) - c.started_at))::int, 0)) AS duration_sec,
+			CASE
+				WHEN c.ended_at IS NOT NULL THEN true
+				WHEN NOT m.is_active OR m.is_maintenance THEN true
+				ELSE false
+			END AS is_resolved,
+			c.error_msg
+		FROM changes c
+		JOIN monitors m ON m.id = c.monitor_id
+		LEFT JOIN monitor_groups g ON g.id = m.group_id
+		WHERE c.status IN ('DOWN', 'DEGRADED')
+		ORDER BY is_resolved ASC, c.started_at DESC
+		LIMIT $2
+	`, interval, limit)
+	if err != nil {
+		return []models.IncidentEvent{}, err
+	}
+	defer rows.Close()
+
+	var list []models.IncidentEvent
+	for rows.Next() {
+		var ev models.IncidentEvent
+		if err := rows.Scan(
+			&ev.MonitorID,
+			&ev.MonitorName,
+			&ev.MonitorType,
+			&ev.MonitorTarget,
+			&ev.GroupID,
+			&ev.GroupName,
+			&ev.Status,
+			&ev.StartedAt,
+			&ev.EndedAt,
+			&ev.DurationSec,
+			&ev.IsResolved,
+			&ev.ErrorMsg,
+		); err == nil {
+			list = append(list, ev)
+		}
+	}
+	if list == nil {
+		return []models.IncidentEvent{}, nil
+	}
+	return list, nil
+}
+
 // --- History (TimescaleDB hypertable) ---
 
 // SaveCheckResult persists a single polling result to the time-series table.

@@ -4,7 +4,7 @@
  * Maneja la validación inline y el submit al store de Zustand.
  */
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Zap, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorType } from '../types'
 import type { MonitorFormData } from '../store/monitorStore'
 import { useMonitorStore } from '../store/monitorStore'
@@ -33,6 +33,14 @@ interface Props {
   onClose: () => void
 }
 
+interface TestConnectionResult {
+  status: string
+  latency_ms: number
+  error_msg?: string
+  metric_value?: string
+  checked_at?: string
+}
+
 const EMPTY_FORM: MonitorFormData = {
   name: '', type: 'PING', target: '', port: '',
   interval_seconds: 60, retries: 3, snmp_community: 'public', snmp_oid: '.1.3.6.1.2.1.1.3.0', ssl_expiration_days: 7, value_threshold: 0, tags: '', description: '', group_id: null,
@@ -44,9 +52,12 @@ export function MonitorModal({ mode, onClose }: Props) {
   const { addGroup, updateGroup, addMonitor, updateMonitor, allTags } = useMonitorStore()
   const [form, setForm] = useState<MonitorFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof MonitorFormData, string>>>({})
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestConnectionResult | null>(null)
 
   // Pre-llenar el formulario en modo edición
   useEffect(() => {
+    setTestResult(null)
     if (mode.type === 'edit_group') {
       const g = mode.group
       setForm({
@@ -83,8 +94,10 @@ export function MonitorModal({ mode, onClose }: Props) {
     ? (isGroup ? 'Editar Grupo de Monitor' : 'Editar Endpoint')
     : (isGroup ? 'Nuevo Grupo de Monitor' : 'Nuevo Endpoint')
 
-  const set = (key: keyof MonitorFormData, val: string | number) =>
+  const set = (key: keyof MonitorFormData, val: string | number) => {
     setForm(f => ({ ...f, [key]: val }))
+    setTestResult(null)
+  }
 
   function validate(): boolean {
     const e: typeof errors = {}
@@ -93,6 +106,42 @@ export function MonitorModal({ mode, onClose }: Props) {
     if (!isGroup && needsPort(form.type) && !form.port) e.port = 'El puerto es requerido para este protocolo'
     setErrors(e)
     return Object.keys(e).length === 0
+  }
+
+  async function handleTestConnection() {
+    const e: typeof errors = {}
+    if (!form.target.trim()) e.target = 'El destino es requerido para probar la conexión'
+    if (needsPort(form.type) && !form.port) e.port = 'El puerto es requerido para este protocolo'
+    setErrors(e)
+    if (Object.keys(e).length > 0) return
+
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/monitors/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: form.type,
+          target: form.target.trim(),
+          port: form.port ? parseInt(String(form.port)) : null,
+          snmp_community: form.snmp_community || 'public',
+          snmp_oid: form.snmp_oid || '.1.3.6.1.2.1.1.3.0',
+          ssl_expiration_days: form.ssl_expiration_days || 7,
+          value_threshold: form.value_threshold || 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setTestResult({ status: 'DOWN', latency_ms: 0, error_msg: data.error || `HTTP ${res.status}` })
+      } else {
+        setTestResult(data)
+      }
+    } catch (err: any) {
+      setTestResult({ status: 'DOWN', latency_ms: 0, error_msg: err?.message || 'Error de red' })
+    } finally {
+      setTesting(false)
+    }
   }
 
   function handleSubmit() {
@@ -350,24 +399,105 @@ export function MonitorModal({ mode, onClose }: Props) {
               </Field>
             </div>
           )}
+          {/* Banner de resultado de prueba en vivo */}
+          {!isGroup && testResult && (
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: 10,
+              border: `1px solid ${
+                testResult.status === 'UP' ? 'rgba(34, 197, 94, 0.45)'
+                : testResult.status === 'DEGRADED' ? 'rgba(245, 158, 11, 0.45)'
+                : 'rgba(239, 68, 68, 0.45)'
+              }`,
+              background: testResult.status === 'UP' ? 'rgba(34, 197, 94, 0.10)'
+                : testResult.status === 'DEGRADED' ? 'rgba(245, 158, 11, 0.10)'
+                : 'rgba(239, 68, 68, 0.10)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13 }}>
+                  {testResult.status === 'UP' && <CheckCircle2 size={16} color="#22c55e" />}
+                  {testResult.status === 'DEGRADED' && <AlertTriangle size={16} color="#f59e0b" />}
+                  {testResult.status !== 'UP' && testResult.status !== 'DEGRADED' && <XCircle size={16} color="#ef4444" />}
+                  <span style={{
+                    color: testResult.status === 'UP' ? '#22c55e'
+                      : testResult.status === 'DEGRADED' ? '#f59e0b'
+                      : '#ef4444'
+                  }}>
+                    {testResult.status === 'UP' ? 'Conexión exitosa (UP)'
+                      : testResult.status === 'DEGRADED' ? 'Conexión con advertencia (DEGRADED)'
+                      : 'Fallo de conexión (DOWN)'}
+                  </span>
+                </div>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: 'var(--color-text-primary)',
+                  background: 'var(--color-bg-primary)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                }}>
+                  {testResult.latency_ms} ms
+                </span>
+              </div>
+              {testResult.metric_value && (
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontFamily: "'JetBrains Mono', monospace" }}>
+                  📊 Valor obtenido: <strong>{testResult.metric_value}</strong>
+                </div>
+              )}
+              {testResult.error_msg && (
+                <div style={{ fontSize: 12, color: testResult.status === 'DEGRADED' ? '#d97706' : '#ef4444', fontFamily: "'JetBrains Mono', monospace", wordBreak: 'break-all' }}>
+                  ⚠️ Detalle: {testResult.error_msg}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 28 }}>
-          <button onClick={onClose} style={{
-            padding: '9px 20px', borderRadius: 8, border: '1px solid var(--color-border)',
-            background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
-            fontSize: 14, fontWeight: 600,
-          }}>
-            Cancelar
-          </button>
-          <button onClick={handleSubmit} style={{
-            padding: '9px 24px', borderRadius: 8, border: 'none',
-            background: 'var(--color-accent)', color: '#fff',
-            fontSize: 14, fontWeight: 700,
-          }}>
-            {isEdit ? 'Guardar cambios' : 'Crear'}
-          </button>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 28, flexWrap: 'wrap' }}>
+          <div>
+            {!isGroup && (
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={testing}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '9px 16px', borderRadius: 8,
+                  border: '1px solid rgba(59, 130, 246, 0.45)',
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  color: '#60a5fa',
+                  fontSize: 13, fontWeight: 700,
+                  cursor: testing ? 'wait' : 'pointer',
+                  opacity: testing ? 0.7 : 1,
+                }}
+              >
+                <Zap size={14} />
+                {testing ? 'Probando...' : 'Probar Conexión'}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onClose} style={{
+              padding: '9px 20px', borderRadius: 8, border: '1px solid var(--color-border)',
+              background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
+              fontSize: 14, fontWeight: 600,
+            }}>
+              Cancelar
+            </button>
+            <button onClick={handleSubmit} style={{
+              padding: '9px 24px', borderRadius: 8, border: 'none',
+              background: 'var(--color-accent)', color: '#fff',
+              fontSize: 14, fontWeight: 700,
+            }}>
+              {isEdit ? 'Guardar cambios' : 'Crear'}
+            </button>
+          </div>
         </div>
       </div>
     </>

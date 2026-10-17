@@ -39,18 +39,25 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	api.Get("/groups", h.ListGroups)
 	api.Post("/groups", h.CreateGroup)
 	api.Put("/groups/:id", h.UpdateGroup)
+	api.Put("/groups/:id/toggle", h.ToggleGroup)
+	api.Put("/groups/:id/maintenance", h.ToggleGroupMaintenance)
 	api.Delete("/groups/:id", h.DeleteGroup)
 
-		// Push Agent metrics
+	// Push Agent metrics
 	api.Post("/push/:token", h.PushAgent)
 
 	// Monitor Endpoints
 	api.Post("/monitors", h.CreateMonitor)
+	api.Post("/monitors/test", h.TestMonitor)
 	api.Put("/monitors/:id", h.UpdateMonitor)
 	api.Put("/monitors/:id/toggle", h.ToggleMonitor)
 	api.Put("/monitors/:id/maintenance", h.ToggleMaintenance)
 	api.Delete("/monitors/:id", h.DeleteMonitor)
 	api.Get("/monitors/:id/history", h.GetHistory)
+
+	// Incident Log
+	api.Get("/incidents", h.ListIncidents)
+
 	api.Delete("/system/wipe", h.WipeAllData)
 
 	// Settings

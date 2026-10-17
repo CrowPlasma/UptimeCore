@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand'
 import { useToastStore } from './toastStore'
+import { playDownAlert, playRecoveredAlert } from '../utils/soundAlert'
 import type { MonitorGroup, Monitor, MonitorType, Tag, HistoryPoint } from '../types'
 
 const isActive = (m: Monitor) => m.is_active !== false && m.current_status !== 'PAUSED'
@@ -107,6 +108,8 @@ interface MonitorStore {
   addGroup: (data: MonitorFormData) => Promise<void>
   updateGroup: (groupId: number, data: MonitorFormData) => Promise<void>
   deleteGroup: (groupId: number) => Promise<void>
+  toggleGroup: (groupId: number) => Promise<void>
+  toggleGroupMaintenance: (groupId: number) => Promise<void>
 
   // CRUD Monitors
   addMonitor: (groupId: number, data: MonitorFormData) => Promise<void>
@@ -266,6 +269,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED' && newStatus !== 'MAINTENANCE' && newStatus !== 'UNKNOWN') {
               const toastId = `monitor-alert-${m.id}`;
               if (newStatus === 'DOWN') {
+                playDownAlert();
                 useToastStore.getState().addToast({
                   id: toastId,
                   type: 'error',
@@ -273,6 +277,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                   message: `El endpoint "${m.name}" del grupo "${g.name}" ha dejado de responder.`
                 });
               } else if (newStatus === 'UP' && oldStatus !== 'MAINTENANCE') {
+                playRecoveredAlert();
                 useToastStore.getState().removeToast(`monitor-alert-${m.id}`);
                 useToastStore.getState().addToast({
                   type: 'success',
@@ -368,6 +373,107 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
   deleteGroup: async (groupId) => {
     await apiFetch(`/groups/${groupId}`, { method: 'DELETE' })
     await get().fetchGroups()
+  },
+
+  toggleGroup: async (groupId) => {
+    const now = Date.now()
+    set((state) => {
+      const groups = state.groups.map(g => {
+        if (g.id !== groupId) return g
+        const anyActive = (g.monitors || []).some(m => m.is_active !== false && m.current_status !== 'PAUSED')
+        const targetActive = !anyActive
+        const newMonitors = (g.monitors || []).map(m => {
+          manualActionAt.set(m.id, now)
+          return {
+            ...m,
+            is_active: targetActive,
+            is_maintenance: false,
+            current_status: (targetActive ? 'UNKNOWN' : 'PAUSED') as any,
+            current_latency_ms: 0,
+            current_msg: '',
+          }
+        })
+        return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+      })
+      return { groups }
+    })
+
+    try {
+      const res = await apiFetch(`/groups/${groupId}/toggle`, { method: 'PUT' })
+      const doneAt = Date.now()
+      set((state) => {
+        const groups = state.groups.map(g => {
+          if (g.id !== groupId) return g
+          const isAct = res.is_active ?? false
+          const newMonitors = (g.monitors || []).map(m => {
+            manualActionAt.set(m.id, doneAt)
+            return {
+              ...m,
+              is_active: isAct,
+              is_maintenance: false,
+              current_status: (isAct ? (m.current_status === 'PAUSED' ? 'UNKNOWN' : m.current_status) : 'PAUSED') as any,
+              current_latency_ms: isAct ? m.current_latency_ms : 0,
+              current_msg: isAct ? m.current_msg : '',
+            }
+          })
+          return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+        })
+        return { groups }
+      })
+    } catch {
+      await get().fetchGroups()
+    }
+  },
+
+  toggleGroupMaintenance: async (groupId) => {
+    const now = Date.now()
+    set((state) => {
+      const groups = state.groups.map(g => {
+        if (g.id !== groupId) return g
+        const mons = g.monitors || []
+        const allMaint = mons.length > 0 && mons.every(m => m.is_active !== false && (m.is_maintenance || m.current_status === 'MAINTENANCE'))
+        const targetMaint = !allMaint
+        const newMonitors = mons.map(m => {
+          manualActionAt.set(m.id, now)
+          return {
+            ...m,
+            is_active: true,
+            is_maintenance: targetMaint,
+            current_status: (targetMaint ? 'MAINTENANCE' : 'UNKNOWN') as any,
+            current_latency_ms: 0,
+            current_msg: targetMaint ? 'En Mantenimiento' : '',
+          }
+        })
+        return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+      })
+      return { groups }
+    })
+
+    try {
+      const res = await apiFetch(`/groups/${groupId}/maintenance`, { method: 'PUT' })
+      const doneAt = Date.now()
+      set((state) => {
+        const groups = state.groups.map(g => {
+          if (g.id !== groupId) return g
+          const isMaint = res.is_maintenance ?? false
+          const newMonitors = (g.monitors || []).map(m => {
+            manualActionAt.set(m.id, doneAt)
+            return {
+              ...m,
+              is_active: true,
+              is_maintenance: isMaint,
+              current_status: (isMaint ? 'MAINTENANCE' : (m.current_status === 'MAINTENANCE' || m.current_status === 'PAUSED' ? 'UNKNOWN' : m.current_status)) as any,
+              current_latency_ms: isMaint ? 0 : m.current_latency_ms,
+              current_msg: isMaint ? 'En Mantenimiento' : m.current_msg,
+            }
+          })
+          return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+        })
+        return { groups }
+      })
+    } catch {
+      await get().fetchGroups()
+    }
   },
 
   addMonitor: async (groupId, data) => {

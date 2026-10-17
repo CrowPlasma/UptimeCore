@@ -424,6 +424,147 @@ func (h *Handlers) ToggleMaintenance(c *fiber.Ctx) error {
 	})
 }
 
+// ToggleGroup handles PUT /api/groups/:id/toggle (pause or resume all monitors in a group)
+func (h *Handlers) ToggleGroup(c *fiber.Ctx) error {
+	groupID, _ := strconv.Atoi(c.Params("id"))
+	existing, err := h.db.GetMonitorsByGroup(c.Context(), groupID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// If any monitor in the group is active, pause the whole group; otherwise resume all.
+	anyActive := false
+	for _, m := range existing {
+		h.engine.StopMonitor(m.ID)
+		if m.IsActive {
+			anyActive = true
+		}
+	}
+	targetActive := !anyActive
+
+	updatedList, err := h.db.SetGroupMonitorsActive(c.Context(), groupID, targetActive)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	for _, m := range updatedList {
+		if targetActive {
+			h.engine.BroadcastStatus(c.Context(), m.ID, models.StatusUNKNOWN, 0, "", true, false)
+			h.cache.SetStatus(c.Context(), m.ID, "CHECKING", 0, "", nil)
+			h.engine.ScheduleMonitor(m)
+		} else {
+			h.engine.BroadcastStatus(c.Context(), m.ID, models.StatusPAUSED, 0, "En Pausa", false, false)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"ok":             true,
+		"is_active":      targetActive,
+		"is_maintenance": false,
+	})
+}
+
+// ToggleGroupMaintenance handles PUT /api/groups/:id/maintenance (toggle maintenance for all monitors in a group)
+func (h *Handlers) ToggleGroupMaintenance(c *fiber.Ctx) error {
+	groupID, _ := strconv.Atoi(c.Params("id"))
+	existing, err := h.db.GetMonitorsByGroup(c.Context(), groupID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	allMaint := len(existing) > 0
+	for _, m := range existing {
+		h.engine.StopMonitor(m.ID)
+		if !m.IsActive || !m.IsMaintenance {
+			allMaint = false
+		}
+	}
+	targetMaint := !allMaint
+
+	updatedList, err := h.db.SetGroupMonitorsMaintenance(c.Context(), groupID, targetMaint)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	for _, m := range updatedList {
+		if targetMaint {
+			h.engine.BroadcastStatus(c.Context(), m.ID, models.StatusMAINTENANCE, 0, "En Mantenimiento", true, true)
+			intervalSec := m.IntervalSeconds
+			if intervalSec <= 0 {
+				intervalSec = 60
+			}
+			h.engine.ScheduleMonitorAfter(m, time.Duration(intervalSec)*time.Second)
+		} else {
+			h.engine.BroadcastStatus(c.Context(), m.ID, models.StatusUNKNOWN, 0, "", true, false)
+			h.cache.SetStatus(c.Context(), m.ID, "CHECKING", 0, "", nil)
+			h.engine.ScheduleMonitor(m)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"ok":             true,
+		"is_active":      true,
+		"is_maintenance": targetMaint,
+	})
+}
+
+// TestMonitor handles POST /api/monitors/test (runs an on-demand connectivity check without persisting)
+func (h *Handlers) TestMonitor(c *fiber.Ctx) error {
+	var body struct {
+		Type              string  `json:"type"`
+		Target            string  `json:"target"`
+		Port              *int    `json:"port"`
+		SnmpCommunity     *string `json:"snmp_community"`
+		SnmpOID           *string `json:"snmp_oid"`
+		SslExpirationDays *int    `json:"ssl_expiration_days"`
+		ValueThreshold    *int    `json:"value_threshold"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+	target := strings.TrimSpace(body.Target)
+	mType := strings.ToUpper(strings.TrimSpace(body.Type))
+	if target == "" || mType == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "type and target are required"})
+	}
+
+	temp := models.Monitor{
+		Type:              mType,
+		Target:            target,
+		Port:              body.Port,
+		TimeoutSeconds:    5,
+		SnmpCommunity:     body.SnmpCommunity,
+		SnmpOID:           body.SnmpOID,
+		SslExpirationDays: body.SslExpirationDays,
+		ValueThreshold:    body.ValueThreshold,
+	}
+
+	res := monitor.RunCheck(c.Context(), temp)
+	if temp.ValueThreshold != nil && *temp.ValueThreshold > 0 && res.MetricValue != nil {
+		if *res.MetricValue >= float64(*temp.ValueThreshold) {
+			res.Status = models.StatusDEGRADED
+			res.ErrorMsg = fmt.Sprintf("Valor %.2f > Límite %d", *res.MetricValue, *temp.ValueThreshold)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"status":       res.Status,
+		"latency_ms":   res.LatencyMs,
+		"error_msg":    res.ErrorMsg,
+		"metric_value": res.MetricValue,
+	})
+}
+
+// ListIncidents handles GET /api/incidents?range=24h
+func (h *Handlers) ListIncidents(c *fiber.Ctx) error {
+	rangeStr := c.Query("range", "24h")
+	incidents, err := h.db.ListIncidents(c.Context(), rangeStr, 250)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(incidents)
+}
+
 // GetHistory handles GET /api/monitors/:id/history?range=24h
 func (h *Handlers) GetHistory(c *fiber.Ctx) error {
 	id, _ := strconv.Atoi(c.Params("id"))
