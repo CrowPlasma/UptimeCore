@@ -96,8 +96,8 @@ export function NocWallboard({
   const sortedGroups = useMemo(() => {
     if (!sortDownFirst) return groups
     return [...groups].sort((a, b) => {
-      const pa = STATUS_PRIORITY[a.overall_status] ?? 4
-      const pb = STATUS_PRIORITY[b.overall_status] ?? 4
+      const pa = STATUS_PRIORITY[a.overall_status ?? 'UNKNOWN'] ?? 4
+      const pb = STATUS_PRIORITY[b.overall_status ?? 'UNKNOWN'] ?? 4
       if (pa !== pb) return pa - pb
       return a.name.localeCompare(b.name)
     })

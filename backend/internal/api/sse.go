@@ -60,12 +60,16 @@ func (h *SSEHub) Handler(c *fiber.Ctx) error {
 
 		// Enviar comentario de handshake inmediato para vaciar buffers de proxies (Nginx/Traefik/Dockge)
 		// y asegurar que el navegador pase de readyState 0 (CONNECTING) a 1 (OPEN) al instante.
-		fmt.Fprintf(w, ": connected\n\n")
+		// "retry" indica al navegador reintentar a los 3s si la conexión se corta.
+		fmt.Fprintf(w, "retry: 3000\n: connected\n\n")
+		fmt.Fprintf(w, "event: ping\ndata: {\"t\":%d}\n\n", time.Now().Unix())
 		if err := w.Flush(); err != nil {
 			return
 		}
 
-		ticker := time.NewTicker(15 * time.Second)
+		// Heartbeat como evento con nombre ("ping"): los comentarios SSE no son visibles desde JS,
+		// por lo que el watchdog del frontend necesita un evento real para saber que el stream sigue vivo.
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -82,8 +86,8 @@ func (h *SSEHub) Handler(c *fiber.Ctx) error {
 					}
 				}
 			case <-ticker.C:
-				// Ping para mantener la conexión viva (Keep-Alive)
-				fmt.Fprintf(w, ": keepalive\n\n")
+				// Ping para mantener la conexión viva (Keep-Alive) y alimentar el watchdog del navegador
+				fmt.Fprintf(w, "event: ping\ndata: {\"t\":%d}\n\n", time.Now().Unix())
 				if err := w.Flush(); err != nil {
 					return
 				}

@@ -144,6 +144,60 @@ function extractTags(groups: MonitorGroup[]): Tag[] {
   return Array.from(map.values())
 }
 
+/**
+ * Lanza la tarjeta de notificación (y el sonido) para una transición de estado de un monitor.
+ * Se usa tanto desde los eventos SSE como desde el polling HTTP de respaldo, para que las
+ * notificaciones sigan apareciendo aunque el stream en tiempo real se haya caído temporalmente.
+ * Los IDs de toast son por monitor, por lo que nunca se duplican tarjetas.
+ */
+function notifyStatusTransition(
+  m: Monitor,
+  groupName: string,
+  oldStatus: string | undefined,
+  newStatus: string,
+  latencyMs: number,
+  errorMsg: string,
+) {
+  const toastId = `monitor-alert-${m.id}`
+
+  // Limpia alertas activas si el monitor pasa a pausa o mantenimiento
+  if (newStatus === 'PAUSED' || newStatus === 'MAINTENANCE') {
+    useToastStore.getState().removeToast(toastId)
+    return
+  }
+
+  // Solo notificar transiciones reales desde un estado operativo conocido
+  if (!oldStatus || oldStatus === newStatus) return
+  if (oldStatus === 'UNKNOWN' || oldStatus === 'PAUSED' || oldStatus === 'MAINTENANCE') return
+  if (newStatus === 'UNKNOWN') return
+
+  if (newStatus === 'DOWN') {
+    playDownAlert()
+    useToastStore.getState().addToast({
+      id: toastId,
+      type: 'error',
+      title: '¡Monitor Caído!',
+      message: `El endpoint "${m.name}" (${m.target}) del grupo "${groupName}" dejó de responder.`,
+    })
+  } else if (newStatus === 'UP' && (oldStatus === 'DOWN' || oldStatus === 'DEGRADED')) {
+    playRecoveredAlert()
+    useToastStore.getState().removeToast(toastId)
+    useToastStore.getState().addToast({
+      id: `monitor-recovered-${m.id}`,
+      type: 'success',
+      title: 'Monitor Recuperado',
+      message: `El endpoint "${m.name}" del grupo "${groupName}" vuelve a estar operativo (${latencyMs} ms).`,
+    })
+  } else if (newStatus === 'DEGRADED') {
+    useToastStore.getState().addToast({
+      id: toastId,
+      type: 'warning',
+      title: 'Rendimiento Degradado',
+      message: `El endpoint "${m.name}" del grupo "${groupName}" reporta: ${errorMsg || 'alta latencia'}.`,
+    })
+  }
+}
+
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
   groups: [],
   allTags: [],
@@ -196,6 +250,14 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
               current_msg: prev.current_msg,
               live_history: mergedHistory,
             }
+          }
+
+          // Respaldo de notificaciones: si el SSE se perdió el cambio, el polling lo detecta y avisa
+          if (prev && prev.current_status !== m.current_status) {
+            notifyStatusTransition(
+              m, g.name, prev.current_status, m.current_status ?? 'UNKNOWN',
+              m.current_latency_ms ?? 0, m.current_msg ?? '',
+            )
           }
 
           return { ...m, live_history: mergedHistory }
@@ -265,40 +327,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             const newDisk = ev.metric_disk !== undefined ? ev.metric_disk : m.current_disk
             const newValue = ev.metric_value !== undefined ? ev.metric_value : m.current_value
 
-            // Clean up any active down/degraded alert toast if monitor is paused or put in maintenance
-            if (newStatus === 'PAUSED' || newStatus === 'MAINTENANCE') {
-              useToastStore.getState().removeToast(`monitor-alert-${m.id}`)
-            }
-
-            // Only notify if we transition from a known operational state
-            if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED' && newStatus !== 'MAINTENANCE' && newStatus !== 'UNKNOWN') {
-              const toastId = `monitor-alert-${m.id}`;
-              if (newStatus === 'DOWN') {
-                playDownAlert();
-                useToastStore.getState().addToast({
-                  id: toastId,
-                  type: 'error',
-                  title: '¡Monitor Caído!',
-                  message: `El endpoint "${m.name}" (${m.target}) del grupo "${g.name}" dejó de responder.`
-                });
-              } else if (newStatus === 'UP' && (oldStatus === 'DOWN' || oldStatus === 'DEGRADED')) {
-                playRecoveredAlert();
-                useToastStore.getState().removeToast(toastId);
-                useToastStore.getState().addToast({
-                  id: `monitor-recovered-${m.id}`,
-                  type: 'success',
-                  title: 'Monitor Recuperado',
-                  message: `El endpoint "${m.name}" del grupo "${g.name}" vuelve a estar operativo (${newLatency} ms).`
-                });
-              } else if (newStatus === 'DEGRADED') {
-                useToastStore.getState().addToast({
-                  id: toastId,
-                  type: 'warning',
-                  title: 'Rendimiento Degradado',
-                  message: `El endpoint "${m.name}" del grupo "${g.name}" reporta: ${newError || 'alta latencia'}.`
-                });
-              }
-            }
+            // Tarjetas de notificación + sonido (o limpieza si pasa a pausa/mantenimiento)
+            notifyStatusTransition(m, g.name, oldStatus, newStatus, newLatency, newError)
 
             // Do not append transient UNKNOWN/PAUSED state changes to the uptime bar history
             let newHistory: HistoryPoint[] = m.live_history || []

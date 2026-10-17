@@ -91,7 +91,7 @@ function TagFilter({ allTagNames, selected, onChange, stats }: {
     : selected === 'paused' ? `En Pausa (${stats.paused})`
     : selected
 
-  const options = [
+  const options: { label: string; value: string; dot: string | null; isTag?: boolean }[] = [
     { label: `Todos los grupos (${stats.totalGroups})`, value: 'all', dot: null },
     { label: `Operativos (${stats.up})`, value: 'up', dot: '#22c55e' },
     { label: `Caídos (${stats.down})`, value: 'down', dot: '#ef4444' },
@@ -202,54 +202,134 @@ export function Dashboard() {
     }
   }
 
-  // Carga inicial + SSE (Real-Time)
+  // Carga inicial + SSE (Real-Time) con reconexión automática
   useEffect(() => {
     fetchGroups()
 
-    // 1. Sincronización en tiempo real con buffering optimizado (400ms)
-    let sse: EventSource | null = new EventSource('/api/stream')
-    let firstOpen = true
+    let sse: EventSource | null = null
+    let disposed = false
+    let hasConnectedOnce = false
     let pendingEvents: any[] = []
-    let flushInterval: any = null
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectAttempt = 0
+    let lastActivityAt = Date.now()
+
+    // Watchdog: el backend envía un evento "ping" cada 10s y cientos de eventos de chequeo por minuto.
+    // Si no llega NADA en 35s, el stream está muerto (proxy colgado / backend reiniciado) y se recrea.
+    const WATCHDOG_MS = 35_000
 
     const flush = () => {
       if (pendingEvents.length > 0) {
         useMonitorStore.getState().updateMonitorsLiveBatch(pendingEvents)
         pendingEvents = []
       }
-      flushInterval = null
+      flushTimer = null
     }
 
-    sse.onopen = () => {
-      setSseConnected(true)
-      if (!firstOpen) fetchGroups()
-      firstOpen = false
+    const markActivity = () => {
+      lastActivityAt = Date.now()
+      if (!useMonitorStore.getState().sseConnected) setSseConnected(true)
+      reconnectAttempt = 0
     }
 
-    sse.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        pendingEvents.push(data)
-        
-        if (!flushInterval) {
-          flushInterval = setTimeout(flush, 400) // Actualiza la UI de forma fluida y rápida
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return
+      // Backoff progresivo: 1s, 2s, 4s, 8s ... máx 15s
+      const delay = Math.min(15_000, 1000 * Math.pow(2, reconnectAttempt))
+      reconnectAttempt++
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        connect()
+      }, delay)
+    }
+
+    const connect = () => {
+      if (disposed) return
+      if (sse) {
+        sse.close()
+        sse = null
+      }
+      const es = new EventSource('/api/stream')
+      sse = es
+      lastActivityAt = Date.now()
+
+      es.onopen = () => {
+        markActivity()
+        // Tras una reconexión, resincroniza el estado completo para no perder cambios ocurridos durante el corte
+        if (hasConnectedOnce) fetchGroups()
+        hasConnectedOnce = true
+      }
+
+      es.addEventListener('ping', markActivity)
+
+      es.onmessage = (e) => {
+        markActivity()
+        try {
+          const data = JSON.parse(e.data)
+          pendingEvents.push(data)
+          if (!flushTimer) {
+            flushTimer = setTimeout(flush, 400) // Actualiza la UI de forma fluida y rápida
+          }
+        } catch {}
+      }
+
+      es.onerror = () => {
+        setSseConnected(false)
+        // Si el proxy respondió 502/504 (p.ej. backend reiniciando), el navegador cierra el EventSource
+        // de forma PERMANENTE (readyState = CLOSED) y nunca reintenta: lo recreamos manualmente.
+        if (es.readyState === EventSource.CLOSED) {
+          if (sse === es) sse = null
+          scheduleReconnect()
         }
-      } catch (err) {}
+      }
     }
 
-    sse.onerror = () => {
-      setSseConnected(false)
-      // Si la conexión SSE se interrumpe o el proxy reconecta, refrescamos el estado por HTTP
+    connect()
+
+    // Watchdog de stream colgado (conexión abierta pero sin datos)
+    const watchdog = setInterval(() => {
+      if (disposed) return
+      if (Date.now() - lastActivityAt > WATCHDOG_MS) {
+        setSseConnected(false)
+        if (sse) { sse.close(); sse = null }
+        scheduleReconnect()
+      }
+    }, 5_000)
+
+    // Respaldo por HTTP: cada 15s con SSE activo, cada 5s si el tiempo real está caído
+    const poll = () => {
+      if (disposed) return
+      fetchGroups()
+      const next = useMonitorStore.getState().sseConnected ? 15_000 : 5_000
+      pollTimer = setTimeout(poll, next)
+    }
+    pollTimer = setTimeout(poll, 15_000)
+
+    // Al volver a la pestaña o recuperar la red, reconecta de inmediato si hace falta
+    const revive = () => {
+      if (disposed) return
+      if (document.visibilityState === 'hidden') return
+      if (!sse || sse.readyState === EventSource.CLOSED || Date.now() - lastActivityAt > WATCHDOG_MS) {
+        reconnectAttempt = 0
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+        connect()
+      }
       fetchGroups()
     }
-
-    // 2. Respaldo periódico (fallback polling cada 15s) para garantizar frescura absoluta
-    const interval = setInterval(fetchGroups, 15_000)
+    document.addEventListener('visibilitychange', revive)
+    window.addEventListener('online', revive)
 
     return () => {
-      if (flushInterval) clearTimeout(flushInterval)
+      disposed = true
+      if (flushTimer) clearTimeout(flushTimer)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (pollTimer) clearTimeout(pollTimer)
+      clearInterval(watchdog)
+      document.removeEventListener('visibilitychange', revive)
+      window.removeEventListener('online', revive)
       if (sse) sse.close()
-      clearInterval(interval)
     }
   }, [])
 
@@ -291,8 +371,8 @@ export function Dashboard() {
 
     if (!sortDownFirst) return list
     return [...list].sort((a, b) => {
-      const pa = STATUS_ORDER[a.overall_status] ?? 4
-      const pb = STATUS_ORDER[b.overall_status] ?? 4
+      const pa = STATUS_ORDER[a.overall_status ?? 'UNKNOWN'] ?? 4
+      const pb = STATUS_ORDER[b.overall_status ?? 'UNKNOWN'] ?? 4
       if (pa !== pb) return pa - pb
       return 0
     })
