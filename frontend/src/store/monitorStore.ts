@@ -9,23 +9,35 @@ import type { MonitorGroup, Monitor, MonitorType, Tag, HistoryPoint } from '../t
 
 const isActive = (m: Monitor) => m.is_active !== false && m.current_status !== 'PAUSED'
 
+// Track recent manual Pause/Maintenance actions per monitor to ignore in-flight SSE events from before the click
+const manualActionAt = new Map<number, number>()
+
 /** Group status: paused/inactive endpoints are ignored so they don't force UNKNOWN. */
 export function computeGroupStatus(monitors: Monitor[]): string {
   if (monitors.length === 0) return 'UNKNOWN'
   const active = monitors.filter(isActive)
   if (active.length === 0) return 'PAUSED'
   const s = active.map(m => m.current_status)
-  const hasUp = s.includes('UP'), hasDown = s.includes('DOWN'), hasDeg = s.includes('DEGRADED')
-  if (s.every(x => x === 'MAINTENANCE')) return 'MAINTENANCE'
-  if (hasDeg || (hasUp && hasDown)) return 'DEGRADED'
-  if (hasDown) return s.every(x => x === 'DOWN' || x === 'UNKNOWN') ? 'DOWN' : 'DEGRADED'
-  if (hasUp) return 'UP'
+  const hasUp = s.includes('UP')
+  const hasDown = s.includes('DOWN')
+  const hasDeg = s.includes('DEGRADED')
+  const hasMaint = s.includes('MAINTENANCE')
+  if (hasUp) {
+    if (hasDeg || hasDown) return 'DEGRADED'
+    return 'UP'
+  }
+  if (hasDeg) return 'DEGRADED'
+  if (hasDown) return 'DOWN'
+  if (hasMaint) return 'MAINTENANCE'
   return 'UNKNOWN'
 }
 
 /** Aggregated history for the group bar: per slot (aligned to newest), mixes all active endpoints. */
 export function aggregateGroupHistory(monitors: Monitor[], max = 60): HistoryPoint[] {
-  const hs = monitors.filter(isActive).map(m => (m.live_history || []).slice(-max)).filter(h => h.length)
+  const active = monitors.filter(isActive)
+  const nonMaint = active.filter(m => !m.is_maintenance && m.current_status !== 'MAINTENANCE')
+  const pool = nonMaint.length > 0 ? nonMaint : active
+  const hs = pool.map(m => (m.live_history || []).slice(-max)).filter(h => h.length)
   if (!hs.length) return []
   const len = Math.max(...hs.map(h => h.length))
   const out: HistoryPoint[] = []
@@ -69,6 +81,8 @@ export interface CheckResultEvent {
   ErrorMsg?: string
   checked_at?: string
   CheckedAt?: string
+  is_active?: boolean
+  is_maintenance?: boolean
   metric_cpu?: number | null
   metric_ram?: number | null
   metric_disk?: number | null
@@ -155,18 +169,33 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
       const incoming: MonitorGroup[] = await apiFetch('/groups')
 
       // Keep SSE points that are newer than what the server already returned,
-      // so a refresh never wipes the bars/charts that were built live.
-      const local = new Map<number, HistoryPoint[]>()
+      // and preserve local state for monitors toggled within the last 3 seconds.
+      const local = new Map<number, Monitor>()
       get().groups.forEach(g => g.monitors?.forEach(m => {
-        if (m.live_history?.length) local.set(m.id, m.live_history)
+        local.set(m.id, m)
       }))
 
       const groups: MonitorGroup[] = incoming.map(g => {
         const monitors = (g.monitors || []).map(m => {
+          const prev = local.get(m.id)
           const server = m.live_history || []
           const lastServer = server.length ? new Date(server[server.length - 1].time).getTime() : 0
-          const extra = (local.get(m.id) || []).filter(p => new Date(p.time).getTime() > lastServer)
-          return { ...m, live_history: [...server, ...extra].slice(-60) }
+          const extra = (prev?.live_history || []).filter(p => new Date(p.time).getTime() > lastServer)
+          const mergedHistory = [...server, ...extra].slice(-60)
+
+          if (prev && Date.now() - (manualActionAt.get(m.id) || 0) < 3000) {
+            return {
+              ...m,
+              is_active: prev.is_active,
+              is_maintenance: prev.is_maintenance,
+              current_status: prev.current_status,
+              current_latency_ms: prev.current_latency_ms,
+              current_msg: prev.current_msg,
+              live_history: mergedHistory,
+            }
+          }
+
+          return { ...m, live_history: mergedHistory }
         });
 
         return { ...g, monitors, overall_status: computeGroupStatus(monitors) as any }
@@ -198,21 +227,43 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         const newMonitors = g.monitors?.map(m => {
           const ev = latestEvents.get(m.id)
           if (ev) {
-            changed = true
-            anyGroupChanged = true
-            
             const oldStatus = m.current_status
             const newStatus = (ev.status ?? ev.Status ?? m.current_status) as string
-            const newLatency = (ev.latency_ms ?? ev.LatencyMs ?? m.current_latency_ms ?? 0) as number
+            const sinceManual = Date.now() - (manualActionAt.get(m.id) || 0)
+
+            // Guard 1: If monitor is currently PAUSED locally, ignore stale periodic check results (UP/DOWN/DEGRADED)
+            // that were already buffered before the user clicked Pause.
+            if ((!m.is_active || m.current_status === 'PAUSED') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED')) {
+              if (sinceManual < 2500 || ev.is_active !== true) {
+                return m
+              }
+            }
+
+            // Guard 2: If monitor is currently in MAINTENANCE locally, ignore stale periodic check results (UP/DOWN/DEGRADED)
+            // that were buffered before the user clicked Maintenance.
+            if ((m.is_maintenance || m.current_status === 'MAINTENANCE') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED')) {
+              if (sinceManual < 2500 || ev.is_maintenance !== false) {
+                return m
+              }
+            }
+
+            changed = true
+            anyGroupChanged = true
+
+            const newLatency = (newStatus === 'PAUSED' || newStatus === 'MAINTENANCE' || newStatus === 'UNKNOWN')
+              ? 0
+              : ((ev.latency_ms ?? ev.LatencyMs ?? m.current_latency_ms ?? 0) as number)
             const newTime = ev.checked_at ?? ev.CheckedAt ?? new Date().toISOString()
-            const newError = ev.error_msg ?? ev.ErrorMsg ?? m.current_msg ?? ''
+            const newError = newStatus === 'PAUSED'
+              ? ''
+              : (ev.error_msg ?? ev.ErrorMsg ?? (newStatus === 'UP' ? '' : (m.current_msg ?? '')))
             const newCpu = ev.metric_cpu !== undefined ? ev.metric_cpu : m.current_cpu
             const newRam = ev.metric_ram !== undefined ? ev.metric_ram : m.current_ram
             const newDisk = ev.metric_disk !== undefined ? ev.metric_disk : m.current_disk
             const newValue = ev.metric_value !== undefined ? ev.metric_value : m.current_value
 
             // Only notify if we transition from a known state
-            if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED') {
+            if (oldStatus !== 'UNKNOWN' && oldStatus !== newStatus && oldStatus !== 'PAUSED' && newStatus !== 'PAUSED' && newStatus !== 'MAINTENANCE' && newStatus !== 'UNKNOWN') {
               const toastId = `monitor-alert-${m.id}`;
               if (newStatus === 'DOWN') {
                 useToastStore.getState().addToast({
@@ -238,23 +289,34 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
               }
             }
 
-            const newHistory: HistoryPoint[] = [...(m.live_history || []), {
-              time: newTime,
-              status: newStatus as any,
-              latency_ms: newLatency,
-              error_msg: newError,
-              metric_cpu: newCpu ?? undefined,
-              metric_ram: newRam ?? undefined,
-              metric_disk: newDisk ?? undefined,
-              metric_value: newValue ?? undefined,
-            }]
-            if (newHistory.length > 60) newHistory.shift()
+            // Do not append transient UNKNOWN/PAUSED state changes to the uptime bar history
+            let newHistory: HistoryPoint[] = m.live_history || []
+            if (newStatus !== 'UNKNOWN' && newStatus !== 'PAUSED') {
+              newHistory = [...newHistory, {
+                time: newTime,
+                status: newStatus as any,
+                latency_ms: newLatency,
+                error_msg: newError,
+                metric_cpu: newCpu ?? undefined,
+                metric_ram: newRam ?? undefined,
+                metric_disk: newDisk ?? undefined,
+                metric_value: newValue ?? undefined,
+              }]
+              if (newHistory.length > 60) newHistory.shift()
+            }
+
+            const nextIsActive = ev.is_active !== undefined
+              ? ev.is_active
+              : (newStatus === 'PAUSED' ? false : true)
+            const nextIsMaint = ev.is_maintenance !== undefined
+              ? ev.is_maintenance
+              : (newStatus === 'MAINTENANCE' ? true : false)
 
             return { 
               ...m, 
-              is_active: newStatus === 'PAUSED' ? false : m.is_active,
-              is_maintenance: newStatus === 'MAINTENANCE' ? true : (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED' ? false : m.is_maintenance),
-              current_status: newStatus as any, 
+              is_active: nextIsActive,
+              is_maintenance: nextIsMaint,
+              current_status: (nextIsActive === false ? 'PAUSED' : (nextIsMaint ? 'MAINTENANCE' : newStatus)) as any, 
               current_latency_ms: newLatency,
               current_msg: newError,
               current_cpu: newCpu,
@@ -356,16 +418,22 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
   },
 
   toggleMonitor: async (groupId, monitorId) => {
-    // Optimistic UI update
+    manualActionAt.set(monitorId, Date.now())
+
+    // Optimistic UI update: Pause or Resume (always clears maintenance)
     set((state) => {
       const groups = state.groups.map(g => {
         if (g.id !== groupId) return g
         const newMonitors = g.monitors.map(m => {
           if (m.id === monitorId) {
+            const nextActive = !m.is_active
             return {
               ...m,
-              is_active: !m.is_active,
-              current_status: !m.is_active ? ('UNKNOWN' as any) : ('PAUSED' as any)
+              is_active: nextActive,
+              is_maintenance: false,
+              current_status: (nextActive ? 'UNKNOWN' : 'PAUSED') as any,
+              current_latency_ms: 0,
+              current_msg: '',
             }
           }
           return m
@@ -375,20 +443,52 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
       return { groups }
     })
     
-    await apiFetch(`/monitors/${monitorId}/toggle`, { method: 'PUT' })
-    await get().fetchGroups()
+    try {
+      const res = await apiFetch(`/monitors/${monitorId}/toggle`, { method: 'PUT' })
+      manualActionAt.set(monitorId, Date.now())
+      set((state) => {
+        const groups = state.groups.map(g => {
+          if (g.id !== groupId) return g
+          const newMonitors = g.monitors.map(m => {
+            if (m.id === monitorId) {
+              const isAct = res.is_active ?? m.is_active
+              return {
+                ...m,
+                is_active: isAct,
+                is_maintenance: false,
+                current_status: (isAct ? (m.current_status === 'PAUSED' ? 'UNKNOWN' : m.current_status) : 'PAUSED') as any,
+                current_latency_ms: isAct ? m.current_latency_ms : 0,
+                current_msg: isAct ? m.current_msg : '',
+              }
+            }
+            return m
+          })
+          return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+        })
+        return { groups }
+      })
+    } catch {
+      await get().fetchGroups()
+    }
   },
+
   toggleMaintenance: async (groupId, monitorId) => {
-    // Optimistic UI update
+    manualActionAt.set(monitorId, Date.now())
+
+    // Optimistic UI update: Toggle Maintenance (if monitor was paused, enters Maintenance cleanly)
     set((state) => {
       const groups = state.groups.map(g => {
         if (g.id !== groupId) return g
         const newMonitors = g.monitors.map(m => {
           if (m.id === monitorId) {
+            const nextMaint = !m.is_active ? true : !m.is_maintenance
             return {
               ...m,
-              is_maintenance: !m.is_maintenance,
-              current_status: !m.is_active ? ('PAUSED' as any) : (!m.is_maintenance ? ('MAINTENANCE' as any) : ('UNKNOWN' as any))
+              is_active: true,
+              is_maintenance: nextMaint,
+              current_status: (nextMaint ? 'MAINTENANCE' : 'UNKNOWN') as any,
+              current_latency_ms: 0,
+              current_msg: nextMaint ? 'En Mantenimiento' : '',
             }
           }
           return m
@@ -398,7 +498,32 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
       return { groups }
     })
     
-    await apiFetch(`/monitors/${monitorId}/maintenance`, { method: 'PUT' })
-    await get().fetchGroups()
+    try {
+      const res = await apiFetch(`/monitors/${monitorId}/maintenance`, { method: 'PUT' })
+      manualActionAt.set(monitorId, Date.now())
+      set((state) => {
+        const groups = state.groups.map(g => {
+          if (g.id !== groupId) return g
+          const newMonitors = g.monitors.map(m => {
+            if (m.id === monitorId) {
+              const isMaint = res.is_maintenance ?? m.is_maintenance
+              return {
+                ...m,
+                is_active: true,
+                is_maintenance: isMaint,
+                current_status: (isMaint ? 'MAINTENANCE' : (m.current_status === 'MAINTENANCE' || m.current_status === 'PAUSED' ? 'UNKNOWN' : m.current_status)) as any,
+                current_latency_ms: isMaint ? 0 : m.current_latency_ms,
+                current_msg: isMaint ? 'En Mantenimiento' : m.current_msg,
+              }
+            }
+            return m
+          })
+          return { ...g, monitors: newMonitors, overall_status: computeGroupStatus(newMonitors) as any }
+        })
+        return { groups }
+      })
+    } catch {
+      await get().fetchGroups()
+    }
   },
 }))

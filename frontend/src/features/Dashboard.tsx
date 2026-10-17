@@ -200,7 +200,7 @@ export function Dashboard() {
       else if (g.overall_status === 'DOWN') down++;
       else if (g.overall_status === 'DEGRADED') degraded++;
 
-      if (g.overall_status === 'MAINTENANCE' || g.monitors?.some(m => m.current_status === 'MAINTENANCE' || m.is_maintenance)) {
+      if (g.overall_status === 'MAINTENANCE' || g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance))) {
         maintenance++;
       }
       if (g.overall_status === 'PAUSED' || g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED')) {
@@ -224,9 +224,9 @@ export function Dashboard() {
     const matchFilter = (() => {
       if (tagFilter === 'all') return true;
       if (tagFilter === 'up') return g.overall_status === 'UP';
-      if (tagFilter === 'down') return g.monitors?.some(m => m.current_status === 'DOWN') || g.overall_status === 'DOWN';
+      if (tagFilter === 'down') return g.monitors?.some(m => m.is_active !== false && !m.is_maintenance && m.current_status === 'DOWN') || g.overall_status === 'DOWN';
       if (tagFilter === 'degraded') return g.overall_status === 'DEGRADED';
-      if (tagFilter === 'maintenance') return g.monitors?.some(m => m.current_status === 'MAINTENANCE' || m.is_maintenance) || g.overall_status === 'MAINTENANCE';
+      if (tagFilter === 'maintenance') return g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)) || g.overall_status === 'MAINTENANCE';
       if (tagFilter === 'paused') return g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED') || g.overall_status === 'PAUSED';
       return g.tags?.some(t => t.name === tagFilter);
     })();

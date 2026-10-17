@@ -11,6 +11,7 @@ const COLOR: Record<string, string> = {
   DOWN:     '#f87171',
   DEGRADED: '#f59e0b',
   MAINTENANCE: '#60a5fa', // Blue
+  PAUSED:   '#6366f1',    // Indigo
   UNKNOWN:  '#6b7280',
 }
 

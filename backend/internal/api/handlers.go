@@ -139,20 +139,37 @@ func (h *Handlers) ListGroups(c *fiber.Ctx) error {
 			if !m.IsActive {
 				m.CurrentStatus = models.StatusPAUSED
 				m.CurrentLatency = 0
+				m.CurrentMsg = ""
 			} else if m.IsMaintenance {
 				m.CurrentStatus = models.StatusMAINTENANCE
 				m.CurrentLatency = 0
-			} else if statusStr != "UNKNOWN" && statusStr != "MAINTENANCE" && statusStr != "PAUSED" {
+				m.CurrentMsg = "En Mantenimiento"
+			} else if statusStr == "UP" || statusStr == "DOWN" || statusStr == "DEGRADED" {
 				m.CurrentStatus = models.MonitorStatus(statusStr)
 				m.CurrentLatency = latency
 				m.CurrentMsg = msg
-			m.CurrentValue = mVal
+				m.CurrentValue = mVal
+			} else if statusStr == "CHECKING" {
+				m.CurrentStatus = models.StatusUNKNOWN
+				m.CurrentLatency = 0
+				m.CurrentMsg = ""
 			} else if n := len(m.RecentHistory); n > 0 {
-				// Redis has no state (restart / eviction): fall back to the last persisted check
-				// so the dashboard never "resets" while history exists in TimescaleDB.
-				last := m.RecentHistory[n-1]
-				m.CurrentStatus = last.Status
-				m.CurrentLatency = last.LatencyMs
+				// Redis has no state (restart / eviction): fall back to the last persisted operational check
+				// (skipping MAINTENANCE and PAUSED so an active monitor never shows MAINTENANCE/PAUSED).
+				found := false
+				for k := n - 1; k >= 0; k-- {
+					last := m.RecentHistory[k]
+					if last.Status == models.StatusUP || last.Status == models.StatusDOWN || last.Status == models.StatusDEGRADED {
+						m.CurrentStatus = last.Status
+						m.CurrentLatency = last.LatencyMs
+						found = true
+						break
+					}
+				}
+				if !found {
+					m.CurrentStatus = models.StatusUNKNOWN
+					m.CurrentLatency = 0
+				}
 			} else {
 				m.CurrentStatus = models.StatusUNKNOWN
 				m.CurrentLatency = 0
@@ -306,9 +323,18 @@ func (h *Handlers) UpdateMonitor(c *fiber.Ctx) error {
 		h.cache.SetAlerted(c.Context(), id, false)
 		
 		if updated.IsActive {
-			h.engine.ScheduleMonitor(updated)
+			if updated.IsMaintenance {
+				h.engine.BroadcastStatus(c.Context(), id, models.StatusMAINTENANCE, 0, "En Mantenimiento", true, true)
+				intervalSec := updated.IntervalSeconds
+				if intervalSec <= 0 {
+					intervalSec = 60
+				}
+				h.engine.ScheduleMonitorAfter(updated, time.Duration(intervalSec)*time.Second)
+			} else {
+				h.engine.ScheduleMonitor(updated)
+			}
 		} else {
-			h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "")
+			h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "", false, false)
 		}
 	}
 	return c.JSON(fiber.Map{"ok": true})
@@ -327,27 +353,43 @@ func (h *Handlers) DeleteMonitor(c *fiber.Ctx) error {
 // ToggleMonitor handles PUT /api/monitors/:id/toggle
 func (h *Handlers) ToggleMonitor(c *fiber.Ctx) error {
 	id, _ := strconv.Atoi(c.Params("id"))
+	// Cancel any in-flight check BEFORE changing state so it cannot overwrite Redis/SSE
+	h.engine.StopMonitor(id)
+
 	isActive, err := h.db.ToggleMonitorActive(c.Context(), id)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	if isActive {
-		h.cache.SetStatus(c.Context(), id, "UNKNOWN", 0, "", nil)
+		h.engine.BroadcastStatus(c.Context(), id, models.StatusUNKNOWN, 0, "", true, false)
+		h.cache.SetStatus(c.Context(), id, "CHECKING", 0, "", nil)
 		if updated, err := h.db.GetMonitor(c.Context(), id); err == nil {
 			h.engine.ScheduleMonitor(updated)
 		}
-	} else {
-		h.engine.StopMonitor(id)
-		h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "En Pausa")
+		return c.JSON(fiber.Map{
+			"ok":             true,
+			"is_active":      true,
+			"is_maintenance": false,
+			"current_status": models.StatusUNKNOWN,
+		})
 	}
-	
-	return c.JSON(fiber.Map{"ok": true, "is_active": isActive})
+
+	h.engine.BroadcastStatus(c.Context(), id, models.StatusPAUSED, 0, "En Pausa", false, false)
+	return c.JSON(fiber.Map{
+		"ok":             true,
+		"is_active":      false,
+		"is_maintenance": false,
+		"current_status": models.StatusPAUSED,
+	})
 }
 
 // ToggleMaintenance handles PUT /api/monitors/:id/maintenance
 func (h *Handlers) ToggleMaintenance(c *fiber.Ctx) error {
 	id, _ := strconv.Atoi(c.Params("id"))
+	// Cancel any in-flight check BEFORE changing state so it cannot overwrite Redis/SSE
+	h.engine.StopMonitor(id)
+
 	isMaint, err := h.db.ToggleMonitorMaintenance(c.Context(), id)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -355,16 +397,31 @@ func (h *Handlers) ToggleMaintenance(c *fiber.Ctx) error {
 
 	if updated, err := h.db.GetMonitor(c.Context(), id); err == nil {
 		if isMaint {
-			h.engine.BroadcastStatus(c.Context(), id, models.StatusMAINTENANCE, 0, "En Mantenimiento")
-		} else {
-			h.cache.SetStatus(c.Context(), id, "UNKNOWN", 0, "", nil)
+			h.engine.BroadcastStatus(c.Context(), id, models.StatusMAINTENANCE, 0, "En Mantenimiento", true, true)
+			intervalSec := updated.IntervalSeconds
+			if intervalSec <= 0 {
+				intervalSec = 60
+			}
+			h.engine.ScheduleMonitorAfter(updated, time.Duration(intervalSec)*time.Second)
+			return c.JSON(fiber.Map{
+				"ok":             true,
+				"is_active":      true,
+				"is_maintenance": true,
+				"current_status": models.StatusMAINTENANCE,
+			})
 		}
-		if updated.IsActive {
-			h.engine.ScheduleMonitor(updated)
-		}
+
+		h.engine.BroadcastStatus(c.Context(), id, models.StatusUNKNOWN, 0, "", true, false)
+		h.cache.SetStatus(c.Context(), id, "CHECKING", 0, "", nil)
+		h.engine.ScheduleMonitor(updated)
 	}
 
-	return c.JSON(fiber.Map{"ok": true, "is_maintenance": isMaint})
+	return c.JSON(fiber.Map{
+		"ok":             true,
+		"is_active":      true,
+		"is_maintenance": false,
+		"current_status": models.StatusUNKNOWN,
+	})
 }
 
 // GetHistory handles GET /api/monitors/:id/history?range=24h

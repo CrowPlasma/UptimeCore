@@ -22,7 +22,7 @@ import (
 )
 
 // CheckHTTP performs an HTTP or HTTPS availability check.
-func CheckHTTP(target string, defaultScheme string, timeoutSec int) models.CheckResult {
+func CheckHTTP(ctx context.Context, target string, defaultScheme string, timeoutSec int) models.CheckResult {
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
 
@@ -32,6 +32,9 @@ func CheckHTTP(target string, defaultScheme string, timeoutSec int) models.Check
 		}
 		target = defaultScheme + "://" + target
 	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
 
 	client := &http.Client{
 		Timeout: time.Duration(timeoutSec) * time.Second,
@@ -49,9 +52,17 @@ func CheckHTTP(target string, defaultScheme string, timeoutSec int) models.Check
 	}
 
 	// Try HEAD first, fall back to GET if server doesn't support HEAD
-	resp, err := client.Head(target)
-	if err != nil {
-		resp, err = client.Get(target)
+	var resp *http.Response
+	var err error
+	if req, reqErr := http.NewRequestWithContext(reqCtx, http.MethodHead, target, nil); reqErr == nil {
+		resp, err = client.Do(req)
+	} else {
+		err = reqErr
+	}
+	if err != nil && ctx.Err() == nil {
+		if req, reqErr := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil); reqErr == nil {
+			resp, err = client.Do(req)
+		}
 	}
 	r.LatencyMs = int(time.Since(start).Milliseconds())
 	if r.LatencyMs == 0 {
@@ -73,12 +84,16 @@ func CheckHTTP(target string, defaultScheme string, timeoutSec int) models.Check
 }
 
 // CheckTCP checks if a TCP port is open on a host.
-func CheckTCP(host string, port int, timeoutSec int) models.CheckResult {
+func CheckTCP(ctx context.Context, host string, port int, timeoutSec int) models.CheckResult {
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), time.Duration(timeoutSec)*time.Second)
+	dialer := net.Dialer{Timeout: time.Duration(timeoutSec) * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", host, port))
 	r.LatencyMs = int(time.Since(start).Milliseconds())
+	if r.LatencyMs == 0 {
+		r.LatencyMs = 1
+	}
 
 	if err != nil {
 		r.ErrorMsg = err.Error()
@@ -91,10 +106,10 @@ func CheckTCP(host string, port int, timeoutSec int) models.CheckResult {
 
 // CheckPing performs an ICMP ping using the system ping binary.
 // Requires NET_RAW capability in Docker (set via docker-compose cap_add).
-func CheckPing(host string, timeoutSec int) models.CheckResult {
+func CheckPing(parentCtx context.Context, host string, timeoutSec int) models.CheckResult {
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec+3)*time.Second)
+	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeoutSec+3)*time.Second)
 	defer cancel()
 
 	// Alpine/Linux ping: -c 1 packet, -W wait in seconds
@@ -229,7 +244,7 @@ func CheckSSL(host string, port int, days int, timeoutSec int) models.CheckResul
 }
 
 // RunCheck dispatches to the correct checker based on monitor type.
-func RunCheck(m models.Monitor) models.CheckResult {
+func RunCheck(ctx context.Context, m models.Monitor) models.CheckResult {
 	var r models.CheckResult
 
 	switch m.Type {
@@ -238,15 +253,15 @@ func RunCheck(m models.Monitor) models.CheckResult {
 		if m.Type == "HTTPS" {
 			scheme = "https"
 		}
-		r = CheckHTTP(m.Target, scheme, m.TimeoutSeconds)
+		r = CheckHTTP(ctx, m.Target, scheme, m.TimeoutSeconds)
 	case "TCP", "TCP_PING":
 		port := 80
 		if m.Port != nil {
 			port = *m.Port
 		}
-		r = CheckTCP(m.Target, port, m.TimeoutSeconds)
+		r = CheckTCP(ctx, m.Target, port, m.TimeoutSeconds)
 	case "PING", "ICMP":
-		r = CheckPing(m.Target, m.TimeoutSeconds)
+		r = CheckPing(ctx, m.Target, m.TimeoutSeconds)
 	case "POSTGRESQL":
 		r = CheckPostgres(m.Target, m.TimeoutSeconds)
 	case "MYSQL", "MARIADB":

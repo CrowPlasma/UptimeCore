@@ -28,7 +28,7 @@ type Engine struct {
 	notifier    *notifications.Dispatcher
 	broadcaster EventBroadcaster
 	mu          sync.Mutex
-	jobs        map[int]chan struct{} // monitorID → stop channel
+	jobs        map[int]context.CancelFunc // monitorID → cancel function
 	resultsChan chan models.CheckResult
 }
 
@@ -39,7 +39,7 @@ func NewEngine(db *database.DB, cache *database.Cache, cfg config.Config, b Even
 		cache:       cache,
 		notifier:    notifications.NewDispatcher(cfg),
 		broadcaster: b,
-		jobs:        make(map[int]chan struct{}),
+		jobs:        make(map[int]context.CancelFunc),
 		resultsChan: make(chan models.CheckResult, 50000),
 	}
 }
@@ -78,25 +78,30 @@ func (e *Engine) ScheduleMonitor(m models.Monitor) {
 	e.scheduleMonitorWithDelay(m, 0, false)
 }
 
+// ScheduleMonitorAfter adds or replaces a monitor in the polling scheduler and waits initialDelay before its first check.
+func (e *Engine) ScheduleMonitorAfter(m models.Monitor, initialDelay time.Duration) {
+	e.scheduleMonitorWithDelay(m, initialDelay, false)
+}
+
 func (e *Engine) scheduleMonitorWithDelay(m models.Monitor, initialDelay time.Duration, isBoot bool) {
 	e.mu.Lock()
-	if stop, ok := e.jobs[m.ID]; ok {
-		close(stop)
+	if cancelOld, ok := e.jobs[m.ID]; ok {
+		cancelOld()
 	}
-	stop := make(chan struct{})
-	e.jobs[m.ID] = stop
+	jobCtx, cancel := context.WithCancel(context.Background())
+	e.jobs[m.ID] = cancel
 	e.mu.Unlock()
 
 	go func() {
 		// On boot, if Redis has no cached status yet, run a quick warm-up check first
 		if isBoot && initialDelay > 3*time.Second {
-			st, _, _, _ := e.cache.GetStatus(context.Background(), m.ID)
+			st, _, _, _ := e.cache.GetStatus(jobCtx, m.ID)
 			if st == "UNKNOWN" || st == "" {
 				warmJitter := time.Duration(rand.Intn(3000)) * time.Millisecond
 				select {
 				case <-time.After(warmJitter):
-					e.executeCheck(context.Background(), m)
-				case <-stop:
+					e.executeCheck(jobCtx, m)
+				case <-jobCtx.Done():
 					return
 				}
 			}
@@ -105,20 +110,17 @@ func (e *Engine) scheduleMonitorWithDelay(m models.Monitor, initialDelay time.Du
 		if initialDelay > 0 {
 			select {
 			case <-time.After(initialDelay):
-			case <-stop:
+			case <-jobCtx.Done():
 				return
 			}
 		}
 
-		// Prevent execution if stopped during initialDelay
-		select {
-		case <-stop:
+		if jobCtx.Err() != nil {
 			return
-		default:
 		}
 
 		// Run check and start periodic ticker
-		e.executeCheck(context.Background(), m)
+		e.executeCheck(jobCtx, m)
 		intervalSec := m.IntervalSeconds
 		if intervalSec <= 0 {
 			intervalSec = 60
@@ -127,15 +129,12 @@ func (e *Engine) scheduleMonitorWithDelay(m models.Monitor, initialDelay time.Du
 		defer ticker.Stop()
 		for {
 			select {
-			case <-stop:
-				return
-			default:
-			}
-
-			select {
 			case <-ticker.C:
-				e.executeCheck(context.Background(), m)
-			case <-stop:
+				if jobCtx.Err() != nil {
+					return
+				}
+				e.executeCheck(jobCtx, m)
+			case <-jobCtx.Done():
 				return
 			}
 		}
@@ -143,54 +142,90 @@ func (e *Engine) scheduleMonitorWithDelay(m models.Monitor, initialDelay time.Du
 }
 
 // BroadcastStatus immediately updates Redis and pushes a status change over SSE (e.g. PAUSED / MAINTENANCE).
-func (e *Engine) BroadcastStatus(ctx context.Context, monitorID int, status models.MonitorStatus, latencyMs int, msg string) {
+func (e *Engine) BroadcastStatus(ctx context.Context, monitorID int, status models.MonitorStatus, latencyMs int, msg string, isActive bool, isMaintenance bool) {
 	e.cache.SetStatus(ctx, monitorID, string(status), latencyMs, msg, nil)
+	if status == models.StatusPAUSED || status == models.StatusMAINTENANCE {
+		e.cache.ResetFails(ctx, monitorID)
+		e.cache.SetAlerted(ctx, monitorID, false)
+		e.cache.SetEscalated(ctx, monitorID, false)
+		e.cache.ClearDownSince(ctx, monitorID)
+	}
 	if e.broadcaster != nil {
 		e.broadcaster.Broadcast(models.CheckResult{
-			MonitorID: monitorID,
-			Status:    status,
-			LatencyMs: latencyMs,
-			ErrorMsg:  msg,
-			CheckedAt: time.Now(),
+			MonitorID:     monitorID,
+			Status:        status,
+			LatencyMs:     latencyMs,
+			ErrorMsg:      msg,
+			CheckedAt:     time.Now(),
+			IsActive:      &isActive,
+			IsMaintenance: &isMaintenance,
 		})
 	}
 }
 
-// StopMonitor terminates the goroutine for a specific monitor.
+// StopMonitor terminates the goroutine and any in-flight check for a specific monitor.
 func (e *Engine) StopMonitor(monitorID int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if stop, ok := e.jobs[monitorID]; ok {
-		close(stop)
+	if cancel, ok := e.jobs[monitorID]; ok {
+		cancel()
 		delete(e.jobs, monitorID)
 	}
 }
 
 // executeCheck runs the check, saves to DB, updates cache, and triggers alerts.
 func (e *Engine) executeCheck(ctx context.Context, m models.Monitor) {
-	if e.notifier.GetSetting("global_maintenance", "") == "true" {
+	if ctx.Err() != nil || !m.IsActive {
+		return
+	}
+
+	isGlobalMaint := e.notifier.GetSetting("global_maintenance", "") == "true"
+	if isGlobalMaint || m.IsMaintenance {
+		msg := "En Mantenimiento"
+		if isGlobalMaint {
+			msg = "Mantenimiento Global"
+		}
+		isActive := true
+		isMaint := true
 		result := models.CheckResult{
-			MonitorID: m.ID,
-			Status:    "MAINTENANCE",
-			LatencyMs: 0,
-			ErrorMsg:  "Mantenimiento Global",
-			CheckedAt: time.Now(),
+			MonitorID:     m.ID,
+			Status:        models.StatusMAINTENANCE,
+			LatencyMs:     0,
+			ErrorMsg:      msg,
+			CheckedAt:     time.Now(),
+			IsActive:      &isActive,
+			IsMaintenance: &isMaint,
 		}
-		if err := e.db.SaveCheckResult(ctx, result); err != nil {
-			// ignore
+		if ctx.Err() != nil {
+			return
 		}
-		e.cache.SetStatus(ctx, m.ID, "MAINTENANCE", 0, "Mantenimiento Global", nil)
+		select {
+		case e.resultsChan <- result:
+		default:
+		}
+		e.cache.SetStatus(ctx, m.ID, "MAINTENANCE", 0, msg, nil)
+		e.cache.ResetFails(ctx, m.ID)
+		e.cache.SetAlerted(ctx, m.ID, false)
+		e.cache.SetEscalated(ctx, m.ID, false)
+		e.cache.ClearDownSince(ctx, m.ID)
 		if e.broadcaster != nil {
 			e.broadcaster.Broadcast(result)
 		}
 		return
 	}
 
-	result := RunCheck(m)
+	result := RunCheck(ctx, m)
+	// Critical: if monitor was paused, put in maintenance, or rescheduled while RunCheck was in flight, discard stale result!
+	if ctx.Err() != nil {
+		return
+	}
 	e.ProcessResult(ctx, m, result)
 }
 
 func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result models.CheckResult) {
+	if ctx.Err() != nil {
+		return
+	}
 	// Threshold check for generic MetricValue (e.g. from SNMP)
 	if m.ValueThreshold != nil && *m.ValueThreshold > 0 && result.MetricValue != nil {
 		if *result.MetricValue >= float64(*m.ValueThreshold) {
@@ -201,7 +236,14 @@ func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result mod
 
 	if m.IsMaintenance {
 		result.Status = models.StatusMAINTENANCE
+		result.LatencyMs = 0
+		result.ErrorMsg = "En Mantenimiento"
 	}
+
+	isActive := m.IsActive
+	isMaint := m.IsMaintenance
+	result.IsActive = &isActive
+	result.IsMaintenance = &isMaint
 
 	statusStr := string(result.Status)
 	if result.ErrorMsg != "" {
@@ -364,8 +406,8 @@ func (e *Engine) batchWriter(ctx context.Context) {
 func (e *Engine) StopAll() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for id, stop := range e.jobs {
-		close(stop)
+	for id, cancel := range e.jobs {
+		cancel()
 		delete(e.jobs, id)
 	}
 }

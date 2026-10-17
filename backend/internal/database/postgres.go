@@ -145,6 +145,7 @@ func (db *DB) ListGroups(ctx context.Context) ([]models.MonitorGroup, error) {
 				&m.Retries, &m.SnmpCommunity, &m.SnmpOID, &m.SslExpirationDays, &m.PushToken, &m.CpuThreshold, &m.RamThreshold, &m.DiskThreshold, &m.ValueThreshold, &m.IsActive, &m.IsMaintenance, &m.CreatedAt, &m.UpdatedAt,
 			); err2 == nil {
 				if !m.IsActive {
+					m.IsMaintenance = false
 					m.CurrentStatus = models.StatusPAUSED
 				} else if m.IsMaintenance {
 					m.CurrentStatus = models.StatusMAINTENANCE
@@ -362,17 +363,29 @@ func (db *DB) DeleteMonitor(ctx context.Context, id int) error {
 	return err
 }
 
-// ToggleMonitorMaintenance switches the is_maintenance state of a monitor.
+// ToggleMonitorMaintenance switches the is_maintenance state of a monitor and ensures is_active is true.
 func (db *DB) ToggleMonitorMaintenance(ctx context.Context, id int) (bool, error) {
 	var isMaintenance bool
-	err := db.pool.QueryRow(ctx, `UPDATE monitors SET is_maintenance = NOT is_maintenance WHERE id=$1 RETURNING is_maintenance`, id).Scan(&isMaintenance)
+	err := db.pool.QueryRow(ctx, `
+		UPDATE monitors
+		SET is_maintenance = CASE WHEN NOT is_active THEN true ELSE NOT is_maintenance END,
+		    is_active = true,
+		    updated_at = NOW()
+		WHERE id = $1
+		RETURNING is_maintenance`, id).Scan(&isMaintenance)
 	return isMaintenance, err
 }
 
-// ToggleMonitorActive switches the is_active state of a monitor.
+// ToggleMonitorActive switches the is_active state of a monitor and clears is_maintenance.
 func (db *DB) ToggleMonitorActive(ctx context.Context, id int) (bool, error) {
 	var isActive bool
-	err := db.pool.QueryRow(ctx, `UPDATE monitors SET is_active = NOT is_active WHERE id=$1 RETURNING is_active`, id).Scan(&isActive)
+	err := db.pool.QueryRow(ctx, `
+		UPDATE monitors
+		SET is_active = NOT is_active,
+		    is_maintenance = false,
+		    updated_at = NOW()
+		WHERE id = $1
+		RETURNING is_active`, id).Scan(&isActive)
 	return isActive, err
 }
 

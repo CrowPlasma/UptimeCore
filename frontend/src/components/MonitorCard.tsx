@@ -24,6 +24,8 @@ function statusColor(s?: MonitorStatus) {
   if (s === 'UP') return '#22c55e'
   if (s === 'DOWN') return '#ef4444'
   if (s === 'DEGRADED') return '#f59e0b'
+  if (s === 'MAINTENANCE') return '#3b82f6'
+  if (s === 'PAUSED') return '#6366f1'
   return '#94a3b8'
 }
 
@@ -286,7 +288,13 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const { toggleMonitor, toggleMaintenance } = useMonitorStore()
-  const status = monitor.current_status ?? 'UNKNOWN'
+  const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
+  const isMaint = !isPaused && (monitor.is_maintenance === true || monitor.current_status === 'MAINTENANCE')
+  const status: MonitorStatus = isPaused
+    ? 'PAUSED'
+    : isMaint
+      ? 'MAINTENANCE'
+      : (monitor.current_status ?? 'UNKNOWN')
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [histRange, setHistRange] = useState<TimeRange>('recent')
   const [histLoading, setHistLoading] = useState(false)
@@ -332,9 +340,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
   return (
     <div style={{ 
       borderBottom: '1px solid var(--color-border)',
-      opacity: status === 'PAUSED' ? 0.45 : 1,
-      transition: 'opacity 0.2s ease',
-      filter: status === 'PAUSED' ? 'grayscale(0.5)' : 'none'
+      transition: 'background 0.2s ease',
     }}>
       {/* Fila principal */}
       <div
@@ -356,12 +362,12 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
         </div>
 
         {/* Icono de protocolo */}
-        <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
+        <span style={{ color: 'var(--color-text-muted)', flexShrink: 0, opacity: isPaused ? 0.5 : 1 }}>
           {TYPE_ICON[monitor.type] ?? <Activity size={14} />}
         </span>
 
         {/* Nombre + target */}
-        <div style={{ paddingRight: 16, wordBreak: 'break-word' }}>
+        <div style={{ paddingRight: 16, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>
             {monitor.name}
           </div>
@@ -388,14 +394,14 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
               {monitor.target}{monitor.port ? `:${monitor.port}` : ''}
             </a>
           </div>
-          {monitor.type === 'SSL' && monitor.current_msg && (
+          {monitor.type === 'SSL' && monitor.current_msg && !isPaused && !isMaint && (
             <div style={{ marginTop: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: monitor.current_status === 'UP' ? '#ecfdf5' : '#fef2f2', color: monitor.current_status === 'UP' ? '#059669' : '#ef4444', border: `1px solid ${monitor.current_status === 'UP' ? '#a7f3d0' : '#fecaca'}` }}>
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: status === 'UP' ? '#ecfdf5' : '#fef2f2', color: status === 'UP' ? '#059669' : '#ef4444', border: `1px solid ${status === 'UP' ? '#a7f3d0' : '#fecaca'}` }}>
                 {monitor.current_msg}
               </span>
             </div>
           )}
-          {monitor.type === 'SNMP' && monitor.current_value != null && (
+          {monitor.type === 'SNMP' && monitor.current_value != null && !isPaused && !isMaint && (
             <div style={{ marginTop: 6 }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
                 Valor OID: {monitor.current_value}
@@ -410,7 +416,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
         </div>
 
         {/* Barra de uptime */}
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
           <UptimeBar history={combinedHistory} maxBars={30} />
         </div>
 
@@ -418,13 +424,25 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 68 }}>
               <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
-                {status === 'DOWN' || status === 'PAUSED' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
+                {status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
               </span>
-              {combinedHistory.length > 0 && (
+              {status === 'PAUSED' ? (
+                <span style={{ fontSize: 10, color: '#818cf8', marginTop: 2, fontWeight: 600 }}>
+                  En pausa
+                </span>
+              ) : status === 'MAINTENANCE' ? (
+                <span style={{ fontSize: 10, color: '#60a5fa', marginTop: 2, fontWeight: 600 }}>
+                  Mantenimiento
+                </span>
+              ) : status === 'UNKNOWN' ? (
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  Verificando...
+                </span>
+              ) : combinedHistory.length > 0 ? (
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
                   {new Date(combinedHistory[combinedHistory.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-              )}
+              ) : null}
             </div>
 
             <div style={{ flexShrink: 0 }}>
@@ -435,20 +453,20 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
             <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
               <Btn 
                 icon={<Wrench size={12} strokeWidth={2.5} />} 
-                title={monitor.is_maintenance ? "Quitar Mantenimiento" : "Modo Mantenimiento"} 
+                title={isMaint ? "Quitar Mantenimiento" : "Modo Mantenimiento"} 
                 onClick={() => toggleMaintenance(group.id, monitor.id)} 
-                customColor={monitor.is_maintenance 
-                  ? { bg: '#eff6ff', border: '#bfdbfe', text: '#3b82f6' }
+                customColor={isMaint 
+                  ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
                   : undefined
                 }
               />
               <Btn 
-                icon={monitor.is_active ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
-                title={monitor.is_active ? "Pausar monitoreo" : "Reanudar monitoreo"} 
+                icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
+                title={!isPaused ? "Pausar monitoreo" : "Reanudar monitoreo"} 
                 onClick={() => toggleMonitor(group.id, monitor.id)} 
-                customColor={monitor.is_active 
-                  ? undefined
-                  : { bg: '#ecfdf5', border: '#6ee7b7', text: '#059669' }
+                customColor={isPaused 
+                  ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
+                  : undefined
                 }
               />
               <Btn icon={<Pencil size={12} />} title="Editar" onClick={onEdit} />
@@ -470,7 +488,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete }: {
         }}>
           {/* Stats rápidas */}
           <div style={{ display: 'flex', gap: 32, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <QuickStat label="Ping actual"    value={status === 'DOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`} />
+            <QuickStat label="Ping actual"    value={status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`} />
             <QuickStat label="Avg. Ping"      value={avgLatency != null ? `${avgLatency} ms` : '—'} />
             <QuickStat
               label="Uptime"
