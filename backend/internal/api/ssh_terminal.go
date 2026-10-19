@@ -318,7 +318,12 @@ func SSHTerminalHandler() fiber.Handler {
 
 		session, err := client.NewSession()
 		if err != nil {
-			_ = out.json(sshServerMsg{Type: "error", Message: "No se pudo crear la sesión: " + err.Error()})
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "unexpected packet in response to channel open") || strings.Contains(errMsg, "<nil>") {
+				errMsg = "El servidor aceptó la autenticación pero rechazó abrir el canal interactivo (canal SSH cerrado por el host remoto). Causas comunes: el usuario no tiene shell asignado (ej. /sbin/nologin), la cuenta requiere cambio de clave, o la respuesta al banner de seguridad requiere un formato específico (ej. YES en mayúsculas)."
+			}
+			log.Printf("⚠️  [WebSSH] %s -> %s@%s: error creando sesión: %v", remoteIP, user, addr, err)
+			_ = out.json(sshServerMsg{Type: "error", Message: "No se pudo crear la sesión: " + errMsg})
 			return
 		}
 		defer session.Close()

@@ -268,9 +268,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         // Escribir mensaje de bienvenida
         term.writeln('\x1b[1;36m┌──────────────────────────────────────────────────────────┐\x1b[0m')
         term.writeln('\x1b[1;36m│\x1b[0m  \x1b[1;37mUptimeCore Web SSH Shell\x1b[0m  \x1b[90m(100% Local / Zero Cloud)\x1b[0m       \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl+C con texto seleccionado:\x1b[0m Copia al portapapeles    \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl+C sin texto seleccionado:\x1b[0m Interrumpe comando (SIGINT)\x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl+V o Clic Derecho:\x1b[0m         Pega comandos fácilmente   \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl + Shift + C:\x1b[0m Copia selección al portapapeles    \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl + Shift + V:\x1b[0m Pega comandos en la shell          \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl + C:\x1b[0m         Interrupción remota (SIGINT nativo) \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[35m✔ Clic Derecho:\x1b[0m     Menú contextual desplegable        \x1b[1;36m│\x1b[0m')
         term.writeln('\x1b[1;36m└──────────────────────────────────────────────────────────┘\x1b[0m')
         term.writeln(`\x1b[90mObjetivo: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`)
 
@@ -282,50 +283,26 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           }
         })
 
-        // GESTIÓN NATIVA DE TECLADO: Ctrl+C, Ctrl+V, Ctrl+Shift+C, Ctrl+Shift+V
+        // GESTIÓN DE TECLADO: Ctrl+Shift+C (Copiar), Ctrl+Shift+V (Pegar), Ctrl+C (SIGINT nativo a la shell)
         term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-          // Ctrl+C: si hay texto seleccionado, COPIA. Si no hay nada seleccionado, envía SIGINT (^C) a la shell.
-          if (e.ctrlKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
-            if (term.hasSelection()) {
-              const sel = term.getSelection()
+          // Ctrl + Shift + C: Copiar selección
+          if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+            const sel = term.getSelection()
+            if (sel) {
               copyTextSafe(sel)
               triggerToast('Copiado al portapapeles')
-              return false // Detiene la propagación para no enviar ^C cuando querías copiar
-            }
-            // Sin selección: permite que xterm envíe \x03 (SIGINT) para detener ping/comandos
-            return true
-          }
-
-          // Ctrl+V: pega directamente
-          if (e.ctrlKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
-            handlePasteClipboard(tab.id)
-            return false
-          }
-
-          // Ctrl+Shift+C: Copiar explícito
-          if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
-            if (term.hasSelection()) {
-              copyTextSafe(term.getSelection())
-              triggerToast('Copiado al portapapeles')
             }
             return false
           }
 
-          // Ctrl+Shift+V: Pegar explícito
+          // Ctrl + Shift + V: Pegar texto
           if (e.ctrlKey && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
             handlePasteClipboard(tab.id)
             return false
           }
 
+          // Ctrl + C normal y demás teclas: se delegan directamente a xterm para enviar \x03 (SIGINT nativo)
           return true
-        })
-
-        // Auto-copiar al seleccionar texto con el ratón (Copy on select estilo PuTTY / MobaXterm)
-        term.onSelectionChange(() => {
-          const sel = term.getSelection().trim()
-          if (sel && sel.length > 0) {
-            copyTextSafe(sel)
-          }
         })
 
         termInstances.current[tab.id] = term
@@ -1339,16 +1316,16 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span>
-            <strong style={{ color: '#38bdf8' }}>Ctrl+C con texto:</strong> Copia selección
+            <strong style={{ color: '#38bdf8' }}>Ctrl+Shift+C:</strong> Copiar
           </span>
           <span>
-            <strong style={{ color: '#fbbf24' }}>Ctrl+C sin texto:</strong> Cancela comando (SIGINT)
+            <strong style={{ color: '#4ade80' }}>Ctrl+Shift+V:</strong> Pegar
           </span>
           <span>
-            <strong style={{ color: '#4ade80' }}>Ctrl+V / Clic Derecho:</strong> Pega texto
+            <strong style={{ color: '#fbbf24' }}>Ctrl+C:</strong> Interrumpir (SIGINT nativo)
           </span>
           <span>
-            <strong style={{ color: '#a855f7' }}>Selección:</strong> Auto-copia automática
+            <strong style={{ color: '#a855f7' }}>Clic Derecho:</strong> Menú desplegable
           </span>
         </div>
         <div>
