@@ -144,13 +144,18 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     setTimeout(() => setCopyNotification(null), 1800)
   }
 
-  // Cierra menú contextual al hacer clic fuera
+  // Cierra menú contextual al hacer clic fuera (fase de captura para ignorar stopPropagation)
   useEffect(() => {
-    const handleOutsideClick = () => {
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && target.closest('[data-context-menu="true"]')) {
+        return
+      }
       setContextMenu(prev => (prev.visible ? { ...prev, visible: false } : prev))
     }
-    window.addEventListener('click', handleOutsideClick)
-    return () => window.removeEventListener('click', handleOutsideClick)
+
+    window.addEventListener('pointerdown', handleOutsideClick, true)
+    return () => window.removeEventListener('pointerdown', handleOutsideClick, true)
   }, [])
 
   // Si cambia el initialMonitor desde el header del modal, sincronizar o cambiar a su pestaña
@@ -211,7 +216,8 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     []
   )
 
-  // Inicializa o redimensiona terminales
+  // 1. Inicializa terminales para pestañas (solo cuando cambia la lista de IDs de pestañas, NUNCA al teclear usuario/clave)
+  const tabIdsKey = tabs.map(t => t.id).join(',')
   useEffect(() => {
     tabs.forEach(tab => {
       const container = containerRefs.current[tab.id]
@@ -330,8 +336,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         fitAddons.current[tab.id] = fit
       }
     })
+  }, [tabIdsKey, handlePasteClipboard])
 
-    // Redimensionar y enfocar terminal activa
+  // 2. Redimensionar y enfocar terminal activa SOLO al cambiar de pestaña activa (NUNCA robar foco si el usuario escribe en un input)
+  useEffect(() => {
     const activeTerm = termInstances.current[activeTabId]
     const activeFit = fitAddons.current[activeTabId]
     const activeContainer = containerRefs.current[activeTabId]
@@ -339,17 +347,20 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       setTimeout(() => {
         try {
           activeFit.fit()
-          activeTerm.focus()
+          // NUNCA robar el foco si el usuario está en el input de host, usuario, clave o similar
+          const activeEl = document.activeElement as HTMLElement | null
+          const isUserTyping =
+            activeEl &&
+            (activeEl.tagName === 'INPUT' ||
+              activeEl.tagName === 'SELECT' ||
+              (activeEl.tagName === 'TEXTAREA' && !activeEl.classList.contains('xterm-helper-textarea')))
+          if (!isUserTyping) {
+            activeTerm.focus()
+          }
         } catch {}
       }, 50)
-      setTimeout(() => {
-        try {
-          activeFit.fit()
-          activeTerm.focus()
-        } catch {}
-      }, 180)
     }
-  }, [tabs, activeTabId, handlePasteClipboard])
+  }, [activeTabId])
 
   // Listener para resize de ventana
   useEffect(() => {
@@ -368,29 +379,6 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [activeTabId])
-
-  // Delegación automática de foco cuando el usuario teclea en la ventana
-  useEffect(() => {
-    const handleGlobalKeyDown = (_e: KeyboardEvent) => {
-      const activeEl = document.activeElement as HTMLElement | null
-      if (
-        activeEl &&
-        (activeEl.tagName === 'INPUT' ||
-          activeEl.tagName === 'SELECT' ||
-          (activeEl.tagName === 'TEXTAREA' && !activeEl.classList.contains('xterm-helper-textarea')))
-      ) {
-        return
-      }
-
-      const activeTerm = termInstances.current[activeTabId]
-      if (activeTerm) {
-        activeTerm.focus()
-      }
-    }
-
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [activeTabId])
 
   // Cierra conexiones al desmontar el componente
@@ -1254,22 +1242,39 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
 
       {/* ── MENÚ CONTEXTUAL FLOTANTE (CLIC DERECHO) ── */}
       {contextMenu.visible && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            background: '#0f172a',
-            border: '1px solid rgba(56, 189, 248, 0.35)',
-            borderRadius: 9,
-            boxShadow: '0 10px 25px rgba(0,0,0,0.8)',
-            zIndex: 99999,
-            minWidth: 190,
-            padding: '5px 0',
-            backdropFilter: 'blur(8px)',
-          }}
-        >
+        <>
+          {/* Telón invisible para cerrar el menú inmediatamente con cualquier clic izquierdo o derecho */}
+          <div
+            onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))}
+            onMouseDown={() => setContextMenu(prev => ({ ...prev, visible: false }))}
+            onContextMenu={e => {
+              e.preventDefault()
+              setContextMenu(prev => ({ ...prev, visible: false }))
+            }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 99998,
+              background: 'transparent',
+            }}
+          />
+          <div
+            data-context-menu="true"
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              background: '#0f172a',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: 9,
+              boxShadow: '0 10px 25px rgba(0,0,0,0.8)',
+              zIndex: 99999,
+              minWidth: 190,
+              padding: '5px 0',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
           {/* Opción: Copiar */}
           <button
             onClick={handleMenuCopy}
@@ -1400,6 +1405,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             </button>
           )}
         </div>
+        </>
       )}
 
       {/* ── MODAL FALLBACK PARA PEGAR TEXTO (Si el navegador bloquea clipboard.readText) ── */}
