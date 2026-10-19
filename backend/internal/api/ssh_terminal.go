@@ -97,27 +97,28 @@ func SSHUpgradeGuard(c *fiber.Ctx) error {
 // MikroTik antiguos) que todavía negocian algoritmos heredados. Los no soportados se ignoran.
 func sshAlgorithms(cfg *ssh.ClientConfig) {
 	cfg.KeyExchanges = []string{
-		"curve25519-sha256", "curve25519-sha256@libssh.org",
 		"ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
+		"curve25519-sha256", "curve25519-sha256@libssh.org",
 		"diffie-hellman-group-exchange-sha256",
 		"diffie-hellman-group14-sha256", "diffie-hellman-group16-sha512",
 		"diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1",
 		"diffie-hellman-group1-sha1",
 	}
 	cfg.Ciphers = []string{
-		"chacha20-poly1305@openssh.com",
 		"aes128-gcm@openssh.com", "aes256-gcm@openssh.com",
 		"aes128-ctr", "aes192-ctr", "aes256-ctr",
+		"chacha20-poly1305@openssh.com",
 		"aes128-cbc", "3des-cbc",
 	}
 	cfg.MACs = []string{
+		"hmac-sha2-256", "hmac-sha2-512",
 		"hmac-sha2-256-etm@openssh.com", "hmac-sha2-512-etm@openssh.com",
-		"hmac-sha2-256", "hmac-sha2-512", "hmac-sha1", "hmac-sha1-96",
+		"hmac-sha1", "hmac-sha1-96",
 	}
 	cfg.HostKeyAlgorithms = []string{
-		ssh.KeyAlgoED25519,
-		ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
 		ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA,
+		ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
+		ssh.KeyAlgoED25519,
 		ssh.KeyAlgoDSA, //nolint:staticcheck // equipos legacy
 	}
 }
@@ -289,7 +290,7 @@ func SSHTerminalHandler() fiber.Handler {
 				return nil
 			},
 			Timeout:       45 * time.Second,
-			ClientVersion: "SSH-2.0-OpenSSH_8.9p1",
+			ClientVersion: "SSH-2.0-OpenSSH_8.0",
 		}
 		sshAlgorithms(cfg)
 
@@ -318,11 +319,30 @@ func SSHTerminalHandler() fiber.Handler {
 
 		session, err := client.NewSession()
 		if err != nil {
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "unexpected packet in response to channel open") || strings.Contains(errMsg, "<nil>") {
-				errMsg = "El servidor aceptó la autenticación pero rechazó abrir el canal interactivo (canal SSH cerrado por el host remoto). Causas comunes: el usuario no tiene shell asignado (ej. /sbin/nologin), la cuenta requiere cambio de clave, o la respuesta al banner de seguridad requiere un formato específico (ej. YES en mayúsculas)."
+			var waitErr error
+			waitDone := make(chan struct{})
+			go func() {
+				waitErr = cc.Wait()
+				close(waitDone)
+			}()
+			select {
+			case <-waitDone:
+			case <-time.After(350 * time.Millisecond):
 			}
-			log.Printf("⚠️  [WebSSH] %s -> %s@%s: error creando sesión: %v", remoteIP, user, addr, err)
+
+			rawErr := err.Error()
+			errMsg := rawErr
+			if waitErr != nil {
+				errMsg = fmt.Sprintf("%s (Razón remota: %v)", rawErr, waitErr)
+			}
+			if strings.Contains(rawErr, "unexpected packet in response to channel open") || strings.Contains(rawErr, "<nil>") {
+				reasonText := ""
+				if waitErr != nil {
+					reasonText = fmt.Sprintf(" [Razón remota del firewall: %v]", waitErr)
+				}
+				errMsg = "El servidor aceptó la autenticación pero rechazó abrir el canal interactivo CLI (canal SSH cerrado por el host remoto)." + reasonText + " Causas comunes en Palo Alto: el usuario no tiene rol asignado para CLI (Device > Admin Role Profiles > CLI: None), la interfaz bloquea shells interactivas (Interface Management Profile), o se alcanzó el cupo de sesiones concurrentes."
+			}
+			log.Printf("⚠️  [WebSSH] %s -> %s@%s: error creando sesión: %v (waitErr: %v)", remoteIP, user, addr, err, waitErr)
 			_ = out.json(sshServerMsg{Type: "error", Message: "No se pudo crear la sesión: " + errMsg})
 			return
 		}
@@ -330,12 +350,17 @@ func SSHTerminalHandler() fiber.Handler {
 
 		modes := ssh.TerminalModes{
 			ssh.ECHO:          1,
-			ssh.TTY_OP_ISPEED: 38400,
-			ssh.TTY_OP_OSPEED: 38400,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
 		}
-		if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
-			_ = out.json(sshServerMsg{Type: "error", Message: "El equipo rechazó la terminal (PTY): " + err.Error()})
-			return
+		ptyType := "xterm"
+		if err := session.RequestPty(ptyType, rows, cols, modes); err != nil {
+			// Fallback a vt100 para routers y firewalls estrictos
+			ptyType = "vt100"
+			if err2 := session.RequestPty(ptyType, rows, cols, modes); err2 != nil {
+				_ = out.json(sshServerMsg{Type: "error", Message: "El equipo rechazó la terminal (PTY): " + err2.Error()})
+				return
+			}
 		}
 
 		stdin, err := session.StdinPipe()

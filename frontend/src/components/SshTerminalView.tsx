@@ -318,6 +318,11 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           activeFit.fit()
         } catch {}
       }, 50)
+      setTimeout(() => {
+        try {
+          activeFit.fit()
+        } catch {}
+      }, 180)
     }
   }, [tabs, activeTabId, handlePasteClipboard])
 
@@ -1115,9 +1120,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       <div
         style={{
           flex: 1,
+          minHeight: 380,
           position: 'relative',
           background: '#090d16',
-          padding: '8px 12px',
           overflow: 'hidden',
         }}
       >
@@ -1128,9 +1133,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               containerRefs.current[tab.id] = el
             }}
             style={{
+              position: 'absolute',
+              inset: '8px 12px',
               display: tab.id === activeTabId ? 'block' : 'none',
-              width: '100%',
-              height: '100%',
+              overflow: 'hidden',
             }}
           />
         ))}
