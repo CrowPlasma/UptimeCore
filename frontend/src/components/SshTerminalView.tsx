@@ -1,13 +1,13 @@
 /**
  * components/SshTerminalView.tsx
- * Consola Web SSH interactiva con soporte Multi-Tab, 100% local,
- * integración con los sensores del grupo, y menú contextual con clic derecho
- * para Copiar / Pegar sin secuestrar Ctrl+C (preservando el envío de SIGINT a firewalls/servidores).
+ * Consola Web SSH interactiva con soporte Multi-Tab ergonómico, 100% local,
+ * integración 1-clic con los sensores del grupo, autenticación 100% in-app (sin window.prompt),
+ * y compatibilidad nativa con Ctrl+C (copiar si hay texto seleccionado, SIGINT si no lo hay).
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Terminal as TerminalIcon, Plus, X, Play, Square, RefreshCw,
-  Copy, Clipboard, Trash2, Server, ChevronDown
+  Plus, X, Play, Square, RefreshCw,
+  Copy, Clipboard, Trash2, Server, Eye, EyeOff, KeyRound
 } from 'lucide-react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -17,6 +17,7 @@ import type { Monitor } from '../types'
 interface TabSession {
   id: string
   title: string
+  monitorId?: number
   host: string
   port: number
   user: string
@@ -31,6 +32,14 @@ interface ContextMenuState {
   x: number
   y: number
   hasSelection: boolean
+}
+
+interface AuthPromptState {
+  tabId: string
+  title: string
+  promptText: string
+  answer: string
+  isSecret: boolean
 }
 
 interface Props {
@@ -78,9 +87,16 @@ function cleanHost(raw?: string | null): string {
   return h
 }
 
-export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitors }: Props) {
+/** Obtiene puerto seguro para SSH (siempre 22 salvo que el monitor sea explícitamente SSH) */
+function getSshPort(m?: Monitor | null): number {
+  if (!m) return 22
+  if (m.type === 'SSH' && m.port && m.port > 0) return m.port
+  return 22
+}
+
+export function SshTerminalView({ initialMonitor, initialGroupName: _initialGroupName, groupMonitors }: Props) {
   const defaultHost = cleanHost(initialMonitor?.target) || '192.168.1.1'
-  const defaultPort = (initialMonitor?.port && initialMonitor.port > 0) ? initialMonitor.port : 22
+  const defaultPort = getSshPort(initialMonitor)
   const defaultTitle = initialMonitor ? initialMonitor.name : 'Sesión SSH 1'
 
   // Lista de sesiones / pestañas
@@ -88,6 +104,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
     {
       id: 'tab-1',
       title: defaultTitle,
+      monitorId: initialMonitor?.id,
       host: defaultHost,
       port: defaultPort,
       user: 'admin',
@@ -97,9 +114,16 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
   ])
   const [activeTabId, setActiveTabId] = useState<string>('tab-1')
 
-  // Dropdown para agregar sesión desde sensores del grupo
-  const [showAddMenu, setShowAddMenu] = useState<boolean>(false)
-  const addMenuRef = useRef<HTMLDivElement>(null)
+  // Estado para mostrar/ocultar clave en la barra superior
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({})
+
+  // Modal in-app para solicitud de clave o MFA (reemplaza por completo el window.prompt)
+  const [authPrompt, setAuthPrompt] = useState<AuthPromptState | null>(null)
+  const [showPromptSecret, setShowPromptSecret] = useState<boolean>(false)
+  const authInputRef = useRef<HTMLInputElement>(null)
+
+  // Notificación breve de copiado ("Copiado")
+  const [copyNotification, setCopyNotification] = useState<string | null>(null)
 
   // Menú contextual flotante con clic derecho
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -125,17 +149,80 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
   // Referencia a intervalos de ping (id -> number)
   const pingIntervals = useRef<Record<string, number>>({})
 
+  // Mostrar notificación temporal
+  const triggerToast = (msg: string) => {
+    setCopyNotification(msg)
+    setTimeout(() => setCopyNotification(null), 1800)
+  }
+
   // Cierra menú contextual al hacer clic fuera
   useEffect(() => {
     const handleOutsideClick = () => {
       setContextMenu(prev => (prev.visible ? { ...prev, visible: false } : prev))
-      setShowAddMenu(false)
     }
     window.addEventListener('click', handleOutsideClick)
     return () => window.removeEventListener('click', handleOutsideClick)
   }, [])
 
-  // Inicializa o destruye terminales al cambiar tabs
+  // Si cambia el initialMonitor desde el header del modal, sincronizar o cambiar a su pestaña
+  useEffect(() => {
+    if (!initialMonitor) return
+    const host = cleanHost(initialMonitor.target)
+    const port = getSshPort(initialMonitor)
+
+    setTabs(prev => {
+      const existing = prev.find(t => t.monitorId === initialMonitor.id || t.host === host)
+      if (existing) {
+        setActiveTabId(existing.id)
+        return prev
+      }
+      const newId = `tab-${Date.now()}`
+      const newTab: TabSession = {
+        id: newId,
+        title: initialMonitor.name,
+        monitorId: initialMonitor.id,
+        host,
+        port,
+        user: 'admin',
+        password: '',
+        status: 'disconnected',
+      }
+      setActiveTabId(newId)
+      return [...prev, newTab]
+    })
+  }, [initialMonitor])
+
+  // Pegar desde portapapeles hacia la shell activa
+  const handlePasteClipboard = useCallback(
+    async (tabId: string) => {
+      const ws = wsInstances.current[tabId]
+      const term = termInstances.current[tabId]
+
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText()
+          if (text) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'data', data: text }))
+            } else if (term) {
+              term.write(text)
+            }
+            triggerToast('Pegado desde portapapeles')
+            return
+          }
+        }
+      } catch {
+        // Bloqueado por permisos del navegador (HTTP) -> abrir modal fallback
+      }
+
+      setPasteInputText('')
+      setPasteModalOpen(true)
+      setTimeout(() => pasteInputRef.current?.focus(), 80)
+    },
+    []
+  )
+
+  // Inicializa o redimensiona terminales
   useEffect(() => {
     tabs.forEach(tab => {
       const container = containerRefs.current[tab.id]
@@ -146,7 +233,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             foreground: '#f8fafc',
             cursor: '#38bdf8',
             cursorAccent: '#090d16',
-            selectionBackground: 'rgba(56, 189, 248, 0.35)',
+            selectionBackground: 'rgba(56, 189, 248, 0.4)',
             black: '#1e293b',
             red: '#f87171',
             green: '#4ade80',
@@ -178,19 +265,66 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
         term.open(container)
         fit.fit()
 
-        // Escribir mensaje de bienvenida inicial
+        // Escribir mensaje de bienvenida
         term.writeln('\x1b[1;36m┌──────────────────────────────────────────────────────────┐\x1b[0m')
         term.writeln('\x1b[1;36m│\x1b[0m  \x1b[1;37mUptimeCore Web SSH Shell\x1b[0m  \x1b[90m(100% Local / Zero Cloud)\x1b[0m       \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33mNota:\x1b[0m Ctrl+C envía interrupción remota (SIGINT)          \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  Usa \x1b[1;32mClic Derecho\x1b[0m para Copiar, Pegar o Limpiar           \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl+C con texto seleccionado:\x1b[0m Copia al portapapeles    \x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl+C sin texto seleccionado:\x1b[0m Interrumpe comando (SIGINT)\x1b[1;36m│\x1b[0m')
+        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl+V o Clic Derecho:\x1b[0m         Pega comandos fácilmente   \x1b[1;36m│\x1b[0m')
         term.writeln('\x1b[1;36m└──────────────────────────────────────────────────────────┘\x1b[0m')
-        term.writeln(`\x1b[90mObjetivo configurado: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`)
+        term.writeln(`\x1b[90mObjetivo: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`)
 
         // Enviar teclas directamente al WebSocket
         term.onData(data => {
           const ws = wsInstances.current[tab.id]
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'data', data }))
+          }
+        })
+
+        // GESTIÓN NATIVA DE TECLADO: Ctrl+C, Ctrl+V, Ctrl+Shift+C, Ctrl+Shift+V
+        term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+          // Ctrl+C: si hay texto seleccionado, COPIA. Si no hay nada seleccionado, envía SIGINT (^C) a la shell.
+          if (e.ctrlKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+            if (term.hasSelection()) {
+              const sel = term.getSelection()
+              copyTextSafe(sel)
+              triggerToast('Copiado al portapapeles')
+              return false // Detiene la propagación para no enviar ^C cuando querías copiar
+            }
+            // Sin selección: permite que xterm envíe \x03 (SIGINT) para detener ping/comandos
+            return true
+          }
+
+          // Ctrl+V: pega directamente
+          if (e.ctrlKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+            handlePasteClipboard(tab.id)
+            return false
+          }
+
+          // Ctrl+Shift+C: Copiar explícito
+          if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+            if (term.hasSelection()) {
+              copyTextSafe(term.getSelection())
+              triggerToast('Copiado al portapapeles')
+            }
+            return false
+          }
+
+          // Ctrl+Shift+V: Pegar explícito
+          if (e.ctrlKey && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+            handlePasteClipboard(tab.id)
+            return false
+          }
+
+          return true
+        })
+
+        // Auto-copiar al seleccionar texto con el ratón (Copy on select estilo PuTTY / MobaXterm)
+        term.onSelectionChange(() => {
+          const sel = term.getSelection().trim()
+          if (sel && sel.length > 0) {
+            copyTextSafe(sel)
           }
         })
 
@@ -208,7 +342,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
         } catch {}
       }, 50)
     }
-  }, [tabs, activeTabId])
+  }, [tabs, activeTabId, handlePasteClipboard])
 
   // Listener para resize de ventana
   useEffect(() => {
@@ -246,8 +380,15 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
     }
   }, [])
 
-  // Iniciar conexión SSH en la pestaña activa
-  const handleConnect = useCallback((tab: TabSession) => {
+  // Enfocar input de autenticación in-app cuando aparece
+  useEffect(() => {
+    if (authPrompt) {
+      setTimeout(() => authInputRef.current?.focus(), 60)
+    }
+  }, [authPrompt])
+
+  // Iniciar conexión SSH real
+  const executeConnection = useCallback((tab: TabSession, passwordOverride?: string) => {
     const term = termInstances.current[tab.id]
     if (!term) return
 
@@ -261,9 +402,18 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       clearInterval(pingIntervals.current[tab.id])
     }
 
+    const effectivePassword = passwordOverride !== undefined ? passwordOverride : tab.password
+
     setTabs(prev =>
       prev.map(t =>
-        t.id === tab.id ? { ...t, status: 'connecting', statusMsg: `Conectando a ${tab.host}:${tab.port}...` } : t
+        t.id === tab.id
+          ? {
+              ...t,
+              status: 'connecting',
+              statusMsg: `Conectando a ${tab.host}:${tab.port}...`,
+              password: effectivePassword,
+            }
+          : t
       )
     )
 
@@ -295,7 +445,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           host: tab.host.trim(),
           port: tab.port || 22,
           user: tab.user.trim(),
-          password: tab.password,
+          password: effectivePassword,
           cols,
           rows,
         })
@@ -314,6 +464,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
         try {
           const msg = JSON.parse(event.data)
           if (msg.type === 'connected') {
+            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t =>
                 t.id === tab.id
@@ -326,7 +477,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
                   : t
               )
             )
-            term.writeln(`\x1b[1;32m✔ Sesión SSH establecida exitosamente con ${tab.host}\x1b[0m`)
+            term.writeln(`\x1b[1;32m✔ Sesión SSH establecida exitosamente con ${tab.host}:${tab.port}\x1b[0m`)
             if (msg.fingerprint) {
               term.writeln(`\x1b[90m  Huella digital (Host Key): ${msg.fingerprint}\x1b[0m`)
             }
@@ -337,21 +488,26 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             )
             term.writeln(`\x1b[90m${msg.message}\x1b[0m`)
           } else if (msg.type === 'prompt') {
-            // Solicitud interactiva de contraseña o MFA
-            const promptTitle = msg.name || 'Autenticación Requerida'
+            // SOLICITUD INTERACTIVA 100% IN-APP (SIN window.prompt)
+            const promptTitle = msg.name || `Autenticación: ${tab.user}@${tab.host}`
             const question = msg.prompts && msg.prompts[0] ? msg.prompts[0] : 'Contraseña:'
-            const ans = window.prompt(`${promptTitle}\n${question}`)
-            if (ans !== null && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'prompt_response', answers: [ans] }))
-            } else {
-              ws.close()
-            }
+            const isSecret = !(msg.echo && msg.echo[0] === true)
+
+            setAuthPrompt({
+              tabId: tab.id,
+              title: promptTitle,
+              promptText: question,
+              answer: '',
+              isSecret,
+            })
           } else if (msg.type === 'error') {
+            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: msg.message } : t))
             )
             term.writeln(`\r\n\x1b[1;31m✖ Error SSH: ${msg.message}\x1b[0m\r\n`)
           } else if (msg.type === 'closed') {
+            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'disconnected', statusMsg: msg.message } : t))
             )
@@ -367,6 +523,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
     }
 
     ws.onerror = () => {
+      setAuthPrompt(null)
       setTabs(prev =>
         prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: 'Fallo en WebSocket' } : t))
       )
@@ -386,6 +543,56 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       )
     }
   }, [])
+
+  // Acción cuando el usuario pulsa "Conectar"
+  const handleConnectClick = (tab: TabSession) => {
+    // Si la contraseña está vacía en la barra, solicitársela de inmediato en modal in-app
+    if (!tab.password.trim()) {
+      setAuthPrompt({
+        tabId: tab.id,
+        title: `Autenticación SSH: ${tab.user}@${tab.host}`,
+        promptText: `Ingresa la contraseña para ${tab.user}@${tab.host}:`,
+        answer: '',
+        isSecret: true,
+      })
+      return
+    }
+    executeConnection(tab)
+  }
+
+  // Responder a la solicitud in-app de contraseña / MFA
+  const handleAuthPromptSubmit = () => {
+    if (!authPrompt) return
+    const answer = authPrompt.answer
+    const tabId = authPrompt.tabId
+    const tab = tabs.find(t => t.id === tabId)
+    const ws = wsInstances.current[tabId]
+
+    // Si ya hay un WebSocket en espera del prompt_response:
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'prompt_response', answers: [answer] }))
+      setAuthPrompt(null)
+      return
+    }
+
+    // Si se activó preventivamente porque la clave estaba vacía:
+    setAuthPrompt(null)
+    if (tab) {
+      executeConnection(tab, answer)
+    }
+  }
+
+  // Cancelar prompt de autenticación
+  const handleAuthPromptCancel = () => {
+    if (!authPrompt) return
+    const ws = wsInstances.current[authPrompt.tabId]
+    if (ws) {
+      try {
+        ws.close()
+      } catch {}
+    }
+    setAuthPrompt(null)
+  }
 
   // Desconectar sesión activa
   const handleDisconnect = (tabId: string) => {
@@ -424,7 +631,6 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
 
     const remaining = tabs.filter(t => t.id !== tabId)
     if (remaining.length === 0) {
-      // Si se cierran todas, crear una nueva pestaña limpia
       const newId = `tab-${Date.now()}`
       setTabs([
         {
@@ -446,20 +652,29 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
     }
   }
 
-  // Agregar pestaña nueva
+  // Agregar pestaña nueva (o sensor del grupo)
   const handleAddTab = (preset?: Monitor) => {
-    setShowAddMenu(false)
     const newId = `tab-${Date.now()}`
-    const host = preset ? cleanHost(preset.target) : ''
-    const port = preset?.port && preset.port > 0 ? preset.port : 22
+    const host = preset ? cleanHost(preset.target) : defaultHost
+    const port = getSshPort(preset)
     const title = preset ? preset.name : `Sesión ${tabs.length + 1}`
+
+    // Si ya existe una pestaña con ese monitor/host, cambiar a ella
+    if (preset) {
+      const found = tabs.find(t => t.monitorId === preset.id || t.host === host)
+      if (found) {
+        setActiveTabId(found.id)
+        return
+      }
+    }
 
     setTabs(prev => [
       ...prev,
       {
         id: newId,
         title,
-        host: host || defaultHost,
+        monitorId: preset?.id,
+        host,
         port,
         user: 'admin',
         password: '',
@@ -490,6 +705,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       const sel = activeTerm.getSelection()
       if (sel) {
         await copyTextSafe(sel)
+        triggerToast('Copiado al portapapeles')
       }
     }
     setContextMenu(prev => ({ ...prev, visible: false }))
@@ -498,30 +714,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
   // Acción: Pegar en la terminal
   const handleMenuPaste = async () => {
     setContextMenu(prev => ({ ...prev, visible: false }))
-    const activeTerm = termInstances.current[activeTabId]
-    const ws = wsInstances.current[activeTabId]
-
-    // Intentar leer directo de navigator.clipboard
-    try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText()
-        if (text) {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'data', data: text }))
-          } else if (activeTerm) {
-            activeTerm.write(text)
-          }
-          return
-        }
-      }
-    } catch {
-      // Bloqueado por permisos o contexto HTTP -> abrir modal fallback
-    }
-
-    // Fallback: abrir modal de pegado
-    setPasteInputText('')
-    setPasteModalOpen(true)
-    setTimeout(() => pasteInputRef.current?.focus(), 80)
+    handlePasteClipboard(activeTabId)
   }
 
   // Enviar texto pegado desde el modal fallback
@@ -534,6 +727,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       } else if (activeTerm) {
         activeTerm.write(pasteInputText)
       }
+      triggerToast('Texto enviado a la shell')
     }
     setPasteModalOpen(false)
     setPasteInputText('')
@@ -553,11 +747,13 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
     const ws = wsInstances.current[activeTabId]
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'data', data: '\x03' }))
+      triggerToast('Enviado SIGINT (Ctrl+C)')
     }
     setContextMenu(prev => ({ ...prev, visible: false }))
   }
 
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
+  const isShowPassword = !!showPasswordMap[activeTab.id]
 
   return (
     <div
@@ -574,16 +770,17 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       }}
       onContextMenu={handleContextMenu}
     >
-      {/* ── BARRA SUPERIOR DE PESTAÑAS (MULTI-TAB) ── */}
+      {/* ── BARRA SUPERIOR DE PESTAÑAS (MULTI-TAB ERGONÓMICO) ── */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          background: '#070a12',
-          borderBottom: '1px solid rgba(148,163,184,0.14)',
-          padding: '4px 12px 0',
-          gap: 4,
+          background: '#060a12',
+          borderBottom: '1px solid rgba(148,163,184,0.15)',
+          padding: '6px 12px 0',
+          gap: 6,
           overflowX: 'auto',
+          flexWrap: 'nowrap',
         }}
       >
         {tabs.map(tab => {
@@ -605,18 +802,19 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '6px 14px',
+                padding: '7px 14px',
                 borderRadius: '8px 8px 0 0',
                 fontSize: 12,
-                fontWeight: isActive ? 700 : 500,
+                fontWeight: isActive ? 800 : 500,
                 color: isActive ? '#38bdf8' : '#94a3b8',
-                background: isActive ? '#0f172a' : 'transparent',
+                background: isActive ? '#0f172a' : 'rgba(15,23,42,0.35)',
                 borderTop: isActive ? '2px solid #38bdf8' : '2px solid transparent',
-                borderLeft: isActive ? '1px solid rgba(148,163,184,0.15)' : '1px solid transparent',
-                borderRight: isActive ? '1px solid rgba(148,163,184,0.15)' : '1px solid transparent',
+                borderLeft: isActive ? '1px solid rgba(56,189,248,0.25)' : '1px solid transparent',
+                borderRight: isActive ? '1px solid rgba(56,189,248,0.25)' : '1px solid transparent',
                 cursor: 'pointer',
                 userSelect: 'none',
                 transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               {/* Indicador de estado */}
@@ -626,7 +824,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
                   height: 8,
                   borderRadius: '50%',
                   background: statusColor,
-                  boxShadow: tab.status === 'connected' ? '0 0 6px #22c55e' : 'none',
+                  boxShadow: tab.status === 'connected' ? '0 0 8px #22c55e' : 'none',
                 }}
               />
               <span>{tab.title}</span>
@@ -647,6 +845,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 4,
+                  marginLeft: 2,
                 }}
                 title="Cerrar pestaña"
               >
@@ -656,124 +855,74 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           )
         })}
 
-        {/* Botón + para agregar nueva pestaña o sensor del grupo */}
-        <div style={{ position: 'relative' }} ref={addMenuRef}>
-          <button
-            onClick={() => setShowAddMenu(prev => !prev)}
+        {/* Botón + para agregar nueva pestaña en blanco */}
+        <button
+          onClick={() => handleAddTab()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 11px',
+            borderRadius: '6px 6px 0 0',
+            background: 'rgba(56, 189, 248, 0.12)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            borderBottom: 'none',
+            color: '#38bdf8',
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+          title="Abrir nueva sesión SSH personalizada"
+        >
+          <Plus size={13} />
+          <span>Nueva Pestaña</span>
+        </button>
+
+        {/* CHIPS RÁPIDOS DE SENSORES DEL GRUPO (1-clic para abrir o cambiar a ese equipo) */}
+        {groupMonitors && groupMonitors.length > 0 && (
+          <div
             style={{
-              display: 'inline-flex',
+              marginLeft: 'auto',
+              display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              padding: '5px 10px',
-              borderRadius: 6,
-              background: 'rgba(56, 189, 248, 0.1)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              color: '#38bdf8',
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: 'pointer',
-              marginLeft: 4,
+              gap: 5,
+              paddingBottom: 4,
             }}
-            title="Abrir nueva sesión o elegir sensor del grupo"
           >
-            <Plus size={13} />
-            <span>Nueva Pestaña</span>
-            <ChevronDown size={12} />
-          </button>
-
-          {/* Menú desplegable al pulsar + */}
-          {showAddMenu && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: 4,
-                width: 280,
-                background: '#0f172a',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-                borderRadius: 10,
-                boxShadow: '0 12px 30px rgba(0,0,0,0.7)',
-                zIndex: 1000,
-                padding: '6px 0',
-              }}
-            >
-              <button
-                onClick={() => handleAddTab()}
-                style={{
-                  width: '100%',
-                  padding: '8px 14px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#f8fafc',
-                  textAlign: 'left',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.15)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <TerminalIcon size={14} color="#38bdf8" />
-                <span>Sesión Personalizada (En blanco)</span>
-              </button>
-
-              {groupMonitors && groupMonitors.length > 0 && (
-                <>
-                  <div
-                    style={{
-                      padding: '6px 14px 4px',
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      borderTop: '1px solid rgba(148,163,184,0.1)',
-                      marginTop: 4,
-                    }}
-                  >
-                    Sensores del Grupo {initialGroupName ? `(${initialGroupName})` : ''}
-                  </div>
-                  {groupMonitors.map(gm => {
-                    const hostClean = cleanHost(gm.target)
-                    return (
-                      <button
-                        key={gm.id}
-                        onClick={() => handleAddTab(gm)}
-                        style={{
-                          width: '100%',
-                          padding: '7px 14px',
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#e2e8f0',
-                          textAlign: 'left',
-                          fontSize: 11.5,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.15)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <Server size={12} color="#94a3b8" />
-                          <span style={{ fontWeight: 600 }}>{gm.name}</span>
-                        </div>
-                        <span style={{ fontSize: 10.5, color: '#38bdf8', fontFamily: 'monospace' }}>
-                          {hostClean}:{gm.port || 22}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+              Sensores:
+            </span>
+            {groupMonitors.map(gm => {
+              const hostClean = cleanHost(gm.target)
+              const isOpen = tabs.some(t => t.monitorId === gm.id || t.host === hostClean)
+              return (
+                <button
+                  key={gm.id}
+                  onClick={() => handleAddTab(gm)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: isOpen ? 'rgba(34, 197, 94, 0.12)' : 'rgba(30,41,59,0.7)',
+                    border: isOpen ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(148,163,184,0.2)',
+                    color: isOpen ? '#4ade80' : '#cbd5e1',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={`Abrir sesión SSH para ${gm.name} (${hostClean}:22)`}
+                >
+                  <Server size={10} color={isOpen ? '#4ade80' : '#94a3b8'} />
+                  <span>{isOpen ? `● ${gm.name}` : `+ ${gm.name}`}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── BARRA DE PARÁMETROS Y CONEXIÓN DE LA PESTAÑA ACTIVA ── */}
@@ -802,12 +951,12 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             placeholder="IP o Hostname"
             style={{
               flex: 1,
-              padding: '5px 10px',
+              padding: '6px 10px',
               borderRadius: 6,
               background: '#070a12',
-              border: '1px solid rgba(148,163,184,0.2)',
+              border: '1px solid rgba(148,163,184,0.25)',
               color: '#f8fafc',
-              fontSize: 12,
+              fontSize: 12.5,
               fontFamily: 'monospace',
               outline: 'none',
             }}
@@ -815,7 +964,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
         </div>
 
         {/* Puerto */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 110 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 115 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Puerto:</span>
           <input
             type="number"
@@ -827,21 +976,21 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             }}
             style={{
               width: '100%',
-              padding: '5px 8px',
+              padding: '6px 8px',
               borderRadius: 6,
               background: '#070a12',
-              border: '1px solid rgba(148,163,184,0.2)',
+              border: '1px solid rgba(56,189,248,0.3)',
               color: '#38bdf8',
-              fontSize: 12,
+              fontSize: 12.5,
               fontFamily: 'monospace',
-              fontWeight: 700,
+              fontWeight: 800,
               outline: 'none',
             }}
           />
         </div>
 
         {/* Usuario */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 140 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 145 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Usuario:</span>
           <input
             type="text"
@@ -854,10 +1003,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             placeholder="admin"
             style={{
               width: '100%',
-              padding: '5px 8px',
+              padding: '6px 8px',
               borderRadius: 6,
               background: '#070a12',
-              border: '1px solid rgba(148,163,184,0.2)',
+              border: '1px solid rgba(148,163,184,0.25)',
               color: '#f8fafc',
               fontSize: 12,
               fontFamily: 'monospace',
@@ -866,31 +1015,50 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           />
         </div>
 
-        {/* Contraseña (opcional) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 160 }}>
+        {/* Contraseña con toggle de visibilidad */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 180, position: 'relative' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Clave:</span>
           <input
-            type="password"
+            type={isShowPassword ? 'text' : 'password'}
             value={activeTab.password}
             disabled={activeTab.status === 'connected' || activeTab.status === 'connecting'}
             onChange={e => {
               const val = e.target.value
               setTabs(prev => prev.map(t => (t.id === activeTab.id ? { ...t, password: val } : t)))
             }}
-            placeholder="En blanco para terminal"
-            title="Déjala en blanco para escribirla directamente en la terminal interactiva"
+            placeholder="Opcional (pedir en shell)"
             style={{
               width: '100%',
-              padding: '5px 8px',
+              padding: '6px 28px 6px 8px',
               borderRadius: 6,
               background: '#070a12',
-              border: '1px solid rgba(148,163,184,0.2)',
+              border: '1px solid rgba(148,163,184,0.25)',
               color: '#f8fafc',
               fontSize: 12,
               fontFamily: 'monospace',
               outline: 'none',
             }}
           />
+          <button
+            type="button"
+            onClick={() =>
+              setShowPasswordMap(prev => ({ ...prev, [activeTab.id]: !prev[activeTab.id] }))
+            }
+            style={{
+              position: 'absolute',
+              right: 6,
+              background: 'transparent',
+              border: 'none',
+              color: isShowPassword ? '#38bdf8' : '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 0,
+            }}
+            title={isShowPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+          >
+            {isShowPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
         </div>
 
         {/* Botón Conectar / Desconectar */}
@@ -898,13 +1066,13 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           <button
             onClick={() => handleDisconnect(activeTab.id)}
             style={{
-              padding: '6px 14px',
+              padding: '6px 15px',
               borderRadius: 7,
               background: 'rgba(239, 68, 68, 0.15)',
               border: '1px solid rgba(239, 68, 68, 0.4)',
               color: '#f87171',
               fontSize: 11.5,
-              fontWeight: 700,
+              fontWeight: 800,
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
@@ -915,10 +1083,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           </button>
         ) : (
           <button
-            onClick={() => handleConnect(activeTab)}
+            onClick={() => handleConnectClick(activeTab)}
             disabled={activeTab.status === 'connecting' || !activeTab.host || !activeTab.user}
             style={{
-              padding: '6px 16px',
+              padding: '6px 18px',
               borderRadius: 7,
               background: 'linear-gradient(180deg, #0284c7, #0369a1)',
               border: '1px solid #38bdf8',
@@ -933,6 +1101,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
+              boxShadow: '0 2px 8px rgba(14,165,233,0.35)',
             }}
           >
             {activeTab.status === 'connecting' ? (
@@ -949,7 +1118,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
           <span
             style={{
               fontSize: 11,
-              fontWeight: 600,
+              fontWeight: 700,
               color:
                 activeTab.status === 'connected'
                   ? '#4ade80'
@@ -988,6 +1157,171 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             }}
           />
         ))}
+
+        {/* ── NOTIFICACIÓN FLOTANTE TEMPORAL (Ej. "Copiado al portapapeles") ── */}
+        {copyNotification && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 14,
+              right: 18,
+              background: '#0f172a',
+              border: '1px solid #38bdf8',
+              borderRadius: 8,
+              padding: '6px 14px',
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: '#38bdf8',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              zIndex: 9999,
+              pointerEvents: 'none',
+            }}
+          >
+            {copyNotification}
+          </div>
+        )}
+
+        {/* ── MODAL IN-APP DE AUTENTICACIÓN (REEMPLAZO 100% ELEGANTE DE window.prompt) ── */}
+        {authPrompt && (
+          <div
+            onClick={handleAuthPromptCancel}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(2, 6, 23, 0.8)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: 20,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: 440,
+                background: '#0f172a',
+                border: '1px solid rgba(56, 189, 248, 0.45)',
+                borderRadius: 14,
+                padding: 22,
+                boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#38bdf8',
+                  }}
+                >
+                  <KeyRound size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#f8fafc' }}>
+                    Autenticación SSH Requerida
+                  </h3>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{authPrompt.title}</span>
+                </div>
+              </div>
+
+              <p style={{ margin: '0 0 12px', fontSize: 12.5, color: '#cbd5e1' }}>
+                {authPrompt.promptText}
+              </p>
+
+              <div style={{ position: 'relative', marginBottom: 16 }}>
+                <input
+                  ref={authInputRef}
+                  type={authPrompt.isSecret && !showPromptSecret ? 'password' : 'text'}
+                  value={authPrompt.answer}
+                  onChange={e =>
+                    setAuthPrompt(prev => (prev ? { ...prev, answer: e.target.value } : null))
+                  }
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAuthPromptSubmit()
+                    if (e.key === 'Escape') handleAuthPromptCancel()
+                  }}
+                  placeholder="Escribe la clave aquí y pulsa Enter..."
+                  style={{
+                    width: '100%',
+                    padding: '9px 36px 9px 12px',
+                    borderRadius: 8,
+                    background: '#070a12',
+                    border: '1px solid rgba(56, 189, 248, 0.5)',
+                    color: '#f8fafc',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    outline: 'none',
+                  }}
+                />
+                {authPrompt.isSecret && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptSecret(prev => !prev)}
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      color: showPromptSecret ? '#38bdf8' : '#64748b',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                    title={showPromptSecret ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  >
+                    {showPromptSecret ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleAuthPromptCancel}
+                  style={{
+                    padding: '7px 16px',
+                    borderRadius: 7,
+                    background: 'rgba(148,163,184,0.1)',
+                    border: '1px solid rgba(148,163,184,0.25)',
+                    color: '#cbd5e1',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar (Esc)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAuthPromptSubmit}
+                  style={{
+                    padding: '7px 20px',
+                    borderRadius: 7,
+                    background: 'linear-gradient(180deg, #0284c7, #0369a1)',
+                    border: '1px solid #38bdf8',
+                    color: '#ffffff',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 10px rgba(14,165,233,0.4)',
+                  }}
+                >
+                  Autenticar (Enter)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── BARRA INFERIOR DE AYUDA / HINTS ── */}
@@ -1005,13 +1339,16 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span>
-            <strong style={{ color: '#38bdf8' }}>Clic Derecho:</strong> Menú Copiar / Pegar / Limpiar
+            <strong style={{ color: '#38bdf8' }}>Ctrl+C con texto:</strong> Copia selección
           </span>
           <span>
-            <strong style={{ color: '#fbbf24' }}>Ctrl+C:</strong> Interrupción remota de comandos
+            <strong style={{ color: '#fbbf24' }}>Ctrl+C sin texto:</strong> Cancela comando (SIGINT)
           </span>
           <span>
-            <strong style={{ color: '#4ade80' }}>Local:</strong> Conexión directa desde Docker sin internet
+            <strong style={{ color: '#4ade80' }}>Ctrl+V / Clic Derecho:</strong> Pega texto
+          </span>
+          <span>
+            <strong style={{ color: '#a855f7' }}>Selección:</strong> Auto-copia automática
           </span>
         </div>
         <div>
@@ -1147,7 +1484,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName, groupMonitor
             <button
               onClick={() => {
                 setContextMenu(prev => ({ ...prev, visible: false }))
-                handleConnect(activeTab)
+                handleConnectClick(activeTab)
               }}
               style={{
                 width: '100%',

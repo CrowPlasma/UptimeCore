@@ -683,8 +683,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                     stopDiagnostic()
                     setSelectedMonitor(gm)
                     setTarget(parsed.host)
-                    setPort(parsed.port)
-                    setMode(parsed.mode)
+                    if (mode === 'SSH') {
+                      setPort(gm.type === 'SSH' && gm.port ? gm.port : 22)
+                    } else {
+                      setPort(parsed.port)
+                      setMode(parsed.mode)
+                    }
                   }}
                   style={{
                     fontSize: 11,

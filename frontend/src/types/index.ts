@@ -8,7 +8,7 @@
 export type MonitorStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN' | 'MAINTENANCE' | 'PAUSED'
 
 /** Tipo de protocolo de monitoreo */
-export type MonitorType = 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'TCP_PING' | 'POSTGRESQL' | 'MYSQL' | 'REDIS' | 'SNMP' | 'SSL'
+export type MonitorType = 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'TCP_PING' | 'SSH' | 'POSTGRESQL' | 'MYSQL' | 'REDIS' | 'SNMP' | 'SSL'
 
 /** Representa una etiqueta para clasificar monitores */
 export interface Tag {

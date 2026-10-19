@@ -288,14 +288,14 @@ func SSHTerminalHandler() fiber.Handler {
 				fingerprint = ssh.FingerprintSHA256(key)
 				return nil
 			},
-			Timeout:       12 * time.Second,
-			ClientVersion: "SSH-2.0-UptimeCore_WebSSH",
+			Timeout:       45 * time.Second,
+			ClientVersion: "SSH-2.0-OpenSSH_8.9p1",
 		}
 		sshAlgorithms(cfg)
 
 		_ = out.json(sshServerMsg{Type: "status", Message: fmt.Sprintf("Conectando a %s ...", addr)})
 
-		tcpConn, err := net.DialTimeout("tcp", addr, 12*time.Second)
+		tcpConn, err := net.DialTimeout("tcp", addr, 15*time.Second)
 		if err != nil {
 			_ = out.json(sshServerMsg{Type: "error", Message: "No se pudo abrir la conexión TCP: " + err.Error()})
 			return
@@ -305,7 +305,9 @@ func SSHTerminalHandler() fiber.Handler {
 			tcpConn.Close()
 			msg := err.Error()
 			if strings.Contains(msg, "unable to authenticate") {
-				msg = "Autenticación fallida (usuario o contraseña incorrectos)"
+				msg = "Autenticación fallida: usuario o contraseña incorrectos"
+			} else if strings.Contains(msg, "EOF") {
+				msg = "El equipo remoto cerró la conexión (EOF). Verifica que el puerto sea el de SSH (habitualmente 22) y que el usuario/contraseña sean correctos."
 			}
 			log.Printf("⚠️  [WebSSH] %s -> %s@%s: %v", remoteIP, user, addr, err)
 			_ = out.json(sshServerMsg{Type: "error", Message: msg})
