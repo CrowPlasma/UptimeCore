@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Plus, X, Play, Square, RefreshCw,
-  Copy, Clipboard, Trash2, Server, Eye, EyeOff, KeyRound
+  Copy, Clipboard, Trash2, Server, Eye, EyeOff
 } from 'lucide-react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -34,13 +34,6 @@ interface ContextMenuState {
   hasSelection: boolean
 }
 
-interface AuthPromptState {
-  tabId: string
-  title: string
-  promptText: string
-  answer: string
-  isSecret: boolean
-}
 
 interface Props {
   initialMonitor?: Monitor | null
@@ -117,10 +110,6 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
   // Estado para mostrar/ocultar clave en la barra superior
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({})
 
-  // Modal in-app para solicitud de clave o MFA (reemplaza por completo el window.prompt)
-  const [authPrompt, setAuthPrompt] = useState<AuthPromptState | null>(null)
-  const [showPromptSecret, setShowPromptSecret] = useState<boolean>(false)
-  const authInputRef = useRef<HTMLInputElement>(null)
 
   // Notificación breve de copiado ("Copiado")
   const [copyNotification, setCopyNotification] = useState<string | null>(null)
@@ -226,8 +215,20 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
   useEffect(() => {
     tabs.forEach(tab => {
       const container = containerRefs.current[tab.id]
-      if (container && !termInstances.current[tab.id]) {
-        const term = new Terminal({
+      if (!container) return
+
+      let term = termInstances.current[tab.id]
+      const isDead = !term || (term as any)._isDisposed || !container.querySelector('.xterm')
+
+      if (isDead) {
+        if (term) {
+          try {
+            term.dispose()
+          } catch {}
+        }
+        container.innerHTML = ''
+
+        term = new Terminal({
           theme: {
             background: '#090d16',
             foreground: '#f8fafc',
@@ -333,7 +334,8 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     // Redimensionar y enfocar terminal activa
     const activeTerm = termInstances.current[activeTabId]
     const activeFit = fitAddons.current[activeTabId]
-    if (activeFit && activeTerm) {
+    const activeContainer = containerRefs.current[activeTabId]
+    if (activeFit && activeTerm && activeContainer && activeContainer.clientWidth > 0) {
       setTimeout(() => {
         try {
           activeFit.fit()
@@ -405,15 +407,14 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           t.dispose()
         } catch {}
       })
+      termInstances.current = {}
+      fitAddons.current = {}
+      wsInstances.current = {}
+      pingIntervals.current = {}
+      containerRefs.current = {}
     }
   }, [])
 
-  // Enfocar input de autenticación in-app cuando aparece
-  useEffect(() => {
-    if (authPrompt) {
-      setTimeout(() => authInputRef.current?.focus(), 60)
-    }
-  }, [authPrompt])
 
   // Iniciar conexión SSH real
   const executeConnection = useCallback((tab: TabSession, passwordOverride?: string) => {
@@ -484,6 +485,11 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           rows,
         })
       )
+      setTimeout(() => {
+        try {
+          term.focus()
+        } catch {}
+      }, 50)
 
       // Keep-alive ping cada 25 segundos
       pingIntervals.current[tab.id] = window.setInterval(() => {
@@ -494,11 +500,13 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     }
 
     ws.onmessage = async (event: MessageEvent) => {
+      const activeTerminal = termInstances.current[tab.id] || term
+
       // 1. Recepción de datos binarios de la shell (soporta tanto Blob como ArrayBuffer nativo)
       if (event.data instanceof Blob) {
         try {
           const buf = await event.data.arrayBuffer()
-          term.write(new Uint8Array(buf))
+          activeTerminal.write(new Uint8Array(buf))
         } catch (err) {
           console.error('[WebSSH] error procesando blob:', err)
         }
@@ -506,7 +514,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       }
 
       if (event.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(event.data))
+        activeTerminal.write(new Uint8Array(event.data))
         return
       }
 
@@ -515,7 +523,6 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         try {
           const msg = JSON.parse(event.data)
           if (msg.type === 'connected') {
-            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t =>
                 t.id === tab.id
@@ -528,22 +535,22 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   : t
               )
             )
-            // Múltiples disparos de foco para garantizar la captura del cursor tras cerrar modales
+            // Múltiples disparos de foco para garantizar la captura del cursor
             setTimeout(() => {
               try {
                 fitAddons.current[tab.id]?.fit()
-                term.focus()
+                activeTerminal.focus()
               } catch {}
             }, 30)
             setTimeout(() => {
               try {
                 fitAddons.current[tab.id]?.fit()
-                term.focus()
+                activeTerminal.focus()
               } catch {}
             }, 120)
             setTimeout(() => {
               try {
-                term.focus()
+                activeTerminal.focus()
               } catch {}
             }, 300)
             return
@@ -551,45 +558,28 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, statusMsg: msg.message } : t))
             )
-            term.writeln(`\x1b[90m${msg.message}\x1b[0m`)
-            return
-          } else if (msg.type === 'prompt') {
-            // SOLICITUD INTERACTIVA 100% IN-APP (SIN window.prompt)
-            const promptTitle = msg.name || `Autenticación: ${tab.user}@${tab.host}`
-            const question = msg.prompts && msg.prompts[0] ? msg.prompts[0] : 'Contraseña:'
-            const isSecret = !(msg.echo && msg.echo[0] === true)
-
-            setAuthPrompt({
-              tabId: tab.id,
-              title: promptTitle,
-              promptText: question,
-              answer: '',
-              isSecret,
-            })
+            activeTerminal.writeln(`\x1b[90m${msg.message}\x1b[0m`)
             return
           } else if (msg.type === 'error') {
-            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: msg.message } : t))
             )
-            term.writeln(`\r\n\x1b[1;31m✖ Error SSH: ${msg.message}\x1b[0m\r\n`)
+            activeTerminal.writeln(`\r\n\x1b[1;31m✖ Error SSH: ${msg.message}\x1b[0m\r\n`)
             return
           } else if (msg.type === 'closed') {
-            setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'disconnected', statusMsg: msg.message } : t))
             )
-            term.writeln(`\r\n\x1b[33m● ${msg.message}\x1b[0m\r\n`)
+            activeTerminal.writeln(`\r\n\x1b[33m● ${msg.message}\x1b[0m\r\n`)
             return
           }
         } catch {
-          term.write(event.data)
+          activeTerminal.write(event.data)
         }
       }
     }
 
     ws.onerror = () => {
-      setAuthPrompt(null)
       setTabs(prev =>
         prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: 'Fallo en WebSocket' } : t))
       )
@@ -610,54 +600,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     }
   }, [])
 
-  // Acción cuando el usuario pulsa "Conectar"
+  // Acción cuando el usuario pulsa "Conectar" (100% interactivo en la terminal, igual que PuTTY / MobaXterm)
   const handleConnectClick = (tab: TabSession) => {
-    // Si la contraseña está vacía en la barra, solicitársela de inmediato en modal in-app
-    if (!tab.password.trim()) {
-      setAuthPrompt({
-        tabId: tab.id,
-        title: `Autenticación SSH: ${tab.user}@${tab.host}`,
-        promptText: `Ingresa la contraseña para ${tab.user}@${tab.host}:`,
-        answer: '',
-        isSecret: true,
-      })
-      return
-    }
     executeConnection(tab)
-  }
-
-  // Responder a la solicitud in-app de contraseña / MFA
-  const handleAuthPromptSubmit = () => {
-    if (!authPrompt) return
-    const answer = authPrompt.answer
-    const tabId = authPrompt.tabId
-    const tab = tabs.find(t => t.id === tabId)
-    const ws = wsInstances.current[tabId]
-
-    // Si ya hay un WebSocket en espera del prompt_response:
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'prompt_response', answers: [answer] }))
-      setAuthPrompt(null)
-      return
-    }
-
-    // Si se activó preventivamente porque la clave estaba vacía:
-    setAuthPrompt(null)
-    if (tab) {
-      executeConnection(tab, answer)
-    }
-  }
-
-  // Cancelar prompt de autenticación
-  const handleAuthPromptCancel = () => {
-    if (!authPrompt) return
-    const ws = wsInstances.current[authPrompt.tabId]
-    if (ws) {
-      try {
-        ws.close()
-      } catch {}
-    }
-    setAuthPrompt(null)
   }
 
   // Desconectar sesión activa
@@ -1236,7 +1181,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               position: 'absolute',
               inset: 0,
               padding: '8px 12px',
-              display: tab.id === activeTabId ? 'block' : 'none',
+              visibility: tab.id === activeTabId ? 'visible' : 'hidden',
+              zIndex: tab.id === activeTabId ? 1 : 0,
+              pointerEvents: tab.id === activeTabId ? 'auto' : 'none',
               overflow: 'hidden',
               cursor: 'text',
               outline: 'none',
@@ -1267,147 +1214,6 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           </div>
         )}
 
-        {/* ── MODAL IN-APP DE AUTENTICACIÓN (REEMPLAZO 100% ELEGANTE DE window.prompt) ── */}
-        {authPrompt && (
-          <div
-            onClick={handleAuthPromptCancel}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(2, 6, 23, 0.8)',
-              backdropFilter: 'blur(6px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10000,
-              padding: 20,
-            }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: 440,
-                background: '#0f172a',
-                border: '1px solid rgba(56, 189, 248, 0.45)',
-                borderRadius: 14,
-                padding: 22,
-                boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#38bdf8',
-                  }}
-                >
-                  <KeyRound size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#f8fafc' }}>
-                    Autenticación SSH Requerida
-                  </h3>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{authPrompt.title}</span>
-                </div>
-              </div>
-
-              <p style={{ margin: '0 0 12px', fontSize: 12.5, color: '#cbd5e1' }}>
-                {authPrompt.promptText}
-              </p>
-
-              <div style={{ position: 'relative', marginBottom: 16 }}>
-                <input
-                  ref={authInputRef}
-                  type={authPrompt.isSecret && !showPromptSecret ? 'password' : 'text'}
-                  value={authPrompt.answer}
-                  onChange={e =>
-                    setAuthPrompt(prev => (prev ? { ...prev, answer: e.target.value } : null))
-                  }
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleAuthPromptSubmit()
-                    if (e.key === 'Escape') handleAuthPromptCancel()
-                  }}
-                  placeholder="Escribe la clave aquí y pulsa Enter..."
-                  style={{
-                    width: '100%',
-                    padding: '9px 36px 9px 12px',
-                    borderRadius: 8,
-                    background: '#070a12',
-                    border: '1px solid rgba(56, 189, 248, 0.5)',
-                    color: '#f8fafc',
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                    outline: 'none',
-                  }}
-                />
-                {authPrompt.isSecret && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPromptSecret(prev => !prev)}
-                    style={{
-                      position: 'absolute',
-                      right: 10,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'transparent',
-                      border: 'none',
-                      color: showPromptSecret ? '#38bdf8' : '#64748b',
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                    title={showPromptSecret ? 'Ocultar contraseña' : 'Ver contraseña'}
-                  >
-                    {showPromptSecret ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={handleAuthPromptCancel}
-                  style={{
-                    padding: '7px 16px',
-                    borderRadius: 7,
-                    background: 'rgba(148,163,184,0.1)',
-                    border: '1px solid rgba(148,163,184,0.25)',
-                    color: '#cbd5e1',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancelar (Esc)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAuthPromptSubmit}
-                  style={{
-                    padding: '7px 20px',
-                    borderRadius: 7,
-                    background: 'linear-gradient(180deg, #0284c7, #0369a1)',
-                    border: '1px solid #38bdf8',
-                    color: '#ffffff',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 10px rgba(14,165,233,0.4)',
-                  }}
-                >
-                  Autenticar (Enter)
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── BARRA INFERIOR DE AYUDA / HINTS ── */}

@@ -243,28 +243,40 @@ func SSHTerminalHandler() fiber.Handler {
 
 		log.Printf("🔐 [WebSSH] %s abre sesión SSH -> %s@%s", remoteIP, user, addr)
 
-		// Pide datos al usuario dentro de la terminal (contraseña / OTP / preguntas keyboard-interactive)
-		askClient := func(name, instruction string, prompts []string, echos []bool) ([]string, error) {
-			msg := name
-			if instruction != "" {
-				if msg != "" {
-					msg += "\n"
+		// Pide datos al usuario directamente DENTRO de la terminal (igual que PuTTY / OpenSSH, sin modales ni popups)
+		askClientInTerminal := func(prompt string, echo bool) (string, error) {
+			cleanPrompt := strings.TrimSpace(prompt)
+			_, _ = out.Write([]byte(fmt.Sprintf("\r\n\x1b[1;33m%s\x1b[0m ", cleanPrompt)))
+			var buf []byte
+			for {
+				select {
+				case b := <-dataCh:
+					for _, ch := range b {
+						if ch == '\r' || ch == '\n' {
+							_, _ = out.Write([]byte("\r\n"))
+							return string(buf), nil
+						} else if ch == 0x7f || ch == 0x08 { // Backspace
+							if len(buf) > 0 {
+								buf = buf[:len(buf)-1]
+								_, _ = out.Write([]byte("\b \b"))
+							}
+						} else if ch == 0x03 { // Ctrl+C
+							_, _ = out.Write([]byte("^C\r\n"))
+							return "", errors.New("autenticación cancelada por el usuario")
+						} else if ch >= 0x20 { // Carácter imprimible
+							buf = append(buf, ch)
+							if echo {
+								_, _ = out.Write([]byte{ch})
+							} else {
+								_, _ = out.Write([]byte("*"))
+							}
+						}
+					}
+				case <-done:
+					return "", errors.New("conexión cerrada por el navegador")
+				case <-time.After(3 * time.Minute):
+					return "", errors.New("tiempo de espera agotado para la autenticación")
 				}
-				msg += instruction
-			}
-			if err := out.json(sshServerMsg{Type: "prompt", Name: msg, Prompts: prompts, Echo: echos}); err != nil {
-				return nil, err
-			}
-			select {
-			case ans := <-promptCh:
-				if len(ans) != len(prompts) {
-					return nil, errors.New("respuesta de autenticación inválida")
-				}
-				return ans, nil
-			case <-done:
-				return nil, errors.New("conexión cerrada por el navegador")
-			case <-time.After(3 * time.Minute):
-				return nil, errors.New("tiempo de espera agotado para la autenticación")
 			}
 		}
 
@@ -273,41 +285,66 @@ func SSHTerminalHandler() fiber.Handler {
 			pw := req.Password
 			authMethods = append(authMethods,
 				// Prioridad 1: Keyboard-Interactive (RFC 4256), requerido por Palo Alto PAN-OS, Cisco y PAM corporativos.
-				// Nunca intentar 'password' primero, ya que en Palo Alto con banner obligatorio un intento 'password'
-				// genera rechazo en PAM y corta la sesión SSH subsiguiente con EOF.
 				ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 					answers := make([]string, len(questions))
-					allSecret := true
-					for i := range questions {
-						if echos[i] {
-							allSecret = false
+					for i, q := range questions {
+						qLower := strings.ToLower(q)
+						if strings.Contains(qLower, "yes/no") || strings.Contains(qLower, "acknowledge") || strings.Contains(qLower, "accept") {
+							// Banner de consentimiento legal (Palo Alto / Cisco):
+							// Se solicita interactivamente en la terminal para que el usuario escriba 'yes' (o pulse Enter para aceptar)
+							ans, err := askClientInTerminal(q, true)
+							if err != nil {
+								return nil, err
+							}
+							if strings.TrimSpace(ans) == "" {
+								ans = "yes"
+							}
+							answers[i] = ans
+						} else if !echos[i] || strings.Contains(qLower, "password") || strings.Contains(qLower, "clave") || strings.Contains(qLower, "contraseña") {
+							// Campo de contraseña
+							answers[i] = pw
+						} else {
+							// Pregunta visible: se responde directamente en la terminal (sin popups ni modales)
+							ans, err := askClientInTerminal(q, echos[i])
+							if err != nil {
+								return nil, err
+							}
+							answers[i] = ans
 						}
-						answers[i] = pw
 					}
-					if allSecret || len(questions) == 0 {
-						return answers, nil
-					}
-					// Preguntas visibles (ej. consentimiento del banner legal o MFA): se delegan al usuario
-					return askClient(name, instruction, questions, echos)
+					return answers, nil
 				}),
 				// Prioridad 2: Password tradicional (solo como fallback para equipos sin PAM / sin banner)
 				ssh.Password(pw),
 			)
 		} else {
-			// Sin contraseña en la barra: pedir interactivamente como PuTTY / OpenSSH
+			// Sin contraseña en la barra: pedir directamente en la terminal interactiva como PuTTY / OpenSSH
 			authMethods = append(authMethods,
 				ssh.RetryableAuthMethod(ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-					if len(questions) == 0 {
-						return []string{}, nil
+					answers := make([]string, len(questions))
+					for i, q := range questions {
+						qLower := strings.ToLower(q)
+						if strings.Contains(qLower, "yes/no") || strings.Contains(qLower, "acknowledge") || strings.Contains(qLower, "accept") {
+							ans, err := askClientInTerminal(q, true)
+							if err != nil {
+								return nil, err
+							}
+							if strings.TrimSpace(ans) == "" {
+								ans = "yes"
+							}
+							answers[i] = ans
+						} else {
+							ans, err := askClientInTerminal(q, echos[i])
+							if err != nil {
+								return nil, err
+							}
+							answers[i] = ans
+						}
 					}
-					return askClient(name, instruction, questions, echos)
+					return answers, nil
 				}), 3),
 				ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
-					ans, err := askClient("", "", []string{fmt.Sprintf("%s@%s's password: ", user, host)}, []bool{false})
-					if err != nil {
-						return "", err
-					}
-					return ans[0], nil
+					return askClientInTerminal(fmt.Sprintf("%s@%s's password: ", user, host), false)
 				}), 3),
 			)
 		}
