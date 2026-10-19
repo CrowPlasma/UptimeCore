@@ -244,7 +244,9 @@ func SSHTerminalHandler() fiber.Handler {
 		if req.Password != "" {
 			pw := req.Password
 			authMethods = append(authMethods,
-				ssh.Password(pw),
+				// Prioridad 1: Keyboard-Interactive (RFC 4256), requerido por Palo Alto PAN-OS, Cisco y PAM corporativos.
+				// Nunca intentar 'password' primero, ya que en Palo Alto con banner obligatorio un intento 'password'
+				// genera rechazo en PAM y corta la sesión SSH subsiguiente con EOF.
 				ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 					answers := make([]string, len(questions))
 					allSecret := true
@@ -257,25 +259,27 @@ func SSHTerminalHandler() fiber.Handler {
 					if allSecret || len(questions) == 0 {
 						return answers, nil
 					}
-					// Preguntas que requieren texto visible (p.ej. token / MFA): se delegan al usuario
+					// Preguntas visibles (ej. consentimiento del banner legal o MFA): se delegan al usuario
 					return askClient(name, instruction, questions, echos)
 				}),
+				// Prioridad 2: Password tradicional (solo como fallback para equipos sin PAM / sin banner)
+				ssh.Password(pw),
 			)
 		} else {
-			// Contraseña tecleada dentro de la terminal, con 3 intentos como OpenSSH
+			// Sin contraseña en la barra: pedir interactivamente como PuTTY / OpenSSH
 			authMethods = append(authMethods,
+				ssh.RetryableAuthMethod(ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					if len(questions) == 0 {
+						return []string{}, nil
+					}
+					return askClient(name, instruction, questions, echos)
+				}), 3),
 				ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 					ans, err := askClient("", "", []string{fmt.Sprintf("%s@%s's password: ", user, host)}, []bool{false})
 					if err != nil {
 						return "", err
 					}
 					return ans[0], nil
-				}), 3),
-				ssh.RetryableAuthMethod(ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-					if len(questions) == 0 {
-						return []string{}, nil
-					}
-					return askClient(name, instruction, questions, echos)
 				}), 3),
 			)
 		}
@@ -289,8 +293,15 @@ func SSHTerminalHandler() fiber.Handler {
 				fingerprint = ssh.FingerprintSHA256(key)
 				return nil
 			},
+			BannerCallback: func(message string) error {
+				// Muestra el banner legal previo a la autenticación en la terminal (igual que PuTTY)
+				clean := strings.ReplaceAll(message, "\r\n", "\n")
+				clean = strings.ReplaceAll(clean, "\n", "\r\n")
+				_ = out.json(sshServerMsg{Type: "status", Message: clean})
+				return nil
+			},
 			Timeout:       45 * time.Second,
-			ClientVersion: "SSH-2.0-OpenSSH_8.0",
+			ClientVersion: "SSH-2.0-PuTTY_Release_0.80",
 		}
 		sshAlgorithms(cfg)
 
