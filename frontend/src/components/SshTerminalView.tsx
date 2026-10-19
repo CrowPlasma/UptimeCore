@@ -263,7 +263,12 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         const fit = new FitAddon()
         term.loadAddon(fit)
         term.open(container)
-        fit.fit()
+        container.onclick = () => term.focus()
+        setTimeout(() => {
+          try {
+            fit.fit()
+          } catch {}
+        }, 60)
 
         // Escribir mensaje de bienvenida
         term.writeln('\x1b[1;36m┌──────────────────────────────────────────────────────────┐\x1b[0m')
@@ -418,8 +423,14 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     }
 
     ws.onopen = () => {
-      const cols = term.cols || 100
-      const rows = term.rows || 30
+      try {
+        fitAddons.current[tab.id]?.fit()
+      } catch {}
+      let cols = term.cols
+      let rows = term.rows
+      if (!cols || cols < 20) cols = 120
+      if (!rows || rows < 5) rows = 32
+
       // Enviar solicitud de conexión SSH
       ws.send(
         JSON.stringify({
@@ -441,7 +452,24 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       }, 25000)
     }
 
-    ws.onmessage = event => {
+    ws.onmessage = async (event: MessageEvent) => {
+      // 1. Recepción de datos binarios de la shell (soporta tanto Blob como ArrayBuffer nativo)
+      if (event.data instanceof Blob) {
+        try {
+          const buf = await event.data.arrayBuffer()
+          term.write(new Uint8Array(buf))
+        } catch (err) {
+          console.error('[WebSSH] error procesando blob:', err)
+        }
+        return
+      }
+
+      if (event.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(event.data))
+        return
+      }
+
+      // 2. Recepción de eventos JSON del servidor
       if (typeof event.data === 'string') {
         try {
           const msg = JSON.parse(event.data)
@@ -464,11 +492,19 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               term.writeln(`\x1b[90m  Huella digital (Host Key): ${msg.fingerprint}\x1b[0m`)
             }
             term.writeln('')
+            setTimeout(() => {
+              try {
+                fitAddons.current[tab.id]?.fit()
+                term.focus()
+              } catch {}
+            }, 60)
+            return
           } else if (msg.type === 'status') {
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, statusMsg: msg.message } : t))
             )
             term.writeln(`\x1b[90m${msg.message}\x1b[0m`)
+            return
           } else if (msg.type === 'prompt') {
             // SOLICITUD INTERACTIVA 100% IN-APP (SIN window.prompt)
             const promptTitle = msg.name || `Autenticación: ${tab.user}@${tab.host}`
@@ -482,25 +518,25 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               answer: '',
               isSecret,
             })
+            return
           } else if (msg.type === 'error') {
             setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: msg.message } : t))
             )
             term.writeln(`\r\n\x1b[1;31m✖ Error SSH: ${msg.message}\x1b[0m\r\n`)
+            return
           } else if (msg.type === 'closed') {
             setAuthPrompt(null)
             setTabs(prev =>
               prev.map(t => (t.id === tab.id ? { ...t, status: 'disconnected', statusMsg: msg.message } : t))
             )
             term.writeln(`\r\n\x1b[33m● ${msg.message}\x1b[0m\r\n`)
+            return
           }
         } catch {
           term.write(event.data)
         }
-      } else if (event.data instanceof ArrayBuffer) {
-        const text = new TextDecoder().decode(event.data)
-        term.write(text)
       }
     }
 
@@ -1132,11 +1168,16 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             ref={el => {
               containerRefs.current[tab.id] = el
             }}
+            onClick={() => {
+              termInstances.current[tab.id]?.focus()
+            }}
             style={{
               position: 'absolute',
-              inset: '8px 12px',
+              inset: 0,
+              padding: '8px 12px',
               display: tab.id === activeTabId ? 'block' : 'none',
               overflow: 'hidden',
+              cursor: 'text',
             }}
           />
         ))}

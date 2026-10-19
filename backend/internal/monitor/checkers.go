@@ -23,6 +23,7 @@ import (
 
 // CheckHTTP performs an HTTP or HTTPS availability check.
 func CheckHTTP(ctx context.Context, target string, defaultScheme string, timeoutSec int) models.CheckResult {
+	target = strings.TrimSpace(target)
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
 
@@ -85,6 +86,7 @@ func CheckHTTP(ctx context.Context, target string, defaultScheme string, timeout
 
 // CheckTCP checks if a TCP port is open on a host.
 func CheckTCP(ctx context.Context, host string, port int, timeoutSec int) models.CheckResult {
+	host = strings.TrimSpace(host)
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 	start := time.Now()
 
@@ -107,6 +109,7 @@ func CheckTCP(ctx context.Context, host string, port int, timeoutSec int) models
 // CheckPing performs an ICMP ping using the system ping binary.
 // Requires NET_RAW capability in Docker (set via docker-compose cap_add).
 func CheckPing(parentCtx context.Context, host string, timeoutSec int) models.CheckResult {
+	host = strings.TrimSpace(host)
 	r := models.CheckResult{Status: models.StatusDOWN, CheckedAt: time.Now()}
 
 	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeoutSec+3)*time.Second)
@@ -245,6 +248,7 @@ func CheckSSL(host string, port int, days int, timeoutSec int) models.CheckResul
 
 // RunCheck dispatches to the correct checker based on monitor type.
 func RunCheck(ctx context.Context, m models.Monitor) models.CheckResult {
+	m.Target = strings.TrimSpace(m.Target)
 	var r models.CheckResult
 
 	switch m.Type {

@@ -566,7 +566,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
         onClick={e => e.stopPropagation()}
         style={{
           width: '95vw',
-          maxWidth: 1180,
+          maxWidth: 1240,
+          height: mode === 'SSH' ? '88vh' : undefined,
           maxHeight: '92vh',
           background: '#0f172a',
           border: '1px solid rgba(56, 189, 248, 0.3)',
@@ -762,11 +763,13 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
         </div>
 
         {mode === 'SSH' ? (
-          <SshTerminalView
-            initialMonitor={selectedMonitor}
-            initialGroupName={initialGroupName}
-            groupMonitors={groupMonitors}
-          />
+          <div style={{ flex: 1, minHeight: 480, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <SshTerminalView
+              initialMonitor={selectedMonitor}
+              initialGroupName={initialGroupName}
+              groupMonitors={groupMonitors}
+            />
+          </div>
         ) : (
           <>
             {/* ── PARÁMETROS DE PRUEBA (IP/Host, Puerto TCP estilo Paping, Intervalo) ── */}

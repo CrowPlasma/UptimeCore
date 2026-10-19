@@ -257,6 +257,7 @@ func (h *Handlers) CreateMonitor(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
+	body.Target = strings.TrimSpace(body.Target)
 	if body.Name == "" || body.Target == "" || body.Type == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "name, type and target are required"})
 	}
@@ -309,6 +310,7 @@ func (h *Handlers) UpdateMonitor(c *fiber.Ctx) error {
 		ValueThreshold *int `json:"value_threshold"`
 	}
 	c.BodyParser(&body)
+	body.Target = strings.TrimSpace(body.Target)
 
 	if err := h.db.UpdateMonitor(c.Context(), id, models.Monitor{
 		Name: body.Name, Type: strings.ToUpper(body.Type),

@@ -70,6 +70,7 @@ func (w *wsWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	_ = w.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	if err := w.conn.WriteMessage(websocket.BinaryMessage, p); err != nil {
+		log.Printf("⚠️  [WebSSH -> Browser] Error enviando bytes: %v", err)
 		return 0, err
 	}
 	return len(p), nil
@@ -145,9 +146,17 @@ func SSHTerminalHandler() fiber.Handler {
 			conn.SetReadLimit(1 << 20)
 			for {
 				_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second)) // el cliente envía ping cada 25s
-				_, raw, err := conn.ReadMessage()
+				msgType, raw, err := conn.ReadMessage()
 				if err != nil {
 					return
+				}
+				if msgType == websocket.BinaryMessage {
+					select {
+					case dataCh <- raw:
+					case <-done:
+						return
+					}
+					continue
 				}
 				var m sshClientMsg
 				if err := json.Unmarshal(raw, &m); err != nil {
@@ -205,10 +214,10 @@ func SSHTerminalHandler() fiber.Handler {
 			port = 22
 		}
 		cols, rows := req.Cols, req.Rows
-		if cols <= 0 {
+		if cols < 20 || cols > 500 {
 			cols = 120
 		}
-		if rows <= 0 {
+		if rows < 5 || rows > 200 {
 			rows = 32
 		}
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
@@ -364,13 +373,15 @@ func SSHTerminalHandler() fiber.Handler {
 			ssh.TTY_OP_ISPEED: 14400,
 			ssh.TTY_OP_OSPEED: 14400,
 		}
-		ptyType := "xterm"
+		ptyType := "xterm-256color"
 		if err := session.RequestPty(ptyType, rows, cols, modes); err != nil {
-			// Fallback a vt100 para routers y firewalls estrictos
-			ptyType = "vt100"
+			ptyType = "xterm"
 			if err2 := session.RequestPty(ptyType, rows, cols, modes); err2 != nil {
-				_ = out.json(sshServerMsg{Type: "error", Message: "El equipo rechazó la terminal (PTY): " + err2.Error()})
-				return
+				ptyType = "vt100"
+				if err3 := session.RequestPty(ptyType, rows, cols, modes); err3 != nil {
+					_ = out.json(sshServerMsg{Type: "error", Message: "El equipo rechazó la terminal (PTY): " + err3.Error()})
+					return
+				}
 			}
 		}
 
