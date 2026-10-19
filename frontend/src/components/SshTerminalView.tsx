@@ -368,6 +368,29 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     return () => window.removeEventListener('resize', handleResize)
   }, [activeTabId])
 
+  // Delegación automática de foco cuando el usuario teclea en la ventana
+  useEffect(() => {
+    const handleGlobalKeyDown = (_e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl.tagName === 'TEXTAREA' && !activeEl.classList.contains('xterm-helper-textarea')))
+      ) {
+        return
+      }
+
+      const activeTerm = termInstances.current[activeTabId]
+      if (activeTerm) {
+        activeTerm.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [activeTabId])
+
   // Cierra conexiones al desmontar el componente
   useEffect(() => {
     return () => {
@@ -505,12 +528,24 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   : t
               )
             )
+            // Múltiples disparos de foco para garantizar la captura del cursor tras cerrar modales
             setTimeout(() => {
               try {
                 fitAddons.current[tab.id]?.fit()
                 term.focus()
               } catch {}
-            }, 50)
+            }, 30)
+            setTimeout(() => {
+              try {
+                fitAddons.current[tab.id]?.fit()
+                term.focus()
+              } catch {}
+            }, 120)
+            setTimeout(() => {
+              try {
+                term.focus()
+              } catch {}
+            }, 300)
             return
           } else if (msg.type === 'status') {
             setTabs(prev =>
@@ -1174,10 +1209,17 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           background: '#090d16',
           overflow: 'hidden',
         }}
+        onClick={() => {
+          termInstances.current[activeTabId]?.focus()
+        }}
+        onMouseDown={() => {
+          termInstances.current[activeTabId]?.focus()
+        }}
       >
         {tabs.map(tab => (
           <div
             key={tab.id}
+            tabIndex={0}
             ref={el => {
               containerRefs.current[tab.id] = el
             }}
@@ -1187,6 +1229,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             onMouseDown={() => {
               termInstances.current[tab.id]?.focus()
             }}
+            onFocus={() => {
+              termInstances.current[tab.id]?.focus()
+            }}
             style={{
               position: 'absolute',
               inset: 0,
@@ -1194,6 +1239,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               display: tab.id === activeTabId ? 'block' : 'none',
               overflow: 'hidden',
               cursor: 'text',
+              outline: 'none',
             }}
           />
         ))}
