@@ -203,7 +203,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           const text = await navigator.clipboard.readText()
           if (text) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'data', data: text }))
+              ws.send(text)
             } else if (term) {
               term.write(text)
             }
@@ -280,33 +280,48 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         term.writeln('\x1b[1;36m└──────────────────────────────────────────────────────────┘\x1b[0m')
         term.writeln(`\x1b[90mObjetivo: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`)
 
-        // Enviar teclas directamente al WebSocket
+        // Enviar teclas directamente al WebSocket (texto plano directo, cero overhead)
         term.onData(data => {
           const ws = wsInstances.current[tab.id]
           if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'data', data }))
+            ws.send(data)
           }
         })
 
         // GESTIÓN DE TECLADO: Ctrl+Shift+C (Copiar), Ctrl+Shift+V (Pegar), Ctrl+C (SIGINT nativo a la shell)
         term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-          // Ctrl + Shift + C: Copiar selección
+          // Ctrl + Shift + C: Copiar selección al portapapeles
           if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
-            const sel = term.getSelection()
-            if (sel) {
-              copyTextSafe(sel)
-              triggerToast('Copiado al portapapeles')
+            if (e.type === 'keydown') {
+              const sel = term.getSelection()
+              if (sel) {
+                copyTextSafe(sel)
+                triggerToast('Copiado al portapapeles')
+              }
             }
             return false
           }
 
-          // Ctrl + Shift + V: Pegar texto
+          // Ctrl + Shift + V: Pegar texto desde portapapeles
           if (e.ctrlKey && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
-            handlePasteClipboard(tab.id)
+            if (e.type === 'keydown') {
+              handlePasteClipboard(tab.id)
+            }
             return false
           }
 
-          // Ctrl + C normal y demás teclas: se delegan directamente a xterm para enviar \x03 (SIGINT nativo)
+          // Ctrl + C (sin Shift): Interrupción remota nativa (SIGINT \x03) hacia la shell
+          if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+            if (e.type === 'keydown') {
+              const ws = wsInstances.current[tab.id]
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('\x03')
+              }
+            }
+            return false // Evitar que el navegador intente un copy vacío
+          }
+
+          // Las demás teclas se delegan normalmente a xterm
           return true
         })
 
@@ -315,17 +330,20 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       }
     })
 
-    // Redimensionar terminal activa
+    // Redimensionar y enfocar terminal activa
+    const activeTerm = termInstances.current[activeTabId]
     const activeFit = fitAddons.current[activeTabId]
-    if (activeFit) {
+    if (activeFit && activeTerm) {
       setTimeout(() => {
         try {
           activeFit.fit()
+          activeTerm.focus()
         } catch {}
       }, 50)
       setTimeout(() => {
         try {
           activeFit.fit()
+          activeTerm.focus()
         } catch {}
       }, 180)
     }
@@ -487,17 +505,12 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   : t
               )
             )
-            term.writeln(`\x1b[1;32m✔ Sesión SSH establecida exitosamente con ${tab.host}:${tab.port}\x1b[0m`)
-            if (msg.fingerprint) {
-              term.writeln(`\x1b[90m  Huella digital (Host Key): ${msg.fingerprint}\x1b[0m`)
-            }
-            term.writeln('')
             setTimeout(() => {
               try {
                 fitAddons.current[tab.id]?.fit()
                 term.focus()
               } catch {}
-            }, 60)
+            }, 50)
             return
           } else if (msg.type === 'status') {
             setTabs(prev =>
@@ -741,7 +754,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       const ws = wsInstances.current[activeTabId]
       const activeTerm = termInstances.current[activeTabId]
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'data', data: pasteInputText }))
+        ws.send(pasteInputText)
       } else if (activeTerm) {
         activeTerm.write(pasteInputText)
       }
@@ -764,7 +777,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
   const handleMenuInterrupt = () => {
     const ws = wsInstances.current[activeTabId]
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'data', data: '\x03' }))
+      ws.send('\x03')
       triggerToast('Enviado SIGINT (Ctrl+C)')
     }
     setContextMenu(prev => ({ ...prev, visible: false }))
@@ -1169,6 +1182,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               containerRefs.current[tab.id] = el
             }}
             onClick={() => {
+              termInstances.current[tab.id]?.focus()
+            }}
+            onMouseDown={() => {
               termInstances.current[tab.id]?.focus()
             }}
             style={{

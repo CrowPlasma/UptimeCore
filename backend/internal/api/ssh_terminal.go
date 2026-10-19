@@ -69,6 +69,11 @@ func (w *wsWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	_ = w.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if len(p) > 0 && len(p) <= 80 {
+		log.Printf("📡 [WebSSH -> Browser] %d bytes: %q", len(p), string(p))
+	} else if len(p) > 80 {
+		log.Printf("📡 [WebSSH -> Browser] %d bytes", len(p))
+	}
 	if err := w.conn.WriteMessage(websocket.BinaryMessage, p); err != nil {
 		log.Printf("⚠️  [WebSSH -> Browser] Error enviando bytes: %v", err)
 		return 0, err
@@ -158,36 +163,50 @@ func SSHTerminalHandler() fiber.Handler {
 					}
 					continue
 				}
-				var m sshClientMsg
-				if err := json.Unmarshal(raw, &m); err != nil {
-					continue
-				}
-				switch m.Type {
-				case "connect":
-					select {
-					case connectCh <- m:
-					default:
-					}
-				case "data":
-					select {
-					case dataCh <- []byte(m.Data):
-					case <-done:
-						return
-					}
-				case "resize":
-					if m.Cols > 0 && m.Rows > 0 {
-						select {
-						case resizeCh <- [2]int{m.Cols, m.Rows}:
-						default:
+				// Procesamiento de mensajes: JSON de control o texto plano de teclas/comandos
+				trimmed := strings.TrimSpace(string(raw))
+				if strings.HasPrefix(trimmed, "{") {
+					var m sshClientMsg
+					if err := json.Unmarshal([]byte(trimmed), &m); err == nil && m.Type != "" {
+						switch m.Type {
+						case "connect":
+							select {
+							case connectCh <- m:
+							default:
+							}
+							continue
+						case "data":
+							select {
+							case dataCh <- []byte(m.Data):
+							case <-done:
+								return
+							}
+							continue
+						case "resize":
+							if m.Cols > 0 && m.Rows > 0 {
+								select {
+								case resizeCh <- [2]int{m.Cols, m.Rows}:
+								default:
+								}
+							}
+							continue
+						case "prompt_response":
+							select {
+							case promptCh <- m.Answers:
+							default:
+							}
+							continue
+						case "ping":
+							continue
 						}
 					}
-				case "prompt_response":
-					select {
-					case promptCh <- m.Answers:
-					default:
-					}
-				case "ping":
-					// keep-alive del navegador / proxy
+				}
+
+				// Cualquier otra carga (texto plano de teclas xterm, señales de control \r, \x03, etc.)
+				select {
+				case dataCh <- raw:
+				case <-done:
+					return
 				}
 			}
 		}()
@@ -369,15 +388,19 @@ func SSHTerminalHandler() fiber.Handler {
 		defer session.Close()
 
 		modes := ssh.TerminalModes{
-			ssh.ECHO:          1,
-			ssh.TTY_OP_ISPEED: 14400,
-			ssh.TTY_OP_OSPEED: 14400,
+			ssh.ECHO:          1,     // Habilita echo de caracteres
+			ssh.TTY_OP_ISPEED: 14400, // Velocidad de entrada
+			ssh.TTY_OP_OSPEED: 14400, // Velocidad de salida
+			ssh.ICRNL:         1,     // Mapear retorno de carro (\r) a salto de línea (\n)
+			ssh.IXON:          1,     // Control de flujo
+			ssh.ISIG:          1,     // Soporte de señales de control (SIGINT / Ctrl+C)
 		}
-		ptyType := "xterm-256color"
+		// Prioridad 'xterm' (estándar PuTTY 0.80 / MobaXterm para Palo Alto PAN-OS, Cisco y Unix)
+		ptyType := "xterm"
 		if err := session.RequestPty(ptyType, rows, cols, modes); err != nil {
-			ptyType = "xterm"
+			ptyType = "vt100"
 			if err2 := session.RequestPty(ptyType, rows, cols, modes); err2 != nil {
-				ptyType = "vt100"
+				ptyType = "xterm-256color"
 				if err3 := session.RequestPty(ptyType, rows, cols, modes); err3 != nil {
 					_ = out.json(sshServerMsg{Type: "error", Message: "El equipo rechazó la terminal (PTY): " + err3.Error()})
 					return
@@ -399,7 +422,14 @@ func SSHTerminalHandler() fiber.Handler {
 		}
 
 		_ = out.json(sshServerMsg{Type: "connected", Message: fmt.Sprintf("%s@%s", user, addr), Fingerprint: fingerprint})
-		log.Printf("✅ [WebSSH] Sesión establecida %s@%s (%s)", user, addr, fingerprint)
+		log.Printf("✅ [WebSSH] Sesión establecida %s@%s (PTY: %s, %s)", user, addr, ptyType, fingerprint)
+
+		// Disparo de reactivación de prompt inicial: equipos como Palo Alto PAN-OS esperan un primer retorno de carro (\r)
+		// antes de desplegar el prompt interactivo 'admin@firewall> '
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			_, _ = stdin.Write([]byte("\r"))
+		}()
 
 		sessionEnded := make(chan error, 1)
 		go func() { sessionEnded <- session.Wait() }()
@@ -411,6 +441,9 @@ func SSHTerminalHandler() fiber.Handler {
 		for {
 			select {
 			case b := <-dataCh:
+				if len(b) > 0 {
+					log.Printf("📥 [Browser -> WebSSH] %d bytes -> stdin: %q", len(b), string(b))
+				}
 				if _, err := stdin.Write(b); err != nil && !errors.Is(err, io.EOF) {
 					_ = out.json(sshServerMsg{Type: "closed", Message: "Sesión finalizada"})
 					return
