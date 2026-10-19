@@ -955,12 +955,3 @@ function SlaMetricCard({ label, value, sub, color }: { label: string; value: str
     </div>
   )
 }
-
-// ── Historia "skeleton" mientras no hay datos reales ──────────────────────
-function buildFakeHistory(status?: MonitorStatus): HistoryPoint[] {
-  return Array.from({ length: 60 }, (_, i) => ({
-    time: new Date(Date.now() - (60 - i) * 60_000).toISOString(),
-    status: status ?? 'UNKNOWN',
-    latency_ms: 0,
-  }))
-}

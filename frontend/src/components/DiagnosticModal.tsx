@@ -12,8 +12,9 @@ import {
   Copy, Check, Trash2, Sparkles, FileText, Camera, Server
 } from 'lucide-react'
 import type { Monitor } from '../types'
+import { SshTerminalView } from './SshTerminalView'
 
-export type DiagnosticToolMode = 'PAPING' | 'PING' | 'TRACEROUTE' | 'HTTP' | 'DNS'
+export type DiagnosticToolMode = 'PAPING' | 'PING' | 'TRACEROUTE' | 'HTTP' | 'DNS' | 'SSH'
 
 interface ConsoleLine {
   id: number
@@ -540,6 +541,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
     { id: 'TRACEROUTE', label: 'TRACEROUTE', sub: 'Traza de ruta salto a salto', icon: <Route size={15} /> },
     { id: 'HTTP', label: 'HTTP / SSL', sub: 'Respuesta web y vigencia SSL', icon: <Globe size={15} /> },
     { id: 'DNS', label: 'DNS / PTR', sub: 'Resolución directa e inversa', icon: <Search size={15} /> },
+    { id: 'SSH', label: 'SHELL (SSH)', sub: 'Terminal interactiva multi-tab', icon: <Terminal size={15} /> },
   ]
 
   return (
@@ -715,7 +717,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             background: 'rgba(15,23,42,0.75)',
             borderBottom: '1px solid rgba(148,163,184,0.1)',
             display: 'grid',
-            gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
             gap: 8,
           }}
         >
@@ -755,8 +757,16 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           })}
         </div>
 
-        {/* ── PARÁMETROS DE PRUEBA (IP/Host, Puerto TCP estilo Paping, Intervalo) ── */}
-        <div
+        {mode === 'SSH' ? (
+          <SshTerminalView
+            initialMonitor={selectedMonitor}
+            initialGroupName={initialGroupName}
+            groupMonitors={groupMonitors}
+          />
+        ) : (
+          <>
+            {/* ── PARÁMETROS DE PRUEBA (IP/Host, Puerto TCP estilo Paping, Intervalo) ── */}
+            <div
           style={{
             padding: '12px 24px',
             background: 'rgba(30,41,59,0.35)',
@@ -1313,6 +1323,8 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             Cerrar
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   )

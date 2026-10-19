@@ -138,7 +138,7 @@ function parseTags(tagsStr: string): string[] {
 }
 
 /** Collect all unique tags from a group list */
-function extractTags(groups: MonitorGroup[]): Tag[] {
+export function extractTags(groups: MonitorGroup[]): Tag[] {
   const map = new Map<string, Tag>()
   groups.forEach(g => g.tags?.forEach(t => map.set(t.name, t)))
   return Array.from(map.values())

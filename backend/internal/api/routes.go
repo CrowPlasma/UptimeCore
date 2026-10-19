@@ -59,6 +59,9 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	api.Get("/incidents", h.ListIncidents)
 	api.Post("/diagnostics/run", h.RunDiagnostic)
 
+	// Terminal Web SSH (WebSocket) dentro de la Consola de Diagnóstico
+	api.Get("/ssh/ws", SSHUpgradeGuard, SSHTerminalHandler())
+
 	api.Delete("/system/wipe", h.WipeAllData)
 
 	// Settings

@@ -177,9 +177,9 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelFormatter={(label) => new Date(label).toLocaleString('es-MX')}
-            formatter={(val: number, _name: string, props: any) => {
-              const status = props.payload.status;
+            labelFormatter={(label: any) => label ? new Date(label).toLocaleString('es-MX') : ''}
+            formatter={(val: any, _name: any, props: any) => {
+              const status = props?.payload?.status;
               const suffix =
                 status === 'MAINTENANCE'
                   ? ' (En Mantenimiento)'

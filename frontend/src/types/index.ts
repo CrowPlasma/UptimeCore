@@ -30,6 +30,7 @@ export interface Monitor {
   retries: number
   snmp_community?: string
   snmp_oid?: string
+  value_threshold?: number
   ssl_expiration_days?: number
   is_active: boolean
   is_maintenance: boolean
@@ -39,6 +40,10 @@ export interface Monitor {
   current_status?: MonitorStatus
   current_latency_ms?: number
   current_msg?: string
+  current_cpu?: number | null
+  current_ram?: number | null
+  current_disk?: number | null
+  current_value?: number | null
   live_history?: HistoryPoint[]
 }
 
@@ -59,6 +64,11 @@ export interface HistoryPoint {
   time: string
   status: MonitorStatus
   latency_ms: number
+  error_msg?: string
+  metric_cpu?: number
+  metric_ram?: number
+  metric_disk?: number
+  metric_value?: number
 }
 
 /** Rangos de tiempo disponibles para la gráfica */
