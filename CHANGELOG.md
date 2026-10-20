@@ -1,10 +1,87 @@
 # Changelog
 
-Todos los cambios notables y versiones oficiales de **UptimeCore** se documentan en este archivo.
+All notable changes and official releases of **UptimeCore** are documented in this file.  
+*Todos los cambios notables y versiones oficiales de **UptimeCore** se documentan en este archivo.*
 
-El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Semantic Versioning (SemVer)](https://semver.org/lang/es/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning (SemVer)](https://semver.org/).
+
+<div align="center">
+
+[English](#-english) • [Español](#-español)
+
+</div>
 
 ---
+
+<a name="-english"></a>
+## 🌐 English
+
+## [v1.0.0] - 2026-10-19
+
+### 🚀 General Availability (First Stable Release)
+Foundational release of the enterprise network observability, real-time telemetry, live interactive diagnostic suite, and multi-tab remote administration terminal.
+
+---
+
+### ✨ Features Added
+
+#### 🖥️ Enterprise Web SSH Terminal (SHELL SSH)
+- **100% On-Premise Architecture**: Secure WebSocket tunnels connected directly to the local SSH daemon via Go backend (`golang.org/x/crypto/ssh`). Zero external cloud dependencies or telemetry leakage.
+- **Ergonomic Multi-Tab Environment**: Manage multiple concurrent SSH sessions to firewalls, routers, switches, and Linux servers in isolated tabs.
+- **Corporate Hardware Compatibility (Legacy & Modern)**: Extended cipher suites (AES-GCM, AES-CTR, ChaCha20), Key Exchange (KEX) algorithms (Diffie-Hellman Group 14/16/GEX, ECDH, Curve25519), and Host Key algorithms for enterprise equipment (Palo Alto PAN-OS, Cisco IOS/NX-OS, Fortinet FortiOS, MikroTik RouterOS, and Linux).
+- **Interactive Legal Disclaimer & Consent Banner Flow**: Displays the legal acknowledgment prompt (`(yes/no)`) directly inside the terminal canvas with keystroke echo and Enter default.
+- **Hybrid Authentication Engine**: Native RFC 4256 Keyboard-Interactive challenge handling with seamless password auto-fill and traditional password callback fallback.
+- **Native Keyboard Shortcuts**:
+  - `Ctrl + Shift + C`: Copy selected text to system clipboard.
+  - `Ctrl + Shift + V`: Paste text into the interactive shell (with safe modal fallback if browser clipboard permissions are restricted).
+  - `Ctrl + C`: Send native SIGINT interrupt signal (`\x03`) to the remote process without clearing selection.
+- **Floating Context Menu**: Right-click menu for Copy, Paste, Send SIGINT, Clear Terminal, and Reconnect with instant backdrop click-to-dismiss.
+- **1-Click Sensor Launch**: Direct connection shortcut pills for any active endpoint registered in the group.
+
+#### 🧰 Live Interactive Diagnostic Suite
+- **Paping (TCP Ping)**: Continuous TCP port availability testing with custom interval, timeout, test counts, real-time output stream, and min/avg/max latency summary.
+- **Ping (ICMP)**: Native kernel-level ICMP ping probing via raw sockets (`NET_RAW`).
+- **Traceroute**: Hop-by-hop network path tracing displaying intermediate router IPs and round-trip times.
+- **HTTP & SSL Inspector**: Real-time response header validation and TLS/SSL certificate chain inspection with days-remaining expiration alerts.
+- **DNS & Reverse PTR Resolution**: Forward record querying (A, AAAA, CNAME, MX, TXT) and reverse PTR verification.
+
+#### 📊 Core Telemetry & Observability
+- **Live Real-Time Streaming via SSE**: State changes and latency metrics pushed via Server-Sent Events with zero manual page refreshing or polling lag.
+- **High-Concurrency Engine in Go**: Parallel goroutine execution with temporal jitter dispersion and anti-thundering-herd scheduling to prevent bandwidth saturation during mass probing.
+- **Smart Group & Multi-Link Architecture**: Logical aggregation of multiple WAN/VPN links per branch with composite worst-case status calculation (`UP`, `DEGRADED`, `DOWN`).
+- **TimescaleDB Time-Series Storage**: Optimized PostgreSQL hypertable storage for latency metrics across `90m`, `3h`, `6h`, `24h`, and `7d` intervals.
+- **Full Deep Search**: Instant real-time filtering across Group Names, Endpoint Targets, Descriptions, Custom Tags, Ports, and exact IP addresses with auto-expanding accordions.
+- **Visual Tag Organization**: Multi-color tagging system for categorizing infrastructure by location, environment, vendor, or criticality.
+
+#### 🔔 Intelligent Alerting & Notifications
+- **Telegram Bot Dispatcher**: Rich HTML formatted alerts with downtime duration, latency details, and multi-chat support.
+- **Customizable SMTP / Email**: Dynamic subject templates (`Perdida de Telemetria: {group} - {monitor}`), customizable sender display name (`From:`), and RFC 2047 UTF-8 encoding support.
+- **Anti-Flapping & Hysteresis Protection**: Configurable retry thresholds and latency degradation bounds prevent notification storms during intermittent packet loss.
+- **Tier 2 Escalation**: Automatically alerts emergency contacts and secondary communication channels if downtime exceeds the configured grace period.
+- **Synthesized Audio Alerts**: NOC acoustic notifications with browser auto-unlock and WAV audio fallback.
+
+#### 💾 Operations & Deployment
+- **CSV Backup & Migration**: Full export and import of all groups, monitors, and tags with schema validation and conflict resolution.
+- **High-Contrast Dark & Light Themes**: Calibrated palettes for 24/7 NOC wall monitors and daylight operations.
+- **Full Containerization**: Reproducible deployment in seconds using Docker Compose (TimescaleDB, Redis, Go Backend, React Frontend).
+
+---
+
+### 🐛 Bug Fixes in v1.0.0
+- **SSH / Terminal**:
+  - Fixed focus stealing when editing credentials (Host, User, Password) in the top bar.
+  - Added transparent backdrop overlay to instantly dismiss the context menu on any outside click.
+  - Resolved xterm.js lifecycle disposal issue under React 19 StrictMode preventing blank/black screen instances.
+  - Switched tab switching isolation to visibility metrics preserving terminal rows and columns calculations.
+- **Diagnostics**:
+  - Prevented automatic execution of Paping upon opening the diagnostic modal; waits for explicit click.
+- **NOC Filters & Views**:
+  - Unified filter predicates across Normal, NOC Mosaico, and NOC Tarjetas views.
+
+---
+
+<a name="-español"></a>
+## 🇪🇸 Español
 
 ## [v1.0.0] - 2026-10-19
 
