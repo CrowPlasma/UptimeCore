@@ -13,7 +13,7 @@
 [![TimescaleDB](https://img.shields.io/badge/Database-TimescaleDB-FDB515?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.timescale.com/)
 [![Redis](https://img.shields.io/badge/Cache-Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Deployment-Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -274,6 +274,7 @@ http://<ip-del-servidor>:5173
 
 ---
 
-## 📄 License
+## 📄 License / Licencia
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the GNU General Public License v3.0 (GPLv3). See [`LICENSE`](LICENSE) for more information.  
+*Distribuido bajo la Licencia Pública General GNU v3.0 (GPLv3). Consulta [`LICENSE`](LICENSE) para más detalles.*
