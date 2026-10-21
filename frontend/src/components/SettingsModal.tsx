@@ -185,7 +185,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Nombre con el que se mostrará el remitente en la bandeja de entrada.</span>
                       </Field>
                       <Field label="Correos Destino (Separados por coma)">
-                        <input type="text" value={settings.smtp_to || ''} onChange={e => setSettings({...settings, smtp_to: e.target.value})} placeholder="alertas-it@miempresa.com, jefe@miempresa.com" style={inputStyle} />
+                        <input type="text" value={settings.smtp_to || ''} onChange={e => setSettings({...settings, smtp_to: e.target.value})} placeholder="alertas-it@ejemplo.com, admin@ejemplo.com" style={inputStyle} />
                       </Field>
                       <Field label="Encabezado / Asunto para Caídas o Pérdida de Telemetría">
                         <input 
@@ -257,7 +257,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           <input type="text" value={settings.escalation_telegram_chat_id || ''} onChange={e => setSettings({...settings, escalation_telegram_chat_id: e.target.value})} placeholder="-1001234567, -1009876543" style={inputStyle} />
                         </Field>
                         <Field label="Correos Secundarios (Gmail - Separados por coma)">
-                          <input type="text" value={settings.escalation_smtp_to || ''} onChange={e => setSettings({...settings, escalation_smtp_to: e.target.value})} placeholder="jefe1@empresa.com, alertas@empresa.com" style={inputStyle} />
+                          <input type="text" value={settings.escalation_smtp_to || ''} onChange={e => setSettings({...settings, escalation_smtp_to: e.target.value})} placeholder="noc-guardia@ejemplo.com, alertas@ejemplo.com" style={inputStyle} />
                         </Field>
                       </IntegrationCard>
                     </div>
@@ -375,7 +375,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         type="text"
                         value={settings.entity_name || ''}
                         onChange={e => setSettings({ ...settings, entity_name: e.target.value })}
-                        placeholder="Ej: Envases Universales, S.A. / NOC Corporativo"
+                        placeholder="Ej: Mi Organización / Corporativo / NOC Central"
                         style={inputStyle}
                       />
                     </Field>
@@ -387,7 +387,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           type="text"
                           value={settings.entity_logo || ''}
                           onChange={e => setSettings({ ...settings, entity_logo: e.target.value })}
-                          placeholder="https://empresa.com/logo.png o sube un archivo"
+                          placeholder="https://ejemplo.com/logo.png o sube un archivo"
                           style={{ ...inputStyle, flex: 1 }}
                         />
                         <label

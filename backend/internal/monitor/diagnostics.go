@@ -391,7 +391,7 @@ func runHTTPDiagnostic(ctx context.Context, rawTarget string, host string, port 
 	resolvedIP := resolveIPv4(host)
 	res.ResolvedIP = resolvedIP
 
-	// First check if TLS is active on host:port (works on 443, 8443, 20754, etc.)
+	// First check if TLS is active on host:port (works on 443, 8443, etc.)
 	tlsStart := time.Now()
 	tlsDialer := &net.Dialer{Timeout: time.Duration(timeoutMs) * time.Millisecond}
 	var peerCertSubject, peerCertIssuer, peerCertExpiry string

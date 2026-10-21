@@ -39,12 +39,12 @@ const QUICK_PORTS = [
   { port: 443, label: '443 (HTTPS)' },
   { port: 22, label: '22 (SSH)' },
   { port: 3389, label: '3389 (RDP)' },
-  { port: 20754, label: '20754 (WAN/FW)' },
+  { port: 8443, label: '8443 (HTTPS-Alt)' },
   { port: 8080, label: '8080 (Web)' },
   { port: 5432, label: '5432 (PG)' },
 ]
 
-/** Extrae host limpio y puerto si vienen juntos (ej. "192.168.70.100:443" o "https://sitio.com:8443/login") */
+/** Extrae host limpio y puerto si vienen juntos (ej. "192.168.1.100:443" o "https://sitio.com:8443/login") */
 function parseMonitorTargetAndPort(m?: Monitor | null): { host: string; port: number; mode: DiagnosticToolMode } {
   if (!m) return { host: '', port: 443, mode: 'PAPING' }
 
@@ -79,7 +79,7 @@ function parseMonitorTargetAndPort(m?: Monitor | null): { host: string; port: nu
   return { host: raw, port: detectedPort, mode }
 }
 
-/** Copia texto al portapapeles funcionando tanto en HTTPS como en HTTP (ej. http://192.168.40.30) */
+/** Copia texto al portapapeles funcionando tanto en HTTPS como en HTTP (ej. http://192.168.1.50) */
 async function copyTextSafe(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -793,7 +793,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 type="text"
                 value={target}
                 onChange={e => setTarget(e.target.value)}
-                placeholder="Ej. 3.4.20.253 o fortinet.empresa.com"
+                placeholder="Ej. 192.168.1.1 o router.ejemplo.com"
                 onKeyDown={e => {
                   if (e.key === 'Enter' && target.trim() && !isRunning) {
                     executeRun(mode, target, port, intervalMs, maxProbes, maxHops)

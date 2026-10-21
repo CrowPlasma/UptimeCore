@@ -207,7 +207,7 @@ export function MonitorModal({ mode, onClose }: Props) {
             <input
               value={form.name}
               onChange={e => set('name', e.target.value)}
-              placeholder={isGroup ? 'ej. Firewall Monterrey' : 'ej. Enlace ISP Primario'}
+              placeholder={isGroup ? 'ej. Firewall Principal / Datacenter' : 'ej. Enlace ISP Primario'}
               style={inputStyle(!!errors.name)}
             />
           </Field>
@@ -300,8 +300,8 @@ export function MonitorModal({ mode, onClose }: Props) {
                 onChange={e => set('target', e.target.value)}
                 placeholder={
                   form.type === 'HTTP' ? 'http://192.168.1.1/health'
-                  : form.type === 'HTTPS' ? 'https://portal.empresa.com'
-                  : '192.168.1.1 o router.empresa.local'
+                  : form.type === 'HTTPS' ? 'https://portal.ejemplo.com'
+                  : '192.168.1.1 o router.ejemplo.local'
                 }
                 style={inputStyle(!!errors.target)}
               />
