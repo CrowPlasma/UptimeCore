@@ -7,7 +7,7 @@
  * - Estado de carga y error
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal } from 'lucide-react'
+import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { MonitorCard } from '../components/MonitorCard'
@@ -417,6 +417,49 @@ export function Dashboard() {
     setTagFilter(prev => prev === val ? 'all' : val)
   }
 
+  // Control reactivo y persistente de grupos expandidos (soporta Expandir/Colapsar todos)
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem('uptimecore_expanded_groups')
+      if (raw) return new Set(JSON.parse(raw))
+    } catch {}
+    return new Set()
+  })
+
+  const toggleGroupExpand = useCallback((groupId: number) => {
+    setExpandedGroupIds(prev => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      try {
+        localStorage.setItem('uptimecore_expanded_groups', JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
+  }, [])
+
+  const handleExpandAll = useCallback(() => {
+    const allFilteredIds = filtered.map(g => g.id)
+    setExpandedGroupIds(prev => {
+      const next = new Set([...prev, ...allFilteredIds])
+      try {
+        localStorage.setItem('uptimecore_expanded_groups', JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
+  }, [filtered])
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedGroupIds(new Set())
+    try {
+      localStorage.setItem('uptimecore_expanded_groups', JSON.stringify([]))
+    } catch {}
+  }, [])
+
+  const expandedCount = useMemo(() => {
+    return filtered.filter(g => expandedGroupIds.has(g.id)).length
+  }, [filtered, expandedGroupIds])
+
   return (
     <div style={{ padding: '0 32px 28px 32px', maxWidth: '100%' }}>
 
@@ -631,6 +674,68 @@ export function Dashboard() {
             <PlusCircle size={15} /> Nuevo Grupo
           </button>
         </div>
+
+        {/* ── Sub-barra (debajo de la barra de búsqueda): Expandir / Colapsar Todos ──── */}
+        {!nocMode && groups.length > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 14,
+            paddingTop: 12,
+            borderTop: '1px solid var(--color-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={handleExpandAll}
+                title="Expandir todos los grupos visibles para ver sus endpoints"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 8,
+                  background: 'var(--color-bg-card)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
+              >
+                <ChevronsUpDown size={14} color="var(--color-accent)" />
+                Expandir todos
+              </button>
+
+              <button
+                onClick={handleCollapseAll}
+                title="Colapsar todos los acordeones de los grupos"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 8,
+                  background: 'var(--color-bg-card)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
+              >
+                <ChevronsDownUp size={14} />
+                Colapsar todos
+              </button>
+
+              {expandedCount > 0 && (
+                <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginLeft: 6 }}>
+                  ({expandedCount} de {filtered.length} expandidos)
+                </span>
+              )}
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+              Mostrando <strong style={{ color: 'var(--color-text-primary)' }}>{filtered.length}</strong> de {groups.length} grupos
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Estado de carga ──── */}
@@ -701,6 +806,8 @@ export function Dashboard() {
                 onOpenModal={setModal}
                 searchTerm={search}
                 activeFilter={tagFilter}
+                isExpanded={expandedGroupIds.has(group.id)}
+                onToggleExpand={() => toggleGroupExpand(group.id)}
               />
             ))
           )}
@@ -710,7 +817,7 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
+          UptimeCore v1.0.2 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
         </div>
       )}
 

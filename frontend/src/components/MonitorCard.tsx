@@ -73,14 +73,18 @@ interface Props {
   onOpenModal: (mode: ModalMode) => void
   searchTerm?: string
   activeFilter?: string
+  isExpanded?: boolean
+  onToggleExpand?: () => void
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
-export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal, activeFilter = 'all' }: Props) {
+export const MonitorCard = React.memo(function MonitorCard({
+  group, onOpenModal, activeFilter = 'all', isExpanded: controlledExpanded, onToggleExpand,
+}: Props) {
   const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
 
-  // Persistencia de acordeón abierto en localStorage (sobrevive recargas, cambio de pestañas o revalidaciones)
-  const [expanded, setExpandedState] = useState<boolean>(() => {
+  // Soporte de estado controlado por Dashboard (Expandir/Colapsar todos) con fallback local persistente
+  const [localExpanded, setLocalExpanded] = useState<boolean>(() => {
     try {
       const raw = localStorage.getItem('uptimecore_expanded_groups')
       if (raw) {
@@ -91,22 +95,28 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
     return false
   })
 
-  const setExpanded = React.useCallback((action: boolean | ((prev: boolean) => boolean)) => {
-    setExpandedState(prev => {
-      const next = typeof action === 'function' ? action(prev) : action
-      try {
-        const raw = localStorage.getItem('uptimecore_expanded_groups')
-        let ids: number[] = raw ? JSON.parse(raw) : []
-        if (next) {
-          if (!ids.includes(group.id)) ids.push(group.id)
-        } else {
-          ids = ids.filter(id => id !== group.id)
-        }
-        localStorage.setItem('uptimecore_expanded_groups', JSON.stringify(ids))
-      } catch {}
-      return next
-    })
-  }, [group.id])
+  const expanded = controlledExpanded !== undefined ? controlledExpanded : localExpanded
+
+  const handleToggle = React.useCallback(() => {
+    if (onToggleExpand) {
+      onToggleExpand()
+    } else {
+      setLocalExpanded(prev => {
+        const next = !prev
+        try {
+          const raw = localStorage.getItem('uptimecore_expanded_groups')
+          let ids: number[] = raw ? JSON.parse(raw) : []
+          if (next) {
+            if (!ids.includes(group.id)) ids.push(group.id)
+          } else {
+            ids = ids.filter(id => id !== group.id)
+          }
+          localStorage.setItem('uptimecore_expanded_groups', JSON.stringify(ids))
+        } catch {}
+        return next
+      })
+    }
+  }, [group.id, onToggleExpand])
 
   // Persistencia del monitor activo (con gráfica/SLA abierta)
   const [activeMonitorId, setActiveMonitorIdState] = useState<number | null>(() => {
@@ -197,7 +207,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
             cursor: 'pointer',
             position: 'relative',
           }}
-          onClick={() => setExpanded(prev => !prev)}
+          onClick={handleToggle}
         >
           {/* Franja de color */}
           <div style={{
@@ -332,7 +342,7 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
                   />
                 </>
               )}
-              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); setExpanded(true) }} />
+              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); if (!expanded) handleToggle(); }} />
               <Btn icon={<Pencil size={13} />} title="Editar grupo"      onClick={() => onOpenModal({ type: 'edit_group', group })} />
               <Btn icon={<Trash2 size={13} />} title="Eliminar grupo"    danger onClick={() => setConfirmDelete({ type: 'group' })} />
             </div>

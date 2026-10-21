@@ -40,6 +40,21 @@ export function Navbar() {
           }}>
             Uptime<span style={{ color: '#2563eb' }}>Core</span>
           </span>
+          <span style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: 6,
+            background: 'rgba(99, 102, 241, 0.14)',
+            color: 'var(--color-accent)',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+            letterSpacing: '0.02em',
+            marginLeft: 8,
+            verticalAlign: 'middle',
+          }}>
+            v1.0.2
+          </span>
         </div>
       </div>
 

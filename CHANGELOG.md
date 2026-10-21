@@ -16,6 +16,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.0.2] - 2026-10-21
+
+### ⚡ Performance & Ergonomics
+
+#### 🎨 Instantaneous Theme Switching (Zero-Jank Mode)
+- **CSS Transition-Pause Technique**: Eliminated transition lag across 5,000+ DOM nodes when toggling between Dark and Light mode. A temporary style lock suppresses style interpolation during the paint phase, enabling instant (0ms / 1-frame) theme transitions.
+- **Selective CSS Transitions**: Constrained transition properties to specific style targets (`color`, `background-color`, `border-color`) instead of broad `transition: all`, avoiding massive bulk repaints.
+
+#### 📂 Global Expand All / Collapse All Controls
+- **Bulk Accordion Controls**: Added dedicated "Expand all" and "Collapse all" action buttons directly beneath the global search bar.
+- **Dynamic Group Counter**: Displays real-time counts of currently expanded groups (`X of Y expandidos`).
+- **Synchronized Persistence**: Expanding or collapsing all groups automatically syncs with `localStorage` so preferred view state persists across reloads and tab navigation.
+
+#### 🏷️ Visible App Versioning & Extended Tag Palette
+- **Omnipresent Version Indicators**: Added discrete `v1.0.2` badge pills in the primary Navbar next to the logo, inside the "Ajustes del Sistema" modal header and sidebar footer, and in the bottom status line.
+- **Extended Tag Color Swatches & Pipette Tool**: Expanded the tag creation palette from 8 to 24 rich enterprise colors across the full spectrum (Indigos, Cyans, Emeralds, Ambers, Roses, Slates), along with a native color wheel picker (`Pipette`) for choosing custom HEX colors.
+
 ## [v1.0.1] - 2026-10-21
 
 ### 🩹 Maintenance & UI Polish
@@ -97,6 +114,23 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.0.2] - 2026-10-21
+
+### ⚡ Rendimiento y Ergonomía
+
+#### 🎨 Cambio de Tema Instantáneo (Sin Congelamiento)
+- **Técnica de Pausa de Transición CSS**: Se eliminó el retraso al alternar entre modo oscuro y claro generado por el cálculo simultáneo de transiciones sobre más de 5,000 nodos del DOM (barras de uptime, botones y tarjetas). Se aplica un bloqueo temporal de transición durante el repintado, permitiendo un cambio inmediato (0ms / 1 frame).
+- **Transiciones Selectivas**: Se acotaron las transiciones globales a propiedades específicas (`color`, `background-color`, `border-color`) en lugar de `transition: all`, evitando recálculos pesados en masa.
+
+#### 📂 Botones Globales "Expandir todos" y "Colapsar todos"
+- **Control Masivo de Acordeones**: Incorporación de botones dedicados para "Expandir todos" y "Colapsar todos" ubicados estratégicamente justo debajo de la barra de búsqueda.
+- **Contador Dinámico en Vivo**: Muestra en tiempo real la cantidad de grupos expandidos respecto al total visible (`X de Y expandidos`).
+- **Persistencia Sincronizada**: Las acciones masivas de expansión y colapso se sincronizan automáticamente con `localStorage` preservando el estado de la vista al recargar o cambiar de pestaña.
+
+#### 🏷️ Indicadores Visibles de Versión y Paleta Extendida de Etiquetas
+- **Identificadores de Versión en Toda la App**: Incorporación de insignias discretas `v1.0.2` en la barra de navegación principal junto al logotipo, en la cabecera y barra lateral de "Ajustes del Sistema", y en el pie de página de estado.
+- **Paleta de Colores Extendida y Selector con Pipeta**: Se amplió la paleta de creación de etiquetas de 8 a 24 colores empresariales distribuidos en todo el espectro visual (azules, cyanes, esmeraldas, ámbar, rosas, pizarras), complementada con un selector de rueda de color nativo (`Pipeta`) para seleccionar cualquier tono HEX personalizado.
 
 ## [v1.0.1] - 2026-10-21
 

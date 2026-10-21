@@ -1,14 +1,27 @@
 import { useState, useEffect } from 'react'
-import { Tag as TagIcon, Plus, Trash2 } from 'lucide-react'
+import { Tag as TagIcon, Plus, Trash2, Pipette } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
 
-const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#8b5cf6", "#0ea5e9", "#ef4444", "#ec4899", "#64748b"]
+const PRESET_COLORS = [
+  // Azules, Índigos y Violetas
+  "#6366f1", "#3b82f6", "#2563eb", "#1d4ed8", "#8b5cf6", "#a855f7", "#7c3aed",
+  // Cyanes y Teals
+  "#06b6d4", "#0ea5e9", "#14b8a6", "#0d9488", "#2dd4bf", "#0891b2",
+  // Verdes y Limas
+  "#10b981", "#22c55e", "#16a34a", "#84cc16", "#65a30d", "#4ade80",
+  // Ámbar, Naranjas y Rojos
+  "#f59e0b", "#f97316", "#ea580c", "#ef4444", "#dc2626", "#e11d48",
+  // Rosas y Fucsias
+  "#ec4899", "#f43f5e", "#d946ef",
+  // Pizarras y Neutros
+  "#64748b", "#475569", "#94a3b8",
+]
 
 export function TagsSettings() {
   const { allTags, fetchTags, fetchGroups } = useMonitorStore()
   const [name, setName] = useState('')
-  const [color, setColor] = useState(COLORS[0])
+  const [color, setColor] = useState(PRESET_COLORS[0])
   const [loading, setLoading] = useState(false)
   const [tagToDelete, setTagToDelete] = useState<number | null>(null)
 
@@ -27,7 +40,7 @@ export function TagsSettings() {
         body: JSON.stringify({ name: name.trim(), color })
       })
       setName('')
-      setColor(COLORS[0])
+      setColor(PRESET_COLORS[0])
       await fetchTags()
       await fetchGroups()
     } catch (err) {
@@ -65,16 +78,57 @@ export function TagsSettings() {
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
           />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Color</label>
-          <div style={{ display: 'flex', gap: 6, padding: '8px 0' }}>
-            {COLORS.map(c => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '2 1 300px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Color de Etiqueta</label>
+            <span style={{
+              fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+              color, display: 'flex', alignItems: 'center', gap: 5,
+            }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
+              {color.toUpperCase()}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: '4px 0' }}>
+            {PRESET_COLORS.map(c => (
               <div 
                 key={c}
                 onClick={() => setColor(c)}
-                style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer', border: color === c ? '2px solid white' : '2px solid transparent', outline: color === c ? `2px solid ${c}` : 'none' }}
+                title={c}
+                style={{
+                  width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer',
+                  border: color.toLowerCase() === c.toLowerCase() ? '2px solid white' : '2px solid transparent',
+                  boxShadow: color.toLowerCase() === c.toLowerCase() ? `0 0 0 2px ${c}` : 'none',
+                  transform: color.toLowerCase() === c.toLowerCase() ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                }}
               />
             ))}
+
+            {/* Selector de color personalizado nativo (Rueda de color con Pipeta) */}
+            <label
+              title="Elegir color personalizado..."
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--color-bg-primary)',
+                border: '1px solid var(--color-border)',
+                cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                marginLeft: 4,
+              }}
+            >
+              <Pipette size={13} color="var(--color-text-primary)" />
+              <input
+                type="color"
+                value={color}
+                onChange={e => setColor(e.target.value)}
+                style={{
+                  position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                  opacity: 0, cursor: 'pointer',
+                }}
+              />
+            </label>
           </div>
         </div>
         <button disabled={loading || !name.trim()} style={{ background: 'var(--color-accent)', color: '#fff', padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, height: 36 }}>

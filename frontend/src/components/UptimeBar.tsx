@@ -56,7 +56,7 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 36 }
               background: color,
               opacity: p ? 1 : 0.28,
               cursor: 'default',
-              transition: 'all 0.2s ease',
+              transition: 'opacity 0.2s ease, box-shadow 0.2s ease',
               boxShadow: isNewest ? `0 0 7px ${color}90` : 'none',
             }}
           />
