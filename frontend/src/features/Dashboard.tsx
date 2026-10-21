@@ -202,6 +202,41 @@ export function Dashboard() {
     }
   }
 
+  // Persistencia y restauración de posición del scroll de la vista principal
+  useEffect(() => {
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null
+    const handleScroll = () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      scrollTimeout = setTimeout(() => {
+        try {
+          sessionStorage.setItem('uptimecore_scroll_pos', String(window.scrollY))
+        } catch {}
+      }, 100)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+    }
+  }, [])
+
+  // Restaurar el scroll una vez que los grupos se hayan pintado en pantalla
+  useEffect(() => {
+    if (groups.length > 0) {
+      try {
+        const saved = sessionStorage.getItem('uptimecore_scroll_pos')
+        if (saved) {
+          const y = parseInt(saved, 10)
+          if (!isNaN(y) && y > 0 && Math.abs(window.scrollY - y) > 20) {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
+            })
+          }
+        }
+      } catch {}
+    }
+  }, [groups.length])
+
   // Carga inicial + SSE (Real-Time) con reconexión automática
   useEffect(() => {
     fetchGroups()

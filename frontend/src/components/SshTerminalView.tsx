@@ -158,6 +158,20 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     return () => window.removeEventListener('pointerdown', handleOutsideClick, true)
   }, [])
 
+  // Protección contra recarga o cierre accidental si hay sesiones SSH conectadas
+  useEffect(() => {
+    const hasActiveSession = tabs.some(t => t.status === 'connected')
+    if (!hasActiveSession) return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [tabs])
+
   // Si cambia el initialMonitor desde el header del modal, sincronizar o cambiar a su pestaña
   useEffect(() => {
     if (!initialMonitor) return

@@ -16,6 +16,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.0.1] - 2026-10-21
+
+### 🩹 Maintenance & UI Polish
+
+#### 📐 Standardized Layout & Uptime Bar Homologation
+- **Homologated Grid Architecture**: Standardized column boundaries (`300px | 1fr | 500px`) across both Group Headers and child Endpoint Rows.
+- **Sleek Uptime Bars**: Increased historical sample resolution to 36 slim, refined bars with proportional height (`22px`), soft rounded corners (`3.5px`), and consistent spacing (`3.5px`), replacing thick stretched blocks with an enterprise NOC appearance.
+- **Strict Column Alignment**: Right panel now uses a dedicated multi-slot subgrid (`[Latency/Time] [Badges/Interval] [Status Badge] [Actions] [Chevron]`), ensuring buttons and badges across all rows line up in razor-sharp vertical guides without jitter or stagger.
+
+#### 🔄 State Persistence & Tab Navigation Stability
+- **Accordion Persistence**: Open group accordions are now tracked and persisted in `localStorage` (`uptimecore_expanded_groups`). Active groups remain open across background tab switching, browser memory discarding, or manual reloads.
+- **Active Endpoint Persistence**: Expanded sensor SLA and latency charts survive tab switches and page refreshes.
+- **Scroll Position Restoration**: Window scroll offset is seamlessly recorded and restored across silent SSE reconnects or tab reactivation.
+- **Web SSH Session Guard**: Added browser `beforeunload` warning when active SSH sessions are connected, preventing accidental tab closure or background reloads from severing remote shell terminals.
+
 ## [v1.0.0] - 2026-10-19
 
 ### 🚀 General Availability (First Stable Release)
@@ -82,6 +97,21 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.0.1] - 2026-10-21
+
+### 🩹 Mantenimiento y Refinamiento de Interfaz
+
+#### 📐 Homologación Visual de Cuadritos y Columnas
+- **Estructura de Cuadrícula Homologada**: Estandarización de las columnas (`300px | 1fr | 500px`) tanto en la cabecera de grupos como en las filas de cada endpoint.
+- **Barras de Uptime Más Esbeltas y Elegantes**: Aumento de la resolución de historial a 36 barras esbeltas y estilizadas con altura calibrada (`22px`), bordes redondeados suaves (`3.5px`) y separación uniforme (`3.5px`), reemplazando los bloques anchos por una estética profesional de grado NOC.
+- **Alineación Vertical Perfecta**: El panel derecho ahora utiliza sub-columnas con anchos fijos dedicados (`[Latencia / Hora] [Badges / Intervalo] [Status Badge] [Botones de Acción] [Chevron]`), garantizando que todos los elementos se alineen en guías verticales perfectas sin desplazarse hacia los lados.
+
+#### 🔄 Persistencia de Estado y Estabilidad al Cambiar de Pestaña
+- **Persistencia de Acordeones**: Los grupos abiertos se guardan automáticamente en `localStorage` (`uptimecore_expanded_groups`). Los grupos permanecen abiertos incluso si cambias de pestaña, el navegador suspende la página o se recarga con F5.
+- **Persistencia de Sensor Activo**: Los paneles de detalle y gráficas SLA de endpoints abiertos se conservan intactos.
+- **Restauración de Posición de Scroll**: La altura de desplazamiento de la ventana se preserva en `sessionStorage` y se restaura sin saltos bruscos.
+- **Protección de la Shell Web SSH**: Implementación del detector `beforeunload` para advertir al usuario si intenta cerrar o recargar la pestaña mientras hay sesiones SSH conectadas, protegiendo las terminales remotas activas.
 
 ## [v1.0.0] - 2026-10-19
 

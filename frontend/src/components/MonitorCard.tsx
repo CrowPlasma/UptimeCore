@@ -78,8 +78,60 @@ interface Props {
 // ── MonitorCard ───────────────────────────────────────────────────────────
 export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal, activeFilter = 'all' }: Props) {
   const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
-  const [expanded, setExpanded] = useState<boolean>(false)
-  const [activeMonitorId, setActiveMonitorId] = useState<number | null>(null)
+
+  // Persistencia de acordeón abierto en localStorage (sobrevive recargas, cambio de pestañas o revalidaciones)
+  const [expanded, setExpandedState] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem('uptimecore_expanded_groups')
+      if (raw) {
+        const ids: number[] = JSON.parse(raw)
+        return ids.includes(group.id)
+      }
+    } catch {}
+    return false
+  })
+
+  const setExpanded = React.useCallback((action: boolean | ((prev: boolean) => boolean)) => {
+    setExpandedState(prev => {
+      const next = typeof action === 'function' ? action(prev) : action
+      try {
+        const raw = localStorage.getItem('uptimecore_expanded_groups')
+        let ids: number[] = raw ? JSON.parse(raw) : []
+        if (next) {
+          if (!ids.includes(group.id)) ids.push(group.id)
+        } else {
+          ids = ids.filter(id => id !== group.id)
+        }
+        localStorage.setItem('uptimecore_expanded_groups', JSON.stringify(ids))
+      } catch {}
+      return next
+    })
+  }, [group.id])
+
+  // Persistencia del monitor activo (con gráfica/SLA abierta)
+  const [activeMonitorId, setActiveMonitorIdState] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem(`uptimecore_active_mon_${group.id}`)
+      return saved ? Number(saved) : null
+    } catch {
+      return null
+    }
+  })
+
+  const setActiveMonitorId = React.useCallback((action: number | null | ((prev: number | null) => number | null)) => {
+    setActiveMonitorIdState(prev => {
+      const next = typeof action === 'function' ? action(prev) : action
+      try {
+        if (next != null) {
+          localStorage.setItem(`uptimecore_active_mon_${group.id}`, String(next))
+        } else {
+          localStorage.removeItem(`uptimecore_active_mon_${group.id}`)
+        }
+      } catch {}
+      return next
+    })
+  }, [group.id])
+
   const [diagnosticMonitor, setDiagnosticMonitor] = useState<Monitor | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
@@ -134,10 +186,16 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
         overflow: 'hidden',
       }}>
 
-        {/* ══ Cabecera del grupo ══ */}
+        {/* ══ Cabecera del grupo (homologada a 280px | 1fr | 560px) ══ */}
         <div
           style={{
-            display: 'grid', gridTemplateColumns: '300px 1fr auto', alignItems: 'center', gap: 22, padding: '15px 24px', cursor: 'pointer', position: 'relative',
+            display: 'grid',
+            gridTemplateColumns: '280px 1fr 560px',
+            alignItems: 'center',
+            gap: 16,
+            padding: '13px 24px',
+            cursor: 'pointer',
+            position: 'relative',
           }}
           onClick={() => setExpanded(prev => !prev)}
         >
@@ -147,10 +205,10 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
             background: statusColor(stripeStatus),
           }} />
 
-          {/* Nombre + Tags */}
-          <div style={{ paddingLeft: 10, paddingRight: 8, wordBreak: 'break-word' }}>
+          {/* Columna 1: Nombre + Tags */}
+          <div style={{ paddingLeft: 10, paddingRight: 8, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)' }}>
+              <span style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {group.name}
               </span>
               {group.tags?.slice(0, 3).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
@@ -161,30 +219,30 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
               )}
             </div>
             {group.description && (
-              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.35 }}>
+              <p style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 3, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {group.description}
               </p>
             )}
           </div>
 
-          {/* Barra de uptime que aprovecha todo el espacio central */}
+          {/* Columna 2: Barra de uptime que aprovecha todo el espacio central */}
           <div style={{ minWidth: 0, width: '100%' }}>
             {group.monitors && group.monitors.length > 0 ? (
               <UptimeBar
                 history={groupHistory}
-                maxBars={22}
+                maxBars={36}
               />
             ) : (
-              <div style={{ height: 28, display: 'flex', alignItems: 'center' }}>
+              <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sin endpoints</span>
               </div>
             )}
           </div>
 
-          {/* Panel derecho */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14 }}>
-            {/* Latencia promedio y último check en vivo */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 74, flexShrink: 0 }}>
+          {/* Columna 3: Panel derecho homologado con slots holgados sin sobreposición (560px) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 105px 105px 214px 24px', alignItems: 'center', gap: 8, width: 560 }}>
+            {/* Slot 1: Latencia promedio y último check en vivo */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: 80 }}>
               <span style={{
                 fontSize: 13,
                 fontWeight: 700,
@@ -194,55 +252,55 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
                 {groupMetrics.avgLat != null ? `${groupMetrics.avgLat} ms` : '—'}
               </span>
               {groupMetrics.lastTimeStr && (
-                <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }} title="Última actualización en tiempo real">
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }} title="Última actualización en tiempo real">
                   {groupMetrics.lastTimeStr}
                 </span>
               )}
             </div>
 
-            {/* Contador de endpoints operativos */}
-            <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              {groupMetrics.activeCount > 0 ? `${groupMetrics.upCount}/${groupMetrics.activeCount}` : groupMetrics.total} ep
-            </span>
+            {/* Slot 2: Contador de endpoints o badges de pausa/mantenimiento */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, width: 105, overflow: 'hidden' }}>
+              {groupMetrics.pausedCount > 0 && status !== 'PAUSED' ? (
+                <span
+                  title={`${groupMetrics.pausedCount} de ${groupMetrics.total} sensores en pausa`}
+                  style={{
+                    fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 99,
+                    background: activeFilter === 'paused' ? 'rgba(99, 102, 241, 0.22)' : 'rgba(100, 116, 139, 0.16)',
+                    color: activeFilter === 'paused' ? '#818cf8' : '#94a3b8',
+                    border: activeFilter === 'paused' ? '1px solid rgba(99, 102, 241, 0.45)' : '1px solid rgba(148, 163, 184, 0.3)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {groupMetrics.pausedCount} PAUSA
+                </span>
+              ) : groupMetrics.maintCount > 0 && status !== 'MAINTENANCE' ? (
+                <span
+                  title={`${groupMetrics.maintCount} de ${groupMetrics.total} sensores en mantenimiento`}
+                  style={{
+                    fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 99,
+                    background: 'rgba(59, 130, 246, 0.18)',
+                    color: '#60a5fa',
+                    border: '1px solid rgba(59, 130, 246, 0.38)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {groupMetrics.maintCount} MANT.
+                </span>
+              ) : (
+                <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                  <Clock size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                  {groupMetrics.activeCount > 0 ? `${groupMetrics.upCount}/${groupMetrics.activeCount}` : groupMetrics.total} ep
+                </span>
+              )}
+            </div>
 
-            {/* Badges adicionales cuando el grupo tiene sensores en Pausa o Mantenimiento */}
-            {groupMetrics.pausedCount > 0 && status !== 'PAUSED' && (
-              <span
-                title={`${groupMetrics.pausedCount} de ${groupMetrics.total} sensores en pausa`}
-                style={{
-                  fontSize: 10.5, fontWeight: 800, padding: '4px 9px', borderRadius: 99,
-                  background: activeFilter === 'paused' ? 'rgba(99, 102, 241, 0.22)' : 'rgba(100, 116, 139, 0.16)',
-                  color: activeFilter === 'paused' ? '#818cf8' : '#94a3b8',
-                  border: activeFilter === 'paused' ? '1px solid rgba(99, 102, 241, 0.45)' : '1px solid rgba(148, 163, 184, 0.3)',
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                }}
-              >
-                {groupMetrics.pausedCount} EN PAUSA
-              </span>
-            )}
-            {groupMetrics.maintCount > 0 && status !== 'MAINTENANCE' && (
-              <span
-                title={`${groupMetrics.maintCount} de ${groupMetrics.total} sensores en mantenimiento`}
-                style={{
-                  fontSize: 10.5, fontWeight: 800, padding: '4px 9px', borderRadius: 99,
-                  background: 'rgba(59, 130, 246, 0.18)',
-                  color: '#60a5fa',
-                  border: '1px solid rgba(59, 130, 246, 0.38)',
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                }}
-              >
-                {groupMetrics.maintCount} MANT.
-              </span>
-            )}
-
-            {/* Badge de estado */}
-            <div style={{ flexShrink: 0 }}>
+            {/* Slot 3: Badge de estado */}
+            <div style={{ display: 'flex', justifyContent: 'center', width: 105 }}>
               <StatusBadge status={status} />
             </div>
 
-            {/* Acciones de Grupo Completo */}
-            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+            {/* Slot 4: Acciones de Grupo Completo (214px holgado para los 6 botones) */}
+            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', width: '100%' }} onClick={e => e.stopPropagation()}>
               {groupMetrics.total > 0 && (
                 <>
                   <Btn
@@ -279,10 +337,12 @@ export const MonitorCard = React.memo(function MonitorCard({ group, onOpenModal,
               <Btn icon={<Trash2 size={13} />} title="Eliminar grupo"    danger onClick={() => setConfirmDelete({ type: 'group' })} />
             </div>
 
-            {/* Chevron */}
-            <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
-              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </span>
+            {/* Slot 5: Chevron */}
+            <div style={{ display: 'flex', justifyContent: 'center', width: 24 }}>
+              <span style={{ color: 'var(--color-text-muted)' }}>
+                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -571,87 +631,73 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       borderBottom: '1px solid var(--color-border)',
       transition: 'background 0.2s ease',
     }}>
-      {/* Fila principal */}
+      {/* Fila principal homologada a 280px | 1fr | 560px */}
       <div
         style={{
-          display: 'grid', gridTemplateColumns: '14px 14px 236px 1fr auto', alignItems: 'center', gap: 14, padding: '14px 24px 14px 40px',
+          display: 'grid',
+          gridTemplateColumns: '280px 1fr 560px',
+          alignItems: 'center',
+          gap: 16,
+          padding: '12px 24px',
           cursor: 'pointer',
           background: isActive ? 'var(--color-bg-primary)' : 'transparent',
           transition: 'background 0.15s',
         }}
         onClick={onToggle}
       >
-        {/* Indicador lateral */}
-        <div style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-          {status === 'UNKNOWN' ? (
-            <Loader2 size={14} color="var(--color-text-muted)" className="animate-spin" />
-          ) : (
-            <div style={{ width: 4, height: 34, borderRadius: 4, background: statusColor(status) }} />
-          )}
+        {/* Columna 1: Identidad del Endpoint (280px) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, paddingLeft: 10, overflow: 'hidden' }}>
+          <div style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+            {status === 'UNKNOWN' ? (
+              <Loader2 size={13} color="var(--color-text-muted)" className="animate-spin" />
+            ) : (
+              <div style={{ width: 4, height: 28, borderRadius: 4, background: statusColor(status) }} />
+            )}
+          </div>
+
+          <span style={{ color: 'var(--color-text-muted)', flexShrink: 0, opacity: isPaused ? 0.5 : 1 }}>
+            {TYPE_ICON[monitor.type] ?? <Activity size={13} />}
+          </span>
+
+          <div style={{ minWidth: 0, flex: 1, paddingRight: 6, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {monitor.name}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', marginTop: 3, fontSize: 11, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
+              <span style={{
+                fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, padding: '1px 5px', borderRadius: 4,
+                color: 'var(--color-accent)', background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.3)', flexShrink: 0,
+              }}>
+                {monitor.type}
+              </span>
+              <a
+                href={
+                  monitor.target.startsWith('http')
+                    ? monitor.target
+                    : `${monitor.type === 'HTTP' ? 'http' : 'https'}://${monitor.target}${monitor.port && monitor.port !== 80 && monitor.port !== 443 ? ':' + monitor.port : ''}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{ color: 'var(--color-text-secondary)', fontWeight: 500, textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                onMouseOver={(e) => { e.currentTarget.style.color = '#8b5cf6'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
+              >
+                {monitor.target}{monitor.port ? `:${monitor.port}` : ''}
+              </a>
+            </div>
+          </div>
         </div>
 
-        {/* Icono de protocolo */}
-        <span style={{ color: 'var(--color-text-muted)', flexShrink: 0, opacity: isPaused ? 0.5 : 1 }}>
-          {TYPE_ICON[monitor.type] ?? <Activity size={14} />}
-        </span>
-
-        {/* Nombre + target */}
-        <div style={{ paddingRight: 8, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
-          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--color-text-primary)' }}>
-            {monitor.name}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4, fontSize: 12, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '1px 6px', borderRadius: 4,
-              color: 'var(--color-accent)', background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.3)',
-            }}>
-              {monitor.type}
-            </span>
-            <a
-              href={
-                monitor.target.startsWith('http')
-                  ? monitor.target
-                  : `${monitor.type === 'HTTP' ? 'http' : 'https'}://${monitor.target}${monitor.port && monitor.port !== 80 && monitor.port !== 443 ? ':' + monitor.port : ''}`
-              }
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{ color: 'var(--color-text-secondary)', fontWeight: 500, textDecoration: 'none', transition: 'color 0.2s' }}
-              onMouseOver={(e) => { e.currentTarget.style.color = '#8b5cf6'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
-            >
-              {monitor.target}{monitor.port ? `:${monitor.port}` : ''}
-            </a>
-          </div>
-          {monitor.type === 'SSL' && monitor.current_msg && !isPaused && !isMaint && (
-            <div style={{ marginTop: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: status === 'UP' ? '#ecfdf5' : '#fef2f2', color: status === 'UP' ? '#059669' : '#ef4444', border: `1px solid ${status === 'UP' ? '#a7f3d0' : '#fecaca'}` }}>
-                {monitor.current_msg}
-              </span>
-            </div>
-          )}
-          {monitor.type === 'SNMP' && (monitor as any).current_value != null && !isPaused && !isMaint && (
-            <div style={{ marginTop: 6 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
-                Valor OID: {(monitor as any).current_value}
-              </span>
-            </div>
-          )}
-          {(status === 'DOWN' || status === 'DEGRADED') && monitor.current_msg && monitor.type !== 'SSL' && (
-            <div style={{ marginTop: 5, fontSize: 11, color: '#f87171', fontFamily: "'JetBrains Mono', monospace", opacity: 0.9 }}>
-              {monitor.current_msg}
-            </div>
-          )}
-        </div>
-
-        {/* Barra de uptime alineada con la cabecera */}
+        {/* Columna 2: Barra de uptime alineada exactamente con la cabecera */}
         <div style={{ minWidth: 0, width: '100%', opacity: isPaused ? 0.45 : 1, filter: isPaused ? 'grayscale(0.4)' : 'none', transition: 'opacity 0.2s' }}>
-          <UptimeBar history={combinedHistory} maxBars={22} />
+          <UptimeBar history={combinedHistory} maxBars={36} />
         </div>
 
-        {/* Panel derecho (Latencia + Hora, Badge, Acciones con Diagnóstico) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 66 }}>
+        {/* Columna 3: Panel derecho homologado con slots idénticos (560px) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '80px 105px 105px 214px 24px', alignItems: 'center', gap: 8, width: 560 }}>
+          {/* Slot 1: Latencia y Hora */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: 80 }}>
             <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
               {status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
             </span>
@@ -674,12 +720,20 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
             ) : null}
           </div>
 
-          <div style={{ flexShrink: 0 }}>
+          {/* Slot 2: Intervalo de chequeo */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: 105 }}>
+            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }} title="Intervalo de verificación">
+              ⏱ {monitor.interval_seconds}s
+            </span>
+          </div>
+
+          {/* Slot 3: StatusBadge */}
+          <div style={{ display: 'flex', justifyContent: 'center', width: 105 }}>
             <StatusBadge status={status} size="sm" />
           </div>
 
-          {/* Acciones del sensor (incluye botón de Diagnóstico en Vivo estilo Paping/Traceroute) */}
-          <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          {/* Slot 4: Acciones del sensor (214px con flex-end) */}
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', width: '100%' }} onClick={e => e.stopPropagation()}>
             <Btn
               icon={<Terminal size={13} strokeWidth={2.3} />}
               title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
@@ -708,9 +762,12 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
             <Btn icon={<Trash2 size={12} />} title="Eliminar" danger onClick={onDelete} />
           </div>
 
-          <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
-            {isActive ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </span>
+          {/* Slot 5: Chevron */}
+          <div style={{ display: 'flex', justifyContent: 'center', width: 24 }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              {isActive ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+          </div>
         </div>
       </div>
 

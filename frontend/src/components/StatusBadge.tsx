@@ -12,7 +12,7 @@ const statusConfig: Record<MonitorStatus, { label: string; bg: string; dot: stri
   DEGRADED: { label: 'DEGRAD.', bg: '#f59e0b25', dot: '#f59e0b' },
   UNKNOWN:  { label: 'UNKNWN', bg: '#9ca3af25', dot: '#9ca3af' },
   PAUSED:   { label: 'PAUSADO', bg: '#6366f125', dot: '#6366f1' },
-  MAINTENANCE: { label: 'MANTENIMIENTO', bg: '#3b82f625', dot: '#3b82f6' }, // Blue color for Maintenance
+  MAINTENANCE: { label: 'MANT.', bg: '#3b82f625', dot: '#3b82f6' }, // Blue color for Maintenance
 }
 
 interface Props {
