@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2 } from 'lucide-react'
+import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2, Info, Cpu, ExternalLink } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import { TagsSettings } from './TagsSettings'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -7,13 +7,13 @@ import { useMonitorStore } from '../store/monitorStore'
 
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'entity' | 'security'>('notifications')
+  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'entity' | 'info' | 'security'>('notifications')
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showWipeConfirm, setShowWipeConfirm] = useState(false)
   const [isWiping, setIsWiping] = useState(false)
-  const { fetchGroups } = useMonitorStore()
+  const { fetchGroups, groups } = useMonitorStore()
 
   // Local state to track which forms are currently expanded/editing
   const [editing, setEditing] = useState<Record<string, boolean>>({})
@@ -98,6 +98,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Settings size={20} /> Ajustes del Sistema
             </h2>
+            <span style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 6,
+              background: 'rgba(99, 102, 241, 0.14)',
+              color: 'var(--color-accent)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+              letterSpacing: '0.02em',
+            }}>
+              v1.0.5
+            </span>
           </div>
           <button onClick={onClose} style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex' }}>
             <X size={18} />
@@ -112,7 +125,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <TabBtn active={tab==='general'} icon={<Server size={18}/>} label="General" onClick={()=>setTab('general')} />
               <TabBtn active={tab==='tags'} icon={<TagIcon size={18}/>} label="Etiquetas" onClick={()=>setTab('tags')} />
               <TabBtn active={tab==='entity'} icon={<Building2 size={18}/>} label="Entidad" onClick={()=>setTab('entity')} />
+              <TabBtn active={tab==='info'} icon={<Info size={18}/>} label="Información" onClick={()=>setTab('info')} />
               <TabBtn active={tab==='security'} icon={<Shield size={18}/>} label="Seguridad (Próx.)" onClick={()=>{}} disabled />
+            </div>
+
+            {/* Versión al pie del sidebar */}
+            <div style={{ padding: '8px 10px', borderTop: '1px solid var(--color-border)', textAlign: 'center' }}>
+              <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
+                UptimeCore v1.0.5
+              </span>
             </div>
           </div>
 
@@ -506,6 +527,175 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                 )}
+
+                {tab === 'info' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    <div>
+                      <h3 style={{ margin: '0 0 6px 0', fontSize: 18, color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border)', paddingBottom: 10 }}>
+                        Información del Sistema
+                      </h3>
+                      <p style={{ margin: '10px 0 0 0', fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                        Detalles técnicos, versión de compilación, arquitectura de red y estado de la plataforma UptimeCore.
+                      </p>
+                    </div>
+
+                    {/* Hero Card */}
+                    <div style={{
+                      background: 'var(--color-bg-card)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 12,
+                      padding: '20px 24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 18,
+                    }}>
+                      <div style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 14,
+                        background: 'linear-gradient(135deg, #2563eb, #1e40af)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                        flexShrink: 0,
+                      }}>
+                        <Cpu size={28} color="#fff" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.03em' }}>
+                            Uptime<span style={{ color: '#2563eb' }}>Core</span>
+                          </span>
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: 'rgba(34, 197, 94, 0.14)',
+                            color: '#22c55e',
+                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            v1.0.5
+                          </span>
+                          <span style={{
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            padding: '2px 7px',
+                            borderRadius: 6,
+                            background: 'var(--color-bg-primary)',
+                            color: 'var(--color-text-secondary)',
+                            border: '1px solid var(--color-border)',
+                          }}>
+                            Producción
+                          </span>
+                        </div>
+                        <p style={{ margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
+                          Plataforma Enterprise de Monitoreo de Red, Telemetría y Disponibilidad de Enlaces.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Grid de Especificaciones Técnicas */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: 12,
+                    }}>
+                      {[
+                        { label: 'Versión del Sistema', value: 'v1.0.5 (Release)' },
+                        { label: 'Licencia', value: 'GNU GPL v3.0 (Open Source)' },
+                        { label: 'Entorno de Ejecución', value: 'Docker Containerized (Alpine Linux)' },
+                        { label: 'Motor de Backend', value: 'Go 1.22+ / Fiber v2 (Alto Rendimiento)' },
+                        { label: 'Base de Datos de Series de Tiempo', value: 'TimescaleDB (PostgreSQL 16)' },
+                        { label: 'Caché de Telemetría en Vivo', value: 'Redis 7 (In-Memory Key/Value)' },
+                        { label: 'Motor de Frontend', value: 'React 19 + TypeScript + Vite + Zustand' },
+                        { label: 'Transmisión en Vivo', value: 'Server-Sent Events (SSE) Streaming' },
+                      ].map((item, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'var(--color-bg-card)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 10,
+                            padding: '12px 16px',
+                          }}
+                        >
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 3 }}>
+                            {item.label}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: item.value.startsWith('v') || item.value.includes('Go') || item.value.includes('Redis') ? "'JetBrains Mono', monospace" : 'inherit' }}>
+                            {item.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Resumen Operativo */}
+                    <div style={{
+                      background: 'var(--color-bg-card)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 12,
+                      padding: '16px 20px',
+                    }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                        Capacidad Activa & Protocolos
+                      </div>
+                      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Grupos Configurados</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>
+                            {groups.length}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Total de Endpoints</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-accent)', fontFamily: "'JetBrains Mono', monospace" }}>
+                            {groups.reduce((acc, g) => acc + (g.monitors?.length || 0), 0)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Protocolos Activos</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginTop: 4 }}>
+                            ICMP Ping, TCP Port, HTTP/HTTPS, Paping
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Enlaces Oficiales */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 10,
+                    }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                        © 2026 UptimeCore Open Source Project. Distribuido bajo licencia GNU GPLv3.
+                      </span>
+                      <a
+                        href="https://github.com/CrowPlasma/UptimeCore"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: 'var(--color-accent)',
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        GitHub <ExternalLink size={13} />
+                      </a>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -513,10 +703,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar Ajustes'}
+          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', cursor: 'pointer', fontWeight: 600 }}>
+            {tab === 'info' ? 'Cerrar' : 'Cancelar'}
           </button>
+          {tab !== 'info' && tab !== 'tags' && (
+            <button onClick={handleSave} disabled={saving} style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Save size={16} /> {saving ? 'Guardando...' : 'Guardar Ajustes'}
+            </button>
+          )}
         </div>
       </div>
       {showWipeConfirm && (

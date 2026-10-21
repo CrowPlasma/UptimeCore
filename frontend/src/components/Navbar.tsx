@@ -85,7 +85,7 @@ export function Navbar() {
             marginLeft: 8,
             verticalAlign: 'middle',
           }}>
-            v1.0.4
+            v1.0.5
           </span>
         </div>
       </div>

@@ -16,6 +16,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.0.5] - 2026-10-21
+
+### 🩹 Maintenance, Layout Ergonomics & System Info
+
+#### 💬 Multiline Group Description Wrapping & Sub-Comment Tags
+- **Natural Text Wrapping**: Enabled `wordBreak: 'break-word'` and `whiteSpace: 'normal'` on group descriptions/comments. Lengthy contact information or multi-line operational notes now wrap cleanly without horizontal truncation or ellipsis.
+- **Dedicated Tag Row**: Positioned tags on a dedicated third line beneath the description, granting group names 100% of line 1's horizontal space and preventing label collision or truncation on long site identifiers.
+
+#### ⏱️ Latency Telemetry Polish (Timestamp Removal)
+- **Decluttered Latency Slots**: Removed redundant per-row time strings (`hh:mm:ss a.m.`) beneath latency indicators in both group headers and child endpoint rows, cutting visual noise and relying on the global navbar live telemetry clock.
+
+#### ℹ️ System Information & Architecture Tab
+- **Dedicated "Información" Tab in Settings**: Added a new system information tab displaying runtime environment specs, Go Fiber backend, TimescaleDB, Redis, live streaming details, license info, and real-time monitored group/endpoint totals.
+- **Omnipresent Version Indicators**: Added discrete `v1.0.5` badge indicators in the Settings modal header and sidebar footer.
+
 ## [v1.0.4] - 2026-10-21
 
 ### 🏢 Corporate Entity Branding & Text Visibility
@@ -142,6 +157,21 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.0.5] - 2026-10-21
+
+### 🩹 Mantenimiento, Ergonomía de Espaciado e Información del Sistema
+
+#### 💬 Salto de Línea en Descripciones y Etiquetas Bajo Comentarios
+- **Salto de Línea Natural en Descripciones**: Se habilitó el ajuste multilínea (`wordBreak: 'break-word'`, `whiteSpace: 'normal'`) en los comentarios y datos de contacto de grupos para que textos extensos se muestren íntegros sin puntos suspensivos (`...`).
+- **Fila Dedicada de Etiquetas**: Se reubicaron las etiquetas en un tercer nivel debajo de los comentarios, dejando el 100% del ancho de la primera línea exclusivo para el nombre del grupo, evitando colisiones y truncado en nombres largos de sitios.
+
+#### ⏱️ Limpieza de Latencia (Supresión de Horas Redundantes)
+- **Eliminación de Ruido Visual en Latencia**: Se removieron los sellos de hora individuales bajo los milisegundos (`ms`) en cabeceras de grupos y filas de sensores, unificando la lectura del tiempo en el reloj principal de `● EN VIVO`.
+
+#### ℹ️ Pestaña de Información del Sistema & Versión
+- **Nueva Pestaña "Información" en Ajustes**: Incorporación de un panel técnico detallado con la versión del software, arquitectura (Go Fiber, TimescaleDB, Redis, React 19), capacidad operativa en tiempo real y enlaces al proyecto.
+- **Insignias de Versión Visibles**: Integración de indicadores `v1.0.5` en la cabecera y barra lateral del modal de Ajustes.
 
 ## [v1.0.4] - 2026-10-21
 

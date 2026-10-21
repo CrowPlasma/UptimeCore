@@ -203,7 +203,7 @@ export const MonitorCard = React.memo(function MonitorCard({
             gridTemplateColumns: '350px 1fr 560px',
             alignItems: 'center',
             gap: 14,
-            padding: '13px 24px',
+            padding: '10px 24px',
             cursor: 'pointer',
             position: 'relative',
           }}
@@ -215,48 +215,48 @@ export const MonitorCard = React.memo(function MonitorCard({
             background: statusColor(stripeStatus),
           }} />
 
-          {/* Columna 1: Nombre + Tags (350px balanceado) */}
-          <div style={{ paddingLeft: 10, paddingRight: 6, overflow: 'hidden', minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span
-                title={group.name}
-                style={{
-                  fontWeight: 700,
-                  fontSize: 14.5,
-                  color: 'var(--color-text-primary)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  flexShrink: 1,
-                  minWidth: 0,
-                }}
-              >
-                {group.name}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {group.tags?.slice(0, 3).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
-                {(group.tags?.length ?? 0) > 3 && (
-                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-                    +{group.tags.length - 3}
-                  </span>
-                )}
-              </div>
-            </div>
+          {/* Columna 1: Nombre + Comentarios + Etiquetas abajo (optimizado para espacio) */}
+          <div style={{ paddingLeft: 10, paddingRight: 6, overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <span
+              title={group.name}
+              style={{
+                fontWeight: 700,
+                fontSize: 14.5,
+                color: 'var(--color-text-primary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                width: '100%',
+              }}
+            >
+              {group.name}
+            </span>
             {group.description && (
               <p
                 title={group.description}
                 style={{
                   fontSize: 11.5,
                   color: 'var(--color-text-secondary)',
-                  marginTop: 3,
-                  lineHeight: 1.3,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  marginTop: 2,
+                  lineHeight: 1.35,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                  width: '100%',
                 }}
               >
                 {group.description}
               </p>
+            )}
+            {group.tags && group.tags.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+                {group.tags.slice(0, 4).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                {group.tags.length > 4 && (
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                    +{group.tags.length - 4}
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
@@ -276,8 +276,8 @@ export const MonitorCard = React.memo(function MonitorCard({
 
           {/* Columna 3: Panel derecho homologado con slots holgados sin sobreposición (560px) */}
           <div style={{ display: 'grid', gridTemplateColumns: '80px 105px 105px 214px 24px', alignItems: 'center', gap: 8, width: 560 }}>
-            {/* Slot 1: Latencia promedio y último check en vivo */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: 80 }}>
+            {/* Slot 1: Latencia promedio (sin hora para eliminar ruido visual) */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: 80 }}>
               <span style={{
                 fontSize: 13,
                 fontWeight: 700,
@@ -286,11 +286,6 @@ export const MonitorCard = React.memo(function MonitorCard({
               }}>
                 {groupMetrics.avgLat != null ? `${groupMetrics.avgLat} ms` : '—'}
               </span>
-              {groupMetrics.lastTimeStr && (
-                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }} title="Última actualización en tiempo real">
-                  {groupMetrics.lastTimeStr}
-                </span>
-              )}
             </div>
 
             {/* Slot 2: Contador de endpoints o badges de pausa/mantenimiento */}
@@ -735,28 +730,11 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
 
         {/* Columna 3: Panel derecho homologado con slots idénticos (560px) */}
         <div style={{ display: 'grid', gridTemplateColumns: '80px 105px 105px 214px 24px', alignItems: 'center', gap: 8, width: 560 }}>
-          {/* Slot 1: Latencia y Hora */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: 80 }}>
+          {/* Slot 1: Latencia (sin hora para evitar ruido visual) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: 80 }}>
             <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
               {status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN' ? '—' : `${monitor.current_latency_ms ?? '?'} ms`}
             </span>
-            {status === 'PAUSED' ? (
-              <span style={{ fontSize: 10, color: '#818cf8', marginTop: 2, fontWeight: 600 }}>
-                En pausa
-              </span>
-            ) : status === 'MAINTENANCE' ? (
-              <span style={{ fontSize: 10, color: '#60a5fa', marginTop: 2, fontWeight: 600 }}>
-                Mantenimiento
-              </span>
-            ) : status === 'UNKNOWN' ? (
-              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                Verificando...
-              </span>
-            ) : combinedHistory.length > 0 ? (
-              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
-                {new Date(combinedHistory[combinedHistory.length - 1].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            ) : null}
           </div>
 
           {/* Slot 2: Intervalo de chequeo */}
