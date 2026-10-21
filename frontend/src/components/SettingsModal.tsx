@@ -92,14 +92,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Settings size={20} /> Ajustes del Sistema
             </h2>
-            <span style={{
-              fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-              background: 'rgba(99, 102, 241, 0.14)', color: 'var(--color-accent)',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              fontFamily: "'JetBrains Mono', monospace",
-            }}>
-              v1.0.2
-            </span>
           </div>
           <button onClick={onClose} style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex' }}>
             <X size={18} />
@@ -114,24 +106,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <TabBtn active={tab==='general'} icon={<Server size={18}/>} label="General" onClick={()=>setTab('general')} />
               <TabBtn active={tab==='tags'} icon={<TagIcon size={18}/>} label="Etiquetas" onClick={()=>setTab('tags')} />
               <TabBtn active={tab==='security'} icon={<Shield size={18}/>} label="Seguridad (Próx.)" onClick={()=>{}} disabled />
-            </div>
-
-            {/* Versión del Sistema */}
-            <div style={{
-              padding: '12px 10px 4px 10px',
-              borderTop: '1px solid var(--color-border)',
-              fontSize: 11.5,
-              color: 'var(--color-text-muted)',
-            }}>
-              <div style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>UptimeCore</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-                <span>Versión:</span>
-                <span style={{
-                  fontWeight: 700, color: 'var(--color-accent)', fontFamily: "'JetBrains Mono', monospace",
-                }}>
-                  v1.0.2
-                </span>
-              </div>
             </div>
           </div>
 

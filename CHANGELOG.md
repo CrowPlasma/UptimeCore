@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.0.3] - 2026-10-21
+
+### 📐 UI Architecture & NOC Ergonomics
+
+#### 📊 Dedicated Endpoints Metric Card & Balanced KPI Grid
+- **New Endpoints KPI Card**: Added a dedicated "Endpoints" metric card at the top displaying total monitored endpoints and real-time operational breakdown (`UP` vs `DOWN`).
+- **Square-Proportioned Metric Cards**: Refactored top status cards into balanced, sturdy KPI cards (72px height) featuring clear uppercase headers, colored icon badges, large JetBrains Mono counters, and live contextual sublabels.
+- **Accurate Mutually-Exclusive Counters**: Audited and confirmed group and endpoint status counting logic to ensure 100% mathematical consistency without overlap.
+
+#### 🎛️ Unified Right-Aligned Controls & Global Live Telemetry
+- **Right-Aligned Operations Hub**: Consolidating all operational tools and filters (`Expand/Collapse`, `Tag Filter`, `Down First`, `Bitácora`, `Diagnostic Console`, `NOC Wallboard`, `Sound Alert`, `Sync`, and `New Group`) into a cohesive cluster on the right, giving the search bar clean, dedicated space on the left.
+- **Single Smart Expand/Collapse Toggle**: Replaced dual buttons with a single dynamic toggle button that intelligently switches between "Expand all" and "Collapse all" with a live count badge of expanded groups.
+- **Navbar Live Heartbeat Relocation**: Moved the real-time SSE streaming clock (`● EN VIVO`) to the main top navigation bar beside the settings gear, optimizing vertical space on the dashboard while keeping live connectivity status permanently in view across all views.
+
 ## [v1.0.2] - 2026-10-21
 
 ### ⚡ Performance & Ergonomics
@@ -114,6 +128,20 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.0.3] - 2026-10-21
+
+### 📐 Arquitectura de Interfaz y Ergonomía NOC
+
+#### 📊 Tarjeta Dedicada de Endpoints y Cuadrícula KPI Equilibrada
+- **Nueva Tarjeta de Métricas para Endpoints**: Se incorporó una tarjeta dedicada para "Endpoints" en el bloque superior, mostrando el total de sensores monitoreados y su desglose operativo en vivo (`UP` vs `DOWN`).
+- **Tarjetas de Estado Cuadradas y Proporcionadas**: Rediseño de las tarjetas a una altura equilibrada (72px), con encabezados en mayúsculas, insignias de icono con color de estado, cifras grandes en fuente JetBrains Mono y subtítulos contextuales en tiempo real.
+- **Conteo Matemático Riguroso**: Validación y blindaje del algoritmo de conteo para garantizar que cada grupo pertenezca a su estado exclusivo sin duplicidades.
+
+#### 🎛️ Barra de Controles Alineada a la Derecha y Telemetría Global
+- **Centro de Controles Agrupado a la Derecha**: Reubicación de todas las herramientas de operación y filtros (`Expandir/Colapsar`, `Filtro de Estado`, `Caídos 1º`, `Bitácora`, `Consola de Diagnóstico`, `Modo NOC`, `Alerta Sonora`, `Sync` y `Nuevo Grupo`) en un bloque compacto a la derecha, dejando la barra de búsqueda con espacio despejado y limpio a la izquierda.
+- **Botón Inteligente Único de Expandir/Colapsar**: Fusión de los dos botones anteriores en un solo botón toggle dinámico que alterna entre "Expandir todo" y "Colapsar todo", acompañado de un micro-contador con la cantidad de acordeones abiertos.
+- **Reloj de Telemetría "EN VIVO" en la Barra Superior**: Traslado del indicador de conexión en tiempo real (`● EN VIVO`) al Navbar principal junto al engrane de ajustes, recuperando valioso espacio vertical en el tablero y manteniendo visible el pulso del sistema en cualquier sección.
 
 ## [v1.0.2] - 2026-10-21
 

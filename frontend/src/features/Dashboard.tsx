@@ -7,7 +7,7 @@
  * - Estado de carga y error
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
+import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { MonitorCard } from '../components/MonitorCard'
@@ -18,37 +18,76 @@ import { NocWallboard } from '../components/NocWallboard'
 import { isSoundEnabled, setSoundEnabled, playTestSound } from '../utils/soundAlert'
 import type { ModalMode } from '../components/MonitorModal'
 
-// ── Tarjeta de métrica ─────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color, active, onClick }: {
-  icon: React.ReactNode; label: string; value: number; color: string; active?: boolean; onClick?: () => void
+// ── Tarjeta de métrica cuadrada y equilibrada ────────────────────────────────
+function StatCard({ icon, label, value, sublabel, color, active, onClick }: {
+  icon: React.ReactNode; label: string; value: number; sublabel?: string; color: string; active?: boolean; onClick?: () => void
 }) {
   return (
     <div
       onClick={onClick}
       style={{
-        background: 'var(--color-bg-card)',
+        background: active ? `${color}14` : 'var(--color-bg-card)',
         border: active ? `2px solid ${color}` : '1px solid var(--color-border)',
-        borderRadius: 14, padding: '20px 24px',
-        display: 'flex', alignItems: 'center', gap: 18,
+        borderRadius: 12,
+        padding: '12px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        height: 72,
         boxShadow: active ? `0 0 0 3px ${color}22` : 'var(--shadow-card)',
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.18s ease',
+        transition: 'all 0.15s ease',
+        userSelect: 'none',
+      }}
+      onMouseOver={e => {
+        if (!active && onClick) e.currentTarget.style.borderColor = `${color}99`
+      }}
+      onMouseOut={e => {
+        if (!active && onClick) e.currentTarget.style.borderColor = 'var(--color-border)'
       }}
     >
-      <div style={{
-        width: 48, height: 48, borderRadius: 14,
-        background: color + '1a', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', color, flexShrink: 0,
-      }}>
-        {icon}
-      </div>
-      <div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1 }}>
-          {value}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 5, fontWeight: 500 }}>
+      {/* Encabezado: Etiqueta en mayúsculas y badge de icono */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}>
           {label}
+        </span>
+        <div style={{
+          width: 24, height: 24, borderRadius: 6,
+          background: color + '1a', color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          {icon}
         </div>
+      </div>
+
+      {/* Pie: Número grande JetBrains Mono y desglose secundario */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{
+          fontSize: 24,
+          fontWeight: 800,
+          color: 'var(--color-text-primary)',
+          lineHeight: 1,
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {value}
+        </span>
+        {sublabel && (
+          <span style={{
+            fontSize: 10.5,
+            fontWeight: 500,
+            color: 'var(--color-text-muted)',
+            whiteSpace: 'nowrap',
+          }}>
+            {sublabel}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -104,11 +143,11 @@ function TagFilter({ allTagNames, selected, onChange, stats }: {
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)} style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
-        borderRadius: 9, border: selected !== 'all' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+        display: 'flex', alignItems: 'center', gap: 7, height: 36, padding: '0 12px',
+        borderRadius: 8, border: selected !== 'all' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
         background: selected !== 'all' ? 'rgba(99, 102, 241, 0.12)' : 'var(--color-bg-card)',
         color: selected !== 'all' ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-        fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+        fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
       }}>
         <Filter size={13} />
         {label}
@@ -164,7 +203,7 @@ const STATUS_ORDER: Record<string, number> = {
 }
 
 export function Dashboard() {
-  const { groups, allTags, loading, error, lastEventAt, sseConnected, setSseConnected, fetchGroups } = useMonitorStore()
+  const { groups, allTags, loading, error, setSseConnected, fetchGroups } = useMonitorStore()
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState('all')
   const [modal, setModal] = useState<ModalMode | null>(null)
@@ -378,14 +417,28 @@ export function Dashboard() {
 
   const stats = useMemo(() => {
     let up = 0, down = 0, degraded = 0, maintenance = 0, paused = 0
+    let epTotal = 0, epUp = 0, epDown = 0
+
     groups.forEach(g => {
-      if (groupMatchesStatusOrTag(g, 'up')) up++
-      if (groupMatchesStatusOrTag(g, 'down')) down++
-      if (groupMatchesStatusOrTag(g, 'degraded')) degraded++
-      if (groupMatchesStatusOrTag(g, 'maintenance')) maintenance++
-      if (groupMatchesStatusOrTag(g, 'paused')) paused++
+      const st = g.overall_status || 'UNKNOWN'
+      if (st === 'UP') up++
+      else if (st === 'DOWN') down++
+      else if (st === 'DEGRADED') degraded++
+      else if (st === 'MAINTENANCE') maintenance++
+      else if (st === 'PAUSED') paused++
+
+      g.monitors?.forEach(m => {
+        epTotal++
+        if (m.current_status === 'UP') epUp++
+        else if (m.current_status === 'DOWN') epDown++
+      })
     })
-    return { totalGroups: groups.length, up, down, degraded, maintenance, paused }
+
+    return {
+      totalGroups: groups.length,
+      up, down, degraded, maintenance, paused,
+      epTotal, epUp, epDown
+    }
   }, [groups])
 
   const filtered = useMemo(() => {
@@ -474,268 +527,248 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* ── Header Fijo (Estadísticas y Controles) ──── */}
+      {/* ── Header Fijo (Estadísticas Cuadradas y Controles Equilibrados) ──── */}
       <div style={{
         position: 'sticky',
         top: 58, // altura del Navbar
         zIndex: 90,
         backgroundColor: 'var(--color-bg-primary)',
-        paddingTop: 28,
-        paddingBottom: 16,
+        padding: '16px 32px 14px 32px',
         borderBottom: '1px solid var(--color-border)',
-        boxShadow: '0 10px 15px -3px var(--color-bg-primary)', // Suaviza la transición hacia abajo
-        margin: '0 -32px 24px -32px',
-        padding: '28px 32px 16px 32px',
+        boxShadow: '0 8px 12px -3px var(--color-bg-primary)',
+        margin: '0 -32px 18px -32px',
       }}>
-        {/* ── Tarjetas resumen ──── */}
+        {/* ── Tarjetas resumen cuadradas y equilibradas (7 KPI Cards) ──── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: 16, marginBottom: 24,
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gap: 10, marginBottom: 14,
         }}>
-          <StatCard icon={<Server size={22} />}        label="Grupos de monitor"  value={stats.totalGroups} color="#6366f1" active={tagFilter === 'all'}         onClick={() => setTagFilter('all')} />
-          <StatCard icon={<CheckCircle size={22} />}   label="Operativos"         value={stats.up}          color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
-          <StatCard icon={<XCircle size={22} />}       label="Caídos"             value={stats.down}        color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
-          <StatCard icon={<AlertTriangle size={22} />} label="Degradados"         value={stats.degraded}    color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
-          <StatCard icon={<Wrench size={22} />}        label="Mantenimiento"      value={stats.maintenance} color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
-          <StatCard icon={<Pause size={22} />}         label="En Pausa"           value={stats.paused}      color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
+          <StatCard icon={<Server size={14} />}        label="Grupos"        value={stats.totalGroups} sublabel="Monitoreados"                     color="#6366f1" active={tagFilter === 'all'}         onClick={() => setTagFilter('all')} />
+          <StatCard icon={<Activity size={14} />}      label="Endpoints"     value={stats.epTotal}     sublabel={`${stats.epUp} UP · ${stats.epDown} DOWN`} color="#06b6d4" active={false}                  onClick={() => setTagFilter('all')} />
+          <StatCard icon={<CheckCircle size={14} />}   label="Operativos"    value={stats.up}          sublabel={`${stats.epUp} ep activos`}               color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
+          <StatCard icon={<XCircle size={14} />}       label="Caídos"        value={stats.down}        sublabel={`${stats.epDown} ep caídos`}              color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
+          <StatCard icon={<AlertTriangle size={14} />} label="Degradados"    value={stats.degraded}    sublabel="Falla parcial"                           color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
+          <StatCard icon={<Wrench size={14} />}        label="Mantenimiento" value={stats.maintenance} sublabel="0 activos"                               color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
+          <StatCard icon={<Pause size={14} />}         label="En Pausa"      value={stats.paused}      sublabel="0 activos"                               color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
         </div>
 
-        {/* ── Barra de controles ──── */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="🔍  Buscar por nombre o IP..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              flex: 1, minWidth: 200, padding: '9px 14px', borderRadius: 9,
-              border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
-              color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
-            }}
-          />
-
-          <TagFilter
-            allTagNames={allTagNames}
-            selected={tagFilter}
-            stats={stats}
-            onChange={(v) => setTagFilter(v)}
-          />
-
-          {/* Priorizar Caídos 1º */}
-          <button
-            onClick={() => setSortDownFirst(v => !v)}
-            title="Ordenar automáticamente los grupos Caídos y Degradados al principio de la lista"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 12px', borderRadius: 9,
-              border: sortDownFirst ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid var(--color-border)',
-              background: sortDownFirst ? 'rgba(239, 68, 68, 0.12)' : 'var(--color-bg-card)',
-              color: sortDownFirst ? '#f87171' : 'var(--color-text-secondary)',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            <ArrowUpNarrowWide size={14} />
-            Caídos 1º
-          </button>
-
-          {/* Bitácora de Eventos / Historial de Caídas */}
-          <button
-            onClick={() => setShowIncidentLog(true)}
-            title="Abrir Bitácora de Eventos e Historial de Caídas"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '8px 13px', borderRadius: 9,
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-card)',
-              color: 'var(--color-text-primary)',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            <ClipboardList size={14} color="var(--color-accent)" />
-            Bitácora
-            {(stats.down + stats.degraded) > 0 && (
-              <span style={{
-                background: '#ef4444', color: '#fff', fontSize: 10.5, fontWeight: 800,
-                padding: '1px 6px', borderRadius: 99, lineHeight: 1.3,
-              }}>
-                {stats.down + stats.degraded}
-              </span>
-            )}
-          </button>
-
-          {/* Consola de Diagnóstico en Vivo (Paping / Ping / Traceroute) */}
-          <button
-            onClick={() => setShowDiagnosticModal(true)}
-            title="Abrir Consola de Diagnóstico en Vivo (Paping TCP por Puerto, Ping ICMP, Traceroute, HTTP/SSL, DNS)"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '8px 13px', borderRadius: 9,
-              border: '1px solid rgba(56, 189, 248, 0.35)',
-              background: 'rgba(14, 165, 233, 0.12)',
-              color: '#38bdf8',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            <Terminal size={14} />
-            Diagnóstico
-          </button>
-
-          {/* Modo Pantalla NOC / Wallboard */}
-          <button
-            onClick={handleToggleNoc}
-            title="Alternar Modo Pantalla NOC / Wallboard compacto de alta densidad"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '8px 13px', borderRadius: 9,
-              border: nocMode ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
-              background: nocMode ? 'var(--color-accent)' : 'var(--color-bg-card)',
-              color: nocMode ? '#fff' : 'var(--color-text-primary)',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            <MonitorIcon size={14} />
-            Modo NOC
-          </button>
-
-          {nocMode && (
-            <button
-              onClick={handleFullscreen}
-              title="Pantalla completa para monitor de pared"
+        {/* ── Barra Unificada de Controles (Búsqueda a la izquierda, Todo a la derecha) ──── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          {/* Bloque Izquierdo: Buscador */}
+          <div style={{ flex: '1 1 240px', maxWidth: 360 }}>
+            <input
+              type="text"
+              placeholder="🔍  Buscar por nombre o IP..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
               style={{
-                width: 36, height: 36, borderRadius: 9,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
                 border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
-                color: 'var(--color-text-secondary)', cursor: 'pointer',
+                color: 'var(--color-text-primary)', fontSize: 12.5, outline: 'none', fontFamily: 'inherit',
+                transition: 'border-color 0.15s ease',
+              }}
+            />
+          </div>
+
+          {/* Bloque Derecho: Filtros, Herramientas Operativas, Sync y Nuevo Grupo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Expandir / Colapsar */}
+            {!nocMode && groups.length > 0 && (
+              <button
+                onClick={() => {
+                  if (expandedCount > 0) {
+                    handleCollapseAll()
+                  } else {
+                    handleExpandAll()
+                  }
+                }}
+                title={expandedCount > 0 ? "Colapsar todos los grupos" : "Expandir todos los grupos"}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  height: 36, padding: '0 12px', borderRadius: 8,
+                  border: expandedCount > 0 ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                  background: expandedCount > 0 ? 'rgba(99, 102, 241, 0.12)' : 'var(--color-bg-card)',
+                  color: expandedCount > 0 ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {expandedCount > 0 ? (
+                  <>
+                    <ChevronsDownUp size={14} color="var(--color-accent)" />
+                    <span>Colapsar</span>
+                    <span style={{
+                      fontSize: 10, padding: '1px 6px', borderRadius: 99,
+                      background: 'var(--color-accent)', color: '#fff', fontWeight: 700,
+                    }}>
+                      {expandedCount}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronsUpDown size={14} color="var(--color-accent)" />
+                    <span>Expandir todo</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Filtro dropdown */}
+            <TagFilter
+              allTagNames={allTagNames}
+              selected={tagFilter}
+              stats={stats}
+              onChange={(v) => setTagFilter(v)}
+            />
+
+            {/* Caídos 1º */}
+            <button
+              onClick={() => setSortDownFirst(v => !v)}
+              title="Ordenar automáticamente los grupos Caídos y Degradados al principio de la lista"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 11px', borderRadius: 8,
+                border: sortDownFirst ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid var(--color-border)',
+                background: sortDownFirst ? 'rgba(239, 68, 68, 0.12)' : 'var(--color-bg-card)',
+                color: sortDownFirst ? '#f87171' : 'var(--color-text-secondary)',
+                fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
               }}
             >
-              <Maximize2 size={14} />
+              <ArrowUpNarrowWide size={14} />
+              Caídos 1º
             </button>
-          )}
 
-          {/* Alerta Sonora opcional */}
-          <button
-            onClick={handleToggleSound}
-            title={soundOn ? 'Alerta sonora ACTIVADA (suena al caer o recuperarse un monitor)' : 'Activar alerta sonora para caídas en vivo'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 12px', borderRadius: 9,
-              border: soundOn ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid var(--color-border)',
-              background: soundOn ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-bg-card)',
-              color: soundOn ? '#4ade80' : 'var(--color-text-muted)',
-              fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            {soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
-            {soundOn ? 'Sonido ON' : 'Silencio'}
-          </button>
+            {/* Separador vertical sutil */}
+            <div style={{ width: 1, height: 18, background: 'var(--color-border)', margin: '0 2px' }} />
 
-          {/* Indicador SSE en Tiempo Real */}
-          <div
-            title={lastEventAt ? `Último evento recibido: ${new Date(lastEventAt).toLocaleTimeString()}` : 'Conectado al stream en tiempo real'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
-              borderRadius: 9, border: '1px solid var(--color-border)',
-              background: 'var(--color-bg-card)', fontSize: 11.5, fontWeight: 600,
-              color: 'var(--color-text-secondary)', fontFamily: "'JetBrains Mono', monospace",
-            }}
-          >
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: sseConnected ? '#22c55e' : '#f59e0b',
-              boxShadow: sseConnected ? '0 0 8px #22c55e' : 'none',
-            }} />
-            <span>{sseConnected ? 'EN VIVO' : 'SYNC'}</span>
-            {lastEventAt && (
-              <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
-                · {new Date(lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            )}
-          </div>
-
-          {/* Botón refresh manual */}
-          <button onClick={handleRefresh} title="Actualizar ahora" style={{
-            width: 38, height: 38, borderRadius: 9, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
-            color: 'var(--color-text-muted)', cursor: 'pointer',
-          }}>
-            <RefreshCw size={15} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </button>
-
-          {/* Nuevo grupo */}
-          <button onClick={() => setModal({ type: 'new_group' })} style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '9px 20px', borderRadius: 9, border: 'none',
-            background: 'var(--color-accent)', color: '#fff',
-            fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>
-            <PlusCircle size={15} /> Nuevo Grupo
-          </button>
-        </div>
-
-        {/* ── Sub-barra (debajo de la barra de búsqueda): Expandir / Colapsar Todos ──── */}
-        {!nocMode && groups.length > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 14,
-            paddingTop: 12,
-            borderTop: '1px solid var(--color-border)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                onClick={handleExpandAll}
-                title="Expandir todos los grupos visibles para ver sus endpoints"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 12px', borderRadius: 8,
-                  background: 'var(--color-bg-card)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
-              >
-                <ChevronsUpDown size={14} color="var(--color-accent)" />
-                Expandir todos
-              </button>
-
-              <button
-                onClick={handleCollapseAll}
-                title="Colapsar todos los acordeones de los grupos"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 12px', borderRadius: 8,
-                  background: 'var(--color-bg-card)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-                onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
-              >
-                <ChevronsDownUp size={14} />
-                Colapsar todos
-              </button>
-
-              {expandedCount > 0 && (
-                <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginLeft: 6 }}>
-                  ({expandedCount} de {filtered.length} expandidos)
+            {/* Bitácora */}
+            <button
+              onClick={() => setShowIncidentLog(true)}
+              title="Abrir Bitácora de Eventos e Historial de Caídas"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 12px', borderRadius: 8,
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-bg-card)',
+                color: 'var(--color-text-primary)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'border-color 0.15s ease',
+              }}
+            >
+              <ClipboardList size={14} color="var(--color-accent)" />
+              Bitácora
+              {(stats.down + stats.degraded) > 0 && (
+                <span style={{
+                  background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800,
+                  padding: '1px 6px', borderRadius: 99, lineHeight: 1.2,
+                }}>
+                  {stats.down + stats.degraded}
                 </span>
               )}
-            </div>
+            </button>
 
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Mostrando <strong style={{ color: 'var(--color-text-primary)' }}>{filtered.length}</strong> de {groups.length} grupos
-            </div>
+            {/* Diagnóstico */}
+            <button
+              onClick={() => setShowDiagnosticModal(true)}
+              title="Abrir Consola de Diagnóstico en Vivo (Paping TCP, Ping ICMP, Traceroute, HTTP/SSL, DNS)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 12px', borderRadius: 8,
+                border: '1px solid rgba(56, 189, 248, 0.35)',
+                background: 'rgba(14, 165, 233, 0.1)',
+                color: '#38bdf8',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Terminal size={14} />
+              Diagnóstico
+            </button>
+
+            {/* Modo NOC */}
+            <button
+              onClick={handleToggleNoc}
+              title="Alternar Modo Pantalla NOC / Wallboard compacto"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 12px', borderRadius: 8,
+                border: nocMode ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                background: nocMode ? 'var(--color-accent)' : 'var(--color-bg-card)',
+                color: nocMode ? '#fff' : 'var(--color-text-primary)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <MonitorIcon size={14} />
+              Modo NOC
+            </button>
+
+            {nocMode && (
+              <button
+                onClick={handleFullscreen}
+                title="Pantalla completa para monitor de pared"
+                style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
+                  color: 'var(--color-text-secondary)', cursor: 'pointer',
+                }}
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+
+            {/* Sonido */}
+            <button
+              onClick={handleToggleSound}
+              title={soundOn ? 'Alerta sonora ACTIVADA' : 'Activar alerta sonora'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 11px', borderRadius: 8,
+                border: soundOn ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid var(--color-border)',
+                background: soundOn ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-bg-card)',
+                color: soundOn ? '#4ade80' : 'var(--color-text-muted)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              {soundOn ? 'Sonido ON' : 'Silencio'}
+            </button>
+
+            {/* Refresco / Sync */}
+            <button onClick={handleRefresh} title="Actualizar ahora (Sync)" style={{
+              width: 36, height: 36, borderRadius: 8, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
+              color: 'var(--color-text-muted)', cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}>
+              <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </button>
+
+            {/* Nuevo Grupo */}
+            <button onClick={() => setModal({ type: 'new_group' })} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              height: 36, padding: '0 16px', borderRadius: 8, border: 'none',
+              background: 'var(--color-accent)', color: '#fff',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+              transition: 'opacity 0.15s ease',
+            }}>
+              <PlusCircle size={15} /> Nuevo Grupo
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Estado de carga ──── */}
@@ -817,7 +850,7 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore v1.0.2 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
+          UptimeCore v1.0.3 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
         </div>
       )}
 

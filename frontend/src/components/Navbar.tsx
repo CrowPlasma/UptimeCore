@@ -5,9 +5,11 @@
  */
 import { Sun, Moon, Cpu, Settings } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
+import { useMonitorStore } from '../store/monitorStore'
 
 export function Navbar() {
   const { theme, toggle } = useTheme()
+  const { lastEventAt, sseConnected } = useMonitorStore()
 
   return (
     <nav style={{
@@ -53,14 +55,42 @@ export function Navbar() {
             marginLeft: 8,
             verticalAlign: 'middle',
           }}>
-            v1.0.2
+            v1.0.3
           </span>
         </div>
       </div>
 
       {/* Acciones derecha */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        
+        {/* Indicador EN VIVO / Telemetría (a la izquierda de ajustes) */}
+        <div
+          title={lastEventAt ? `Último evento recibido: ${new Date(lastEventAt).toLocaleTimeString()}` : 'Conexión en tiempo real activa'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            height: 32, padding: '0 10px', borderRadius: 8,
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-bg-primary)',
+            fontSize: 11, fontWeight: 600,
+            color: 'var(--color-text-secondary)',
+            fontFamily: "'JetBrains Mono', monospace",
+            whiteSpace: 'nowrap',
+            marginRight: 2,
+          }}
+        >
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: sseConnected ? '#22c55e' : '#f59e0b',
+            boxShadow: sseConnected ? '0 0 6px #22c55e' : 'none',
+          }} />
+          <span style={{ color: sseConnected ? '#22c55e' : '#f59e0b' }}>
+            {sseConnected ? 'VIVO' : 'SYNC'}
+          </span>
+          {lastEventAt && (
+            <span style={{ color: 'var(--color-text-muted)', fontSize: 10.5 }}>
+              · {new Date(lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+        </div>
 
         {/* Botón de Ajustes */}
         <button
