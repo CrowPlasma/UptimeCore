@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.0.4] - 2026-10-21
+
+### 🏢 Corporate Entity Branding & Text Visibility
+
+#### 🏛️ Custom Entity Identity in Navbar & System Settings
+- **New "Entidad" (Organization) Settings Tab**: Added an enterprise branding tab in the System Settings modal allowing operators to customize their organization name and logo.
+- **Direct Image Upload & URL Support**: Supports both external logo image URLs and direct local file uploads (PNG, SVG, JPG, WebP) with client-side validation, live navbar simulation preview, and an instant logo removal button.
+- **Centered Navbar Brand Placement**: Dynamically renders the configured organization logo and name precisely in the horizontal center of the top navigation bar (`position: absolute; left: 50%; transform: translateX(-50%)`), updating in real-time across the app without requiring a page reload.
+
+#### 📐 Balanced Group Row Spacing & Unclipped Text Visibility
+- **Calibrated Identity Column (`350px`)**: Expanded the group name and endpoint description column from `280px` to a balanced `350px` with optimized padding, eliminating awkward text truncation (`...`) on long site names and comprehensive contact information (`Name - email@domain.com phone`).
+- **Left-Aligned Status Squares**: Reduced excessive spacing between label text and the status squares by ~100px, keeping historical uptime bars sleek, compact, and ergonomically aligned towards the left while preventing clutter.
+- **Full-Text Native Tooltips**: Added contextual `title` tooltips across all group headers, monitor names, and targets for effortless hover inspection of unclipped data.
+
 ## [v1.0.3] - 2026-10-21
 
 ### 📐 UI Architecture & NOC Ergonomics
@@ -128,6 +142,20 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.0.4] - 2026-10-21
+
+### 🏢 Identidad de Entidad Corporativa y Visibilidad de Textos
+
+#### 🏛️ Branding de Entidad en Navbar y Ajustes del Sistema
+- **Nueva Pestaña "Entidad" en Ajustes**: Se incorporó una pestaña dedicada en el modal de Ajustes del Sistema para configurar el nombre y logotipo de la empresa u organización.
+- **Subida de Archivos Directa y Soporte para URLs**: Permite vincular imágenes mediante URL o cargar archivos directamente desde el equipo local (PNG, SVG, JPG, WebP) con vista previa en tiempo real y botón para remover el logotipo.
+- **Emblema Centrado en la Barra Superior**: Muestra el nombre y logotipo de la organización exactamente en el centro de la barra de navegación (`position: absolute; left: 50%; transform: translateX(-50%)`), sincronizándose al instante al guardar sin necesidad de recargar la página.
+
+#### 📐 Espaciado Equilibrado y Eliminación de Textos Cortados
+- **Columna de Identidad Calibrada (`350px`)**: Se amplió el ancho de la columna de nombres y descripciones de `280px` a `350px` con padding optimizado, eliminando el corte con tres puntos (`...`) en nombres largos de sitios y datos completos de contacto (`Nombre - correo@empresa.com teléfono`).
+- **Cuadros de Estado Más Cercanos a la Izquierda**: Se redujo en ~100px el espacio vacío entre el texto descriptivo y las barras de estado (`UptimeBar`), logrando una disposición más compacta, profesional y ergonómica.
+- **Tooltips Nativos de Texto Completo**: Se añadieron atributos `title` en todos los nombres de grupo, descripciones, monitores y destinos para facilitar la lectura inmediata al pasar el cursor.
 
 ## [v1.0.3] - 2026-10-21
 

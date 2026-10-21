@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon } from 'lucide-react'
+import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2 } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import { TagsSettings } from './TagsSettings'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -7,7 +7,7 @@ import { useMonitorStore } from '../store/monitorStore'
 
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'security'>('notifications')
+  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'entity' | 'security'>('notifications')
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -58,6 +58,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       })
       if (!res.ok) throw new Error('Error saving settings')
       await fetchGroups()
+      window.dispatchEvent(new CustomEvent('entity-updated', {
+        detail: {
+          entity_name: settings.entity_name || '',
+          entity_logo: settings.entity_logo || ''
+        }
+      }))
       useToastStore.getState().addToast({ type: 'success', title: 'Guardado', message: 'Los ajustes se guardaron correctamente.' })
       setEditing({}) // close all edit forms
     } catch {
@@ -105,6 +111,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <TabBtn active={tab==='notifications'} icon={<Bell size={18}/>} label="Notificaciones" onClick={()=>setTab('notifications')} />
               <TabBtn active={tab==='general'} icon={<Server size={18}/>} label="General" onClick={()=>setTab('general')} />
               <TabBtn active={tab==='tags'} icon={<TagIcon size={18}/>} label="Etiquetas" onClick={()=>setTab('tags')} />
+              <TabBtn active={tab==='entity'} icon={<Building2 size={18}/>} label="Entidad" onClick={()=>setTab('entity')} />
               <TabBtn active={tab==='security'} icon={<Shield size={18}/>} label="Seguridad (Próx.)" onClick={()=>{}} disabled />
             </div>
           </div>
@@ -328,6 +335,175 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         </div>
                       </div>
                       
+                  </div>
+                )}
+                {tab === 'entity' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                    <div>
+                      <h3 style={{ margin: '0 0 6px 0', fontSize: 18, color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border)', paddingBottom: 10 }}>
+                        Identidad de la Entidad
+                      </h3>
+                      <p style={{ margin: '10px 0 0 0', fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                        Personaliza el nombre y logotipo de tu empresa u organización. Esta identidad visual se mostrará de forma destacada en el centro de la barra superior de navegación.
+                      </p>
+                    </div>
+
+                    {/* Nombre de la entidad */}
+                    <Field label="Nombre de la Entidad / Organización">
+                      <input
+                        type="text"
+                        value={settings.entity_name || ''}
+                        onChange={e => setSettings({ ...settings, entity_name: e.target.value })}
+                        placeholder="Ej: Envases Universales, S.A. / NOC Corporativo"
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    {/* Logotipo de la entidad */}
+                    <Field label="Logotipo de la Entidad (URL o Archivo Local)">
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          value={settings.entity_logo || ''}
+                          onChange={e => setSettings({ ...settings, entity_logo: e.target.value })}
+                          placeholder="https://empresa.com/logo.png o sube un archivo"
+                          style={{ ...inputStyle, flex: 1 }}
+                        />
+                        <label
+                          style={{
+                            background: 'var(--color-bg-card)',
+                            color: 'var(--color-text-primary)',
+                            border: '1px solid var(--color-border)',
+                            padding: '10px 14px',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                          title="Cargar archivo de imagen (PNG, JPG, SVG, WebP)"
+                        >
+                          <Upload size={15} /> Subir Imagen
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              if (file.size > 2 * 1024 * 1024) {
+                                useToastStore.getState().addToast({
+                                  type: 'error',
+                                  title: 'Archivo muy pesado',
+                                  message: 'Por favor selecciona una imagen menor a 2 MB.'
+                                })
+                                return
+                              }
+                              const reader = new FileReader()
+                              reader.onload = evt => {
+                                const result = evt.target?.result as string
+                                if (result) {
+                                  setSettings(prev => ({ ...prev, entity_logo: result }))
+                                  useToastStore.getState().addToast({
+                                    type: 'success',
+                                    title: 'Logo cargado',
+                                    message: 'Imagen cargada en vista previa. Recuerda hacer clic en "Guardar Ajustes".'
+                                  })
+                                }
+                              }
+                              reader.readAsDataURL(file)
+                            }}
+                          />
+                        </label>
+                        {settings.entity_logo && (
+                          <button
+                            type="button"
+                            onClick={() => setSettings(prev => ({ ...prev, entity_logo: '' }))}
+                            title="Quitar logotipo"
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              padding: '10px 12px',
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                        Formatos recomendados: PNG o SVG transparente. Se adaptará automáticamente con una altura de hasta 30px en el encabezado.
+                      </span>
+                    </Field>
+
+                    {/* Vista previa en vivo */}
+                    <div style={{
+                      marginTop: 8,
+                      background: 'var(--color-bg-card)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 12,
+                      padding: '16px 20px',
+                    }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Vista previa en la barra superior (Navbar)
+                      </div>
+                      <div style={{
+                        background: 'var(--color-bg-secondary)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 8,
+                        height: 52,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 12,
+                        padding: '0 20px',
+                      }}>
+                        {settings.entity_logo || settings.entity_name ? (
+                          <>
+                            {settings.entity_logo && (
+                              <img
+                                src={settings.entity_logo}
+                                alt={settings.entity_name || 'Logo'}
+                                style={{
+                                  maxHeight: 28,
+                                  maxWidth: 130,
+                                  objectFit: 'contain',
+                                  borderRadius: 4,
+                                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))',
+                                }}
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none'
+                                }}
+                              />
+                            )}
+                            {settings.entity_name && (
+                              <span style={{
+                                fontWeight: 700,
+                                fontSize: 14.5,
+                                color: 'var(--color-text-primary)',
+                                letterSpacing: '-0.02em',
+                              }}>
+                                {settings.entity_name}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12.5, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                            Sin identidad configurada (el centro de la barra permanecerá despejado)
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </>

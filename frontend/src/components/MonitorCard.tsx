@@ -196,13 +196,13 @@ export const MonitorCard = React.memo(function MonitorCard({
         overflow: 'hidden',
       }}>
 
-        {/* ══ Cabecera del grupo (homologada a 280px | 1fr | 560px) ══ */}
+        {/* ══ Cabecera del grupo (homologada a 350px | 1fr | 560px) ══ */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '280px 1fr 560px',
+            gridTemplateColumns: '350px 1fr 560px',
             alignItems: 'center',
-            gap: 16,
+            gap: 14,
             padding: '13px 24px',
             cursor: 'pointer',
             position: 'relative',
@@ -215,21 +215,46 @@ export const MonitorCard = React.memo(function MonitorCard({
             background: statusColor(stripeStatus),
           }} />
 
-          {/* Columna 1: Nombre + Tags */}
-          <div style={{ paddingLeft: 10, paddingRight: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {/* Columna 1: Nombre + Tags (350px balanceado) */}
+          <div style={{ paddingLeft: 10, paddingRight: 6, overflow: 'hidden', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                title={group.name}
+                style={{
+                  fontWeight: 700,
+                  fontSize: 14.5,
+                  color: 'var(--color-text-primary)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  flexShrink: 1,
+                  minWidth: 0,
+                }}
+              >
                 {group.name}
               </span>
-              {group.tags?.slice(0, 3).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
-              {(group.tags?.length ?? 0) > 3 && (
-                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-                  +{group.tags.length - 3}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {group.tags?.slice(0, 3).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                {(group.tags?.length ?? 0) > 3 && (
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                    +{group.tags.length - 3}
+                  </span>
+                )}
+              </div>
             </div>
             {group.description && (
-              <p style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 3, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <p
+                title={group.description}
+                style={{
+                  fontSize: 11.5,
+                  color: 'var(--color-text-secondary)',
+                  marginTop: 3,
+                  lineHeight: 1.3,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
                 {group.description}
               </p>
             )}
@@ -641,13 +666,13 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       borderBottom: '1px solid var(--color-border)',
       transition: 'background 0.2s ease',
     }}>
-      {/* Fila principal homologada a 280px | 1fr | 560px */}
+      {/* Fila principal homologada a 350px | 1fr | 560px */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '280px 1fr 560px',
+          gridTemplateColumns: '350px 1fr 560px',
           alignItems: 'center',
-          gap: 16,
+          gap: 14,
           padding: '12px 24px',
           cursor: 'pointer',
           background: isActive ? 'var(--color-bg-primary)' : 'transparent',
@@ -655,8 +680,8 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
         }}
         onClick={onToggle}
       >
-        {/* Columna 1: Identidad del Endpoint (280px) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, paddingLeft: 10, overflow: 'hidden' }}>
+        {/* Columna 1: Identidad del Endpoint (350px balanceado) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, paddingLeft: 10, paddingRight: 6, overflow: 'hidden' }}>
           <div style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
             {status === 'UNKNOWN' ? (
               <Loader2 size={13} color="var(--color-text-muted)" className="animate-spin" />
@@ -670,10 +695,13 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           </span>
 
           <div style={{ minWidth: 0, flex: 1, paddingRight: 6, wordBreak: 'break-word', opacity: isPaused ? 0.55 : 1, transition: 'opacity 0.2s' }}>
-            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div
+              title={monitor.name}
+              style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
               {monitor.name}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', marginTop: 3, fontSize: 11, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', marginTop: 3, fontSize: 11, fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace", minWidth: 0 }}>
               <span style={{
                 fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, padding: '1px 5px', borderRadius: 4,
                 color: 'var(--color-accent)', background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.3)', flexShrink: 0,
@@ -681,6 +709,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                 {monitor.type}
               </span>
               <a
+                title={monitor.target}
                 href={
                   monitor.target.startsWith('http')
                     ? monitor.target

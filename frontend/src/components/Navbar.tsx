@@ -1,8 +1,8 @@
 /**
  * components/Navbar.tsx (v2)
- * Navbar limpio: logo, búsqueda global, toggle de tema.
- * El botón "Nuevo Grupo" ahora vive en el Dashboard para mayor coherencia UX.
+ * Navbar limpio: logo, branding de entidad corporativa (centro), telemetría en vivo, toggle de tema y ajustes.
  */
+import { useState, useEffect } from 'react'
 import { Sun, Moon, Cpu, Settings } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { useMonitorStore } from '../store/monitorStore'
@@ -10,6 +10,36 @@ import { useMonitorStore } from '../store/monitorStore'
 export function Navbar() {
   const { theme, toggle } = useTheme()
   const { lastEventAt, sseConnected } = useMonitorStore()
+  const [entity, setEntity] = useState<{ name: string; logo: string }>({ name: '', logo: '' })
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data) {
+          setEntity({
+            name: data.entity_name || '',
+            logo: data.entity_logo || ''
+          })
+        }
+      })
+      .catch(() => {})
+
+    const handleUpdate = (e: any) => {
+      if (e.detail) {
+        setEntity({
+          name: e.detail.entity_name || '',
+          logo: e.detail.entity_logo || ''
+        })
+      } else {
+        fetch('/api/settings').then(r => r.json()).then(d => {
+          if (d) setEntity({ name: d.entity_name || '', logo: d.entity_logo || '' })
+        }).catch(() => {})
+      }
+    }
+    window.addEventListener('entity-updated', handleUpdate)
+    return () => window.removeEventListener('entity-updated', handleUpdate)
+  }, [])
 
   return (
     <nav style={{
@@ -24,7 +54,7 @@ export function Navbar() {
       top: 0,
       zIndex: 100,
     }}>
-      {/* Logo */}
+      {/* Logo y Nombre de la Aplicación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{
           width: 34, height: 34, borderRadius: 9,
@@ -55,10 +85,58 @@ export function Navbar() {
             marginLeft: 8,
             verticalAlign: 'middle',
           }}>
-            v1.0.3
+            v1.0.4
           </span>
         </div>
       </div>
+
+      {/* Identidad de la Entidad (Centro Absoluto) */}
+      {(entity.name || entity.logo) && (
+        <div
+          title={entity.name ? `Entidad: ${entity.name}` : undefined}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            maxWidth: '38%',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          {entity.logo && (
+            <img
+              src={entity.logo}
+              alt={entity.name || 'Logo'}
+              style={{
+                maxHeight: 28,
+                maxWidth: 120,
+                objectFit: 'contain',
+                borderRadius: 4,
+                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.12))',
+              }}
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none'
+              }}
+            />
+          )}
+          {entity.name && (
+            <span style={{
+              fontWeight: 700,
+              fontSize: 14.5,
+              color: 'var(--color-text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              letterSpacing: '-0.01em',
+            }}>
+              {entity.name}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Acciones derecha */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
