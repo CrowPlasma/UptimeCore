@@ -57,6 +57,7 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 
 	// Incident Log & Live Diagnostics
 	api.Get("/incidents", h.ListIncidents)
+	api.Get("/reports/sla", h.GetSlaReport)
 	api.Post("/diagnostics/run", h.RunDiagnostic)
 
 	// Terminal Web SSH (WebSocket) dentro de la Consola de Diagnóstico

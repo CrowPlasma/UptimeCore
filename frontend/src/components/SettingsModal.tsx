@@ -109,7 +109,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
               letterSpacing: '0.02em',
             }}>
-              v1.0.5
+              v1.0.6
             </span>
           </div>
           <button onClick={onClose} style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex' }}>
@@ -132,7 +132,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             {/* Versión al pie del sidebar */}
             <div style={{ padding: '8px 10px', borderTop: '1px solid var(--color-border)', textAlign: 'center' }}>
               <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
-                UptimeCore v1.0.5
+                UptimeCore v1.0.6
               </span>
             </div>
           </div>
@@ -577,7 +577,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                             border: '1px solid rgba(34, 197, 94, 0.3)',
                             fontFamily: "'JetBrains Mono', monospace",
                           }}>
-                            v1.0.5
+                            v1.0.6
                           </span>
                           <span style={{
                             fontSize: 10.5,
@@ -592,7 +592,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           </span>
                         </div>
                         <p style={{ margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
-                          Plataforma Enterprise de Monitoreo de Red, Telemetría y Disponibilidad de Enlaces.
+                          Plataforma de Monitoreo de Red, Telemetría y Disponibilidad de Enlaces.
                         </p>
                       </div>
                     </div>
@@ -604,7 +604,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       gap: 12,
                     }}>
                       {[
-                        { label: 'Versión del Sistema', value: 'v1.0.5 (Release)' },
+                        { label: 'Versión del Sistema', value: 'v1.0.6 (Release)' },
                         { label: 'Licencia', value: 'GNU GPL v3.0 (Open Source)' },
                         { label: 'Entorno de Ejecución', value: 'Docker Containerized (Alpine Linux)' },
                         { label: 'Motor de Backend', value: 'Go 1.22+ / Fiber v2 (Alto Rendimiento)' },

@@ -1,6 +1,6 @@
 /**
  * components/UptimeBar.tsx
- * Barra de historial de estado estilo Uptime Kuma / Enterprise NOC.
+ * Barra de historial de estado estilo Uptime Kuma / NOC.
  * Muestra N barras verticales esbeltas y proporcionadas representando el estado en el tiempo.
  */
 import React from 'react'

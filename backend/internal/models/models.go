@@ -112,3 +112,51 @@ type IncidentEvent struct {
 	ErrorMsg      string        `json:"error_msg,omitempty"`
 }
 
+// SlaReportMonitor contains SLA and performance metrics for an individual monitor.
+type SlaReportMonitor struct {
+	MonitorID       int     `json:"monitor_id"`
+	MonitorName     string  `json:"monitor_name"`
+	MonitorType     string  `json:"type"`
+	MonitorTarget   string  `json:"target"`
+	GroupID         *int    `json:"group_id"`
+	GroupName       string  `json:"group_name"`
+	TotalSamples    int     `json:"total_samples"`
+	UpSamples       int     `json:"up_samples"`
+	DownSamples     int     `json:"down_samples"`
+	DegradedSamples int     `json:"degraded_samples"`
+	MaintSamples    int     `json:"maint_samples"`
+	AvailabilityPct float64 `json:"availability_pct"`
+	UptimeSeconds   int     `json:"uptime_seconds"`
+	DowntimeSeconds int     `json:"downtime_seconds"`
+	OutagesCount    int     `json:"outages_count"`
+	AvgLatencyMs    int     `json:"avg_latency_ms"`
+	P95LatencyMs    int     `json:"p95_latency_ms"`
+	MaxLatencyMs    int     `json:"max_latency_ms"`
+	MttrSeconds     int     `json:"mttr_seconds"`
+	MtbfSeconds     int     `json:"mtbf_seconds"`
+	MeetsSla        bool    `json:"meets_sla"`
+}
+
+// SlaReportOverall contains aggregated high-level KPIs across all evaluated monitors.
+type SlaReportOverall struct {
+	TotalMonitors    int       `json:"total_monitors"`
+	EvaluatedPeriod  string    `json:"evaluated_period"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
+	GlobalSlaPct     float64   `json:"global_sla_pct"`
+	TargetSlaPct     float64   `json:"target_sla_pct"`
+	MeetsSla         bool      `json:"meets_sla"`
+	TotalOutages     int       `json:"total_outages"`
+	TotalDowntimeSec int       `json:"total_downtime_sec"`
+	MttrSeconds      int       `json:"mttr_seconds"`
+	MtbfSeconds      int       `json:"mtbf_seconds"`
+	AvgLatencyMs     int       `json:"avg_latency_ms"`
+	P95LatencyMs     int       `json:"p95_latency_ms"`
+}
+
+// SlaReportResponse is the complete response payload returned by GET /api/reports/sla.
+type SlaReportResponse struct {
+	Overall   SlaReportOverall   `json:"overall"`
+	Monitors  []SlaReportMonitor `json:"monitors"`
+	Incidents []IncidentEvent    `json:"incidents"`
+}

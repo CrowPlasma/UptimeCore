@@ -7,13 +7,14 @@
  * - Estado de carga y error
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity } from 'lucide-react'
+import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity, FileSpreadsheet } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { MonitorCard } from '../components/MonitorCard'
 import { MonitorModal } from '../components/MonitorModal'
 import { IncidentLogModal } from '../components/IncidentLogModal'
 import { DiagnosticModal } from '../components/DiagnosticModal'
+import { SlaReportModal } from '../components/SlaReportModal'
 import { NocWallboard } from '../components/NocWallboard'
 import { isSoundEnabled, setSoundEnabled, playTestSound } from '../utils/soundAlert'
 import type { ModalMode } from '../components/MonitorModal'
@@ -210,6 +211,7 @@ export function Dashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [showIncidentLog, setShowIncidentLog] = useState(false)
   const [showDiagnosticModal, setShowDiagnosticModal] = useState(false)
+  const [showSlaReportModal, setShowSlaReportModal] = useState(false)
   const [nocMode, setNocMode] = useState<boolean>(() => {
     try { return localStorage.getItem('uptimecore_noc_mode') === '1' } catch { return false }
   })
@@ -693,6 +695,24 @@ export function Dashboard() {
               Diagnóstico
             </button>
 
+            {/* Reportes SLA */}
+            <button
+              onClick={() => setShowSlaReportModal(true)}
+              title="Abrir Generador de Reportes Ejecutivos de SLA (PDF, Excel, Impresión)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 12px', borderRadius: 8,
+                border: '1px solid rgba(99, 102, 241, 0.35)',
+                background: 'rgba(99, 102, 241, 0.1)',
+                color: 'var(--color-accent)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <FileSpreadsheet size={14} />
+              Reportes SLA
+            </button>
+
             {/* Modo NOC */}
             <button
               onClick={handleToggleNoc}
@@ -850,7 +870,7 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore v1.0.5 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
+          UptimeCore v1.0.6 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
         </div>
       )}
 
@@ -862,6 +882,14 @@ export function Dashboard() {
 
       {/* ── Modal Diagnóstico en Vivo ──── */}
       {showDiagnosticModal && <DiagnosticModal onClose={() => setShowDiagnosticModal(false)} />}
+
+      {/* ── Modal Reportes Ejecutivos de SLA ──── */}
+      {showSlaReportModal && (
+        <SlaReportModal
+          onClose={() => setShowSlaReportModal(false)}
+          groups={groups}
+        />
+      )}
     </div>
   )
 }

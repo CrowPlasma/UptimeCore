@@ -544,6 +544,345 @@ func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]
 	return list, nil
 }
 
+// GetSlaReportData computes executive SLA metrics, per-monitor breakdowns, and incident logs for a given period and scope.
+func (db *DB) GetSlaReportData(ctx context.Context, startTime, endTime time.Time, groupID *int, monitorID *int, slaTarget float64) (*models.SlaReportResponse, error) {
+	if slaTarget <= 0 {
+		slaTarget = 99.9
+	}
+	totalPeriodSec := int(endTime.Sub(startTime).Seconds())
+	if totalPeriodSec <= 0 {
+		totalPeriodSec = 1
+	}
+
+	// 1. Fetch all matching monitors in the requested scope
+	monQuery := `
+		SELECT 
+			m.id, 
+			m.name, 
+			m.type, 
+			m.target, 
+			m.group_id, 
+			COALESCE(g.name, 'Sin Grupo') AS group_name
+		FROM monitors m
+		LEFT JOIN monitor_groups g ON g.id = m.group_id
+		WHERE ($1::int IS NULL OR m.group_id = $1)
+		  AND ($2::int IS NULL OR m.id = $2)
+		ORDER BY g.name ASC, m.name ASC
+	`
+	monRows, err := db.pool.Query(ctx, monQuery, groupID, monitorID)
+	if err != nil {
+		return nil, fmt.Errorf("query monitors: %w", err)
+	}
+	defer monRows.Close()
+
+	monMap := make(map[int]*models.SlaReportMonitor)
+	var orderedMonitors []*models.SlaReportMonitor
+
+	for monRows.Next() {
+		var m models.SlaReportMonitor
+		if err := monRows.Scan(&m.MonitorID, &m.MonitorName, &m.MonitorType, &m.MonitorTarget, &m.GroupID, &m.GroupName); err == nil {
+			m.AvailabilityPct = 100.0
+			m.UptimeSeconds = totalPeriodSec
+			m.MeetsSla = true
+			monMap[m.MonitorID] = &m
+			orderedMonitors = append(orderedMonitors, &m)
+		}
+	}
+	monRows.Close()
+
+	if len(orderedMonitors) == 0 {
+		return &models.SlaReportResponse{
+			Overall: models.SlaReportOverall{
+				TotalMonitors:   0,
+				EvaluatedPeriod: fmt.Sprintf("%s - %s", startTime.Format("2006-01-02 15:04"), endTime.Format("2006-01-02 15:04")),
+				StartTime:       startTime,
+				EndTime:         endTime,
+				GlobalSlaPct:    100.0,
+				TargetSlaPct:    slaTarget,
+				MeetsSla:        true,
+			},
+			Monitors:  []models.SlaReportMonitor{},
+			Incidents: []models.IncidentEvent{},
+		}, nil
+	}
+
+	// 2. Aggregate history samples & latencies across TimescaleDB hypertable
+	histQuery := `
+		SELECT 
+			m.id,
+			COUNT(h.time) AS total_samples,
+			COUNT(h.time) FILTER (WHERE h.status = 'UP') AS up_samples,
+			COUNT(h.time) FILTER (WHERE h.status = 'DOWN') AS down_samples,
+			COUNT(h.time) FILTER (WHERE h.status = 'DEGRADED') AS degraded_samples,
+			COUNT(h.time) FILTER (WHERE h.status = 'MAINTENANCE') AS maint_samples,
+			COALESCE(ROUND(AVG(h.latency_ms))::int, 0) AS avg_lat,
+			COALESCE(ROUND(percentile_cont(0.95) WITHIN GROUP (ORDER BY h.latency_ms))::int, 0) AS p95_lat,
+			COALESCE(MAX(h.latency_ms), 0) AS max_lat
+		FROM monitors m
+		JOIN monitor_history h ON h.monitor_id = m.id
+		WHERE h.time >= $1 AND h.time <= $2
+		  AND ($3::int IS NULL OR m.group_id = $3)
+		  AND ($4::int IS NULL OR m.id = $4)
+		GROUP BY m.id
+	`
+	histRows, err := db.pool.Query(ctx, histQuery, startTime, endTime, groupID, monitorID)
+	if err == nil {
+		defer histRows.Close()
+		for histRows.Next() {
+			var mid, total, up, down, deg, maint, avgLat, p95Lat, maxLat int
+			if err := histRows.Scan(&mid, &total, &up, &down, &deg, &maint, &avgLat, &p95Lat, &maxLat); err == nil {
+				if m, ok := monMap[mid]; ok {
+					m.TotalSamples = total
+					m.UpSamples = up
+					m.DownSamples = down
+					m.DegradedSamples = deg
+					m.MaintSamples = maint
+					m.AvgLatencyMs = avgLat
+					m.P95LatencyMs = p95Lat
+					m.MaxLatencyMs = maxLat
+				}
+			}
+		}
+		histRows.Close()
+	}
+
+	// 3. Outage counts & downtime duration per monitor via transition changes
+	outageQuery := `
+		WITH transitions AS (
+			SELECT
+				time,
+				monitor_id,
+				status,
+				LAG(status) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS prev_status
+			FROM monitor_history
+			WHERE time >= $1 AND time <= $2
+			  AND status IN ('UP', 'DOWN', 'DEGRADED', 'MAINTENANCE')
+			  AND ($3::int IS NULL OR monitor_id IN (SELECT id FROM monitors WHERE group_id = $3))
+			  AND ($4::int IS NULL OR monitor_id = $4)
+		),
+		changes AS (
+			SELECT
+				time AS started_at,
+				monitor_id,
+				status,
+				prev_status,
+				LEAD(time) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS ended_at
+			FROM transitions
+			WHERE prev_status IS DISTINCT FROM status
+		)
+		SELECT 
+			monitor_id,
+			COUNT(*) AS outage_count,
+			SUM(GREATEST(1, EXTRACT(EPOCH FROM (LEAST(COALESCE(ended_at, $2), $2) - GREATEST(started_at, $1)))::int)) AS outage_duration_sec
+		FROM changes
+		WHERE status = 'DOWN'
+		GROUP BY monitor_id
+	`
+	outageRows, err := db.pool.Query(ctx, outageQuery, startTime, endTime, groupID, monitorID)
+	if err == nil {
+		defer outageRows.Close()
+		for outageRows.Next() {
+			var mid, count, duration int
+			if err := outageRows.Scan(&mid, &count, &duration); err == nil {
+				if m, ok := monMap[mid]; ok {
+					m.OutagesCount = count
+					m.DowntimeSeconds = duration
+				}
+			}
+		}
+		outageRows.Close()
+	}
+
+	// 4. Retrieve Incidents log during the period
+	incidentQuery := `
+		WITH transitions AS (
+			SELECT
+				time,
+				monitor_id,
+				status,
+				COALESCE(error_msg, '') AS error_msg,
+				LAG(status) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS prev_status
+			FROM monitor_history
+			WHERE time >= $1 AND time <= $2
+			  AND status IN ('UP', 'DOWN', 'DEGRADED', 'MAINTENANCE')
+			  AND ($3::int IS NULL OR monitor_id IN (SELECT id FROM monitors WHERE group_id = $3))
+			  AND ($4::int IS NULL OR monitor_id = $4)
+		),
+		changes AS (
+			SELECT
+				time AS started_at,
+				monitor_id,
+				status,
+				error_msg,
+				prev_status,
+				LEAD(time) OVER (PARTITION BY monitor_id ORDER BY time ASC) AS ended_at
+			FROM transitions
+			WHERE prev_status IS DISTINCT FROM status
+		),
+		enriched AS (
+			SELECT
+				c.monitor_id,
+				m.name AS monitor_name,
+				m.type AS monitor_type,
+				m.target AS monitor_target,
+				COALESCE(m.group_id, 0) AS group_id,
+				COALESCE(g.name, 'Sin Grupo') AS group_name,
+				c.status,
+				c.started_at,
+				c.ended_at AS resolved_at,
+				(c.ended_at IS NULL AND m.is_active AND NOT m.is_maintenance) AS is_ongoing,
+				c.error_msg
+			FROM changes c
+			JOIN monitors m ON m.id = c.monitor_id
+			LEFT JOIN monitor_groups g ON g.id = m.group_id
+			WHERE c.status IN ('DOWN', 'DEGRADED')
+		)
+		SELECT
+			monitor_id,
+			monitor_name,
+			monitor_type,
+			monitor_target,
+			group_id,
+			group_name,
+			status,
+			started_at,
+			resolved_at,
+			GREATEST(1, COALESCE(EXTRACT(EPOCH FROM (COALESCE(resolved_at, $2) - started_at))::int, 1)) AS duration_sec,
+			is_ongoing,
+			error_msg
+		FROM enriched
+		ORDER BY started_at DESC
+		LIMIT 500
+	`
+	incidentRows, err := db.pool.Query(ctx, incidentQuery, startTime, endTime, groupID, monitorID)
+	var incidents []models.IncidentEvent
+	if err == nil {
+		defer incidentRows.Close()
+		for incidentRows.Next() {
+			var ev models.IncidentEvent
+			if err := incidentRows.Scan(
+				&ev.MonitorID,
+				&ev.MonitorName,
+				&ev.MonitorType,
+				&ev.MonitorTarget,
+				&ev.GroupID,
+				&ev.GroupName,
+				&ev.Status,
+				&ev.StartedAt,
+				&ev.ResolvedAt,
+				&ev.DurationSec,
+				&ev.IsOngoing,
+				&ev.ErrorMsg,
+			); err == nil {
+				incidents = append(incidents, ev)
+			}
+		}
+		incidentRows.Close()
+	}
+	if incidents == nil {
+		incidents = []models.IncidentEvent{}
+	}
+
+	// 5. Finalize individual monitor calculations and overall aggregates
+	totalOutages := 0
+	totalDowntimeSec := 0
+	sumAvailPct := 0.0
+	sumAvgLat := 0
+	sumP95Lat := 0
+	validMonitorCount := 0
+
+	var resultMonitors []models.SlaReportMonitor
+
+	for _, m := range orderedMonitors {
+		if m.DownSamples > 0 && m.DowntimeSeconds == 0 {
+			if m.TotalSamples > 0 {
+				m.DowntimeSeconds = int((float64(m.DownSamples) / float64(m.TotalSamples)) * float64(totalPeriodSec))
+			} else {
+				m.DowntimeSeconds = totalPeriodSec
+			}
+			if m.OutagesCount == 0 {
+				m.OutagesCount = 1
+			}
+		}
+		if m.DowntimeSeconds > totalPeriodSec {
+			m.DowntimeSeconds = totalPeriodSec
+		}
+		m.UptimeSeconds = totalPeriodSec - m.DowntimeSeconds
+		if m.UptimeSeconds < 0 {
+			m.UptimeSeconds = 0
+		}
+
+		validSamples := m.UpSamples + m.DownSamples + m.DegradedSamples
+		if validSamples > 0 {
+			m.AvailabilityPct = float64(int(((float64(m.UpSamples+m.DegradedSamples)/float64(validSamples))*100.0)*1000+0.5)) / 1000.0
+		} else if m.DowntimeSeconds > 0 {
+			m.AvailabilityPct = float64(int(((float64(m.UptimeSeconds)/float64(totalPeriodSec))*100.0)*1000+0.5)) / 1000.0
+		} else {
+			m.AvailabilityPct = 100.0
+		}
+
+		m.MeetsSla = m.AvailabilityPct >= slaTarget
+
+		if m.OutagesCount > 0 {
+			m.MttrSeconds = m.DowntimeSeconds / m.OutagesCount
+			m.MtbfSeconds = m.UptimeSeconds / m.OutagesCount
+		} else {
+			m.MttrSeconds = 0
+			m.MtbfSeconds = totalPeriodSec
+		}
+
+		totalOutages += m.OutagesCount
+		totalDowntimeSec += m.DowntimeSeconds
+		sumAvailPct += m.AvailabilityPct
+		sumAvgLat += m.AvgLatencyMs
+		sumP95Lat += m.P95LatencyMs
+		validMonitorCount++
+
+		resultMonitors = append(resultMonitors, *m)
+	}
+
+	globalSla := 100.0
+	avgLatGlobal := 0
+	p95LatGlobal := 0
+	if validMonitorCount > 0 {
+		globalSla = float64(int((sumAvailPct/float64(validMonitorCount))*1000+0.5)) / 1000.0
+		avgLatGlobal = sumAvgLat / validMonitorCount
+		p95LatGlobal = sumP95Lat / validMonitorCount
+	}
+
+	overallMttr := 0
+	overallMtbf := totalPeriodSec
+	if totalOutages > 0 {
+		overallMttr = totalDowntimeSec / totalOutages
+		totalOperationalSec := (totalPeriodSec * validMonitorCount) - totalDowntimeSec
+		if totalOperationalSec > 0 {
+			overallMtbf = totalOperationalSec / totalOutages
+		}
+	}
+
+	overall := models.SlaReportOverall{
+		TotalMonitors:    len(resultMonitors),
+		EvaluatedPeriod:  fmt.Sprintf("%s - %s", startTime.Format("2006-01-02 15:04"), endTime.Format("2006-01-02 15:04")),
+		StartTime:        startTime,
+		EndTime:          endTime,
+		GlobalSlaPct:     globalSla,
+		TargetSlaPct:     slaTarget,
+		MeetsSla:         globalSla >= slaTarget,
+		TotalOutages:     totalOutages,
+		TotalDowntimeSec: totalDowntimeSec,
+		MttrSeconds:      overallMttr,
+		MtbfSeconds:      overallMtbf,
+		AvgLatencyMs:     avgLatGlobal,
+		P95LatencyMs:     p95LatGlobal,
+	}
+
+	return &models.SlaReportResponse{
+		Overall:   overall,
+		Monitors:  resultMonitors,
+		Incidents: incidents,
+	}, nil
+}
+
 
 // --- History (TimescaleDB hypertable) ---
 

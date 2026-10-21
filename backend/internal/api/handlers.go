@@ -924,3 +924,91 @@ func (h *Handlers) WipeAllData(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"ok": true})
 }
+
+// GetSlaReport handles GET /api/reports/sla
+func (h *Handlers) GetSlaReport(c *fiber.Ctx) error {
+	rangeStr := c.Query("range", "30d")
+	now := time.Now().UTC()
+	var startTime, endTime time.Time
+	endTime = now
+
+	switch rangeStr {
+	case "today":
+		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	case "yesterday":
+		y := now.AddDate(0, 0, -1)
+		startTime = time.Date(y.Year(), y.Month(), y.Day(), 0, 0, 0, 0, time.UTC)
+		endTime = time.Date(y.Year(), y.Month(), y.Day(), 23, 59, 59, 999999999, time.UTC)
+	case "7d", "1w":
+		startTime = now.AddDate(0, 0, -7)
+	case "month":
+		startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	case "last_month":
+		firstOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		lastMonthEnd := firstOfThisMonth.Add(-time.Nanosecond)
+		startTime = time.Date(lastMonthEnd.Year(), lastMonthEnd.Month(), 1, 0, 0, 0, 0, time.UTC)
+		endTime = lastMonthEnd
+	case "custom":
+		if sStr := c.Query("start"); sStr != "" {
+			if parsed, err := time.Parse(time.RFC3339, sStr); err == nil {
+				startTime = parsed
+			} else if parsed, err := time.Parse("2006-01-02", sStr); err == nil {
+				startTime = parsed
+			}
+		}
+		if eStr := c.Query("end"); eStr != "" {
+			if parsed, err := time.Parse(time.RFC3339, eStr); err == nil {
+				endTime = parsed
+			} else if parsed, err := time.Parse("2006-01-02", eStr); err == nil {
+				endTime = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 999999999, time.UTC)
+			}
+		}
+		if startTime.IsZero() {
+			startTime = now.AddDate(0, 0, -30)
+		}
+	default: // "30d"
+		startTime = now.AddDate(0, 0, -30)
+	}
+
+	if sStr := c.Query("start"); sStr != "" && rangeStr != "custom" {
+		if parsed, err := time.Parse(time.RFC3339, sStr); err == nil {
+			startTime = parsed
+		} else if parsed, err := time.Parse("2006-01-02", sStr); err == nil {
+			startTime = parsed
+		}
+	}
+	if eStr := c.Query("end"); eStr != "" && rangeStr != "custom" {
+		if parsed, err := time.Parse(time.RFC3339, eStr); err == nil {
+			endTime = parsed
+		} else if parsed, err := time.Parse("2006-01-02", eStr); err == nil {
+			endTime = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 999999999, time.UTC)
+		}
+	}
+
+	var groupID *int
+	if gStr := c.Query("group_id"); gStr != "" {
+		if gid, err := strconv.Atoi(gStr); err == nil && gid > 0 {
+			groupID = &gid
+		}
+	}
+
+	var monitorID *int
+	if mStr := c.Query("monitor_id"); mStr != "" {
+		if mid, err := strconv.Atoi(mStr); err == nil && mid > 0 {
+			monitorID = &mid
+		}
+	}
+
+	slaTarget := 99.9
+	if tStr := c.Query("sla_target"); tStr != "" {
+		if t, err := strconv.ParseFloat(tStr, 64); err == nil && t > 0 && t <= 100 {
+			slaTarget = t
+		}
+	}
+
+	data, err := h.db.GetSlaReportData(c.Context(), startTime, endTime, groupID, monitorID, slaTarget)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(data)
+}

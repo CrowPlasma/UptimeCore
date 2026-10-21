@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react'
 import {
   ChevronDown, ChevronUp, Plus, Pencil, Trash2,
   Globe, Wifi, Activity, Clock, TrendingUp, Loader2, Pause, Play, Wrench,
-  Terminal, Download, ShieldCheck, AlertTriangle
+  Terminal, Download, ShieldCheck, AlertTriangle, FileSpreadsheet
 } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorStatus, HistoryPoint, TimeRange } from '../types'
 import type { ModalMode } from './MonitorModal'
@@ -20,6 +20,7 @@ import { LatencyChart } from './LatencyChart'
 import { useMonitorStore, aggregateGroupHistory } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DiagnosticModal } from './DiagnosticModal'
+import { SlaReportModal } from './SlaReportModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function statusColor(s?: MonitorStatus) {
@@ -143,6 +144,7 @@ export const MonitorCard = React.memo(function MonitorCard({
   }, [group.id])
 
   const [diagnosticMonitor, setDiagnosticMonitor] = useState<Monitor | null>(null)
+  const [slaReportMonitor, setSlaReportMonitor] = useState<Monitor | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
   >(null)
@@ -403,6 +405,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                   onEdit={() => onOpenModal({ type: 'edit_monitor', group, monitor })}
                   onDelete={() => setConfirmDelete({ type: 'monitor', monitorId: monitor.id })}
                   onDiagnose={() => setDiagnosticMonitor(monitor)}
+                  onSlaReport={() => setSlaReportMonitor(monitor)}
                 />
               ))
             )}
@@ -430,6 +433,16 @@ export const MonitorCard = React.memo(function MonitorCard({
           initialGroupName={group.name}
           groupMonitors={group.monitors}
           onClose={() => setDiagnosticMonitor(null)}
+        />
+      )}
+
+      {/* Modal de Reporte Ejecutivo de SLA individual */}
+      {slaReportMonitor && (
+        <SlaReportModal
+          onClose={() => setSlaReportMonitor(null)}
+          initialGroupId={group.id}
+          initialMonitorId={slaReportMonitor.id}
+          groups={useMonitorStore.getState().groups}
         />
       )}
 
@@ -467,7 +480,7 @@ export const MonitorCard = React.memo(function MonitorCard({
 })
 
 // ── Fila de endpoint hijo ─────────────────────────────────────────────────
-function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDiagnose }: {
+function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDiagnose, onSlaReport }: {
   monitor: Monitor
   group: MonitorGroup
   isActive: boolean
@@ -475,6 +488,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
   onEdit: () => void
   onDelete: () => void
   onDiagnose: () => void
+  onSlaReport: () => void
 }) {
   const { toggleMonitor, toggleMaintenance } = useMonitorStore()
   const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
@@ -875,6 +889,26 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
               </button>
 
               <button
+                onClick={onSlaReport}
+                style={{
+                  padding: '5px 11px',
+                  borderRadius: 7,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(99, 102, 241, 0.14)',
+                  color: 'var(--color-accent)',
+                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                }}
+                title="Generar informe técnico e imprimir o exportar SLA para este enlace"
+              >
+                <FileSpreadsheet size={13} /> Reporte SLA
+              </button>
+
+              <button
                 onClick={exportMonitorSlaCsv}
                 style={{
                   padding: '5px 11px',
@@ -891,7 +925,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                 }}
                 title="Descargar reporte CSV de SLA e historial de este enlace"
               >
-                <Download size={13} /> Exportar SLA (CSV)
+                <Download size={13} /> Exportar CSV
               </button>
             </div>
           </div>
