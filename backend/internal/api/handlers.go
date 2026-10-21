@@ -933,14 +933,18 @@ func (h *Handlers) GetSlaReport(c *fiber.Ctx) error {
 	endTime = now
 
 	switch rangeStr {
-	case "today":
-		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	case "yesterday":
-		y := now.AddDate(0, 0, -1)
-		startTime = time.Date(y.Year(), y.Month(), y.Day(), 0, 0, 0, 0, time.UTC)
-		endTime = time.Date(y.Year(), y.Month(), y.Day(), 23, 59, 59, 999999999, time.UTC)
+	case "recent":
+		startTime = now.Add(-90 * time.Minute)
+	case "3h":
+		startTime = now.Add(-3 * time.Hour)
+	case "6h":
+		startTime = now.Add(-6 * time.Hour)
+	case "24h":
+		startTime = now.Add(-24 * time.Hour)
 	case "7d", "1w":
 		startTime = now.AddDate(0, 0, -7)
+	case "30d", "1m":
+		startTime = now.AddDate(0, 0, -30)
 	case "month":
 		startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	case "last_month":
@@ -948,6 +952,12 @@ func (h *Handlers) GetSlaReport(c *fiber.Ctx) error {
 		lastMonthEnd := firstOfThisMonth.Add(-time.Nanosecond)
 		startTime = time.Date(lastMonthEnd.Year(), lastMonthEnd.Month(), 1, 0, 0, 0, 0, time.UTC)
 		endTime = lastMonthEnd
+	case "today":
+		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	case "yesterday":
+		y := now.AddDate(0, 0, -1)
+		startTime = time.Date(y.Year(), y.Month(), y.Day(), 0, 0, 0, 0, time.UTC)
+		endTime = time.Date(y.Year(), y.Month(), y.Day(), 23, 59, 59, 999999999, time.UTC)
 	case "custom":
 		if sStr := c.Query("start"); sStr != "" {
 			if parsed, err := time.Parse(time.RFC3339, sStr); err == nil {
@@ -968,21 +978,6 @@ func (h *Handlers) GetSlaReport(c *fiber.Ctx) error {
 		}
 	default: // "30d"
 		startTime = now.AddDate(0, 0, -30)
-	}
-
-	if sStr := c.Query("start"); sStr != "" && rangeStr != "custom" {
-		if parsed, err := time.Parse(time.RFC3339, sStr); err == nil {
-			startTime = parsed
-		} else if parsed, err := time.Parse("2006-01-02", sStr); err == nil {
-			startTime = parsed
-		}
-	}
-	if eStr := c.Query("end"); eStr != "" && rangeStr != "custom" {
-		if parsed, err := time.Parse(time.RFC3339, eStr); err == nil {
-			endTime = parsed
-		} else if parsed, err := time.Parse("2006-01-02", eStr); err == nil {
-			endTime = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 999999999, time.UTC)
-		}
 	}
 
 	var groupID *int

@@ -431,6 +431,8 @@ func (db *DB) SetAllMonitorsMaintenance(ctx context.Context, isMaintenance bool)
 func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]models.IncidentEvent, error) {
 	var interval string
 	switch rangeStr {
+	case "recent":
+		interval = "90 minutes"
 	case "3h":
 		interval = "3 hours"
 	case "6h":
@@ -439,7 +441,7 @@ func (db *DB) ListIncidents(ctx context.Context, rangeStr string, limit int) ([]
 		interval = "24 hours"
 	case "7d", "1w":
 		interval = "7 days"
-	case "30d":
+	case "30d", "1m", "month":
 		interval = "30 days"
 	default:
 		interval = "24 hours"
@@ -924,37 +926,8 @@ func (db *DB) SaveCheckResultsBulk(ctx context.Context, results []models.CheckRe
 
 
 // GetHistory returns time-series data for a monitor within the requested time range.
-// Uses TimescaleDB's time_bucket to downsample data and keep the UI fast.
+// Uses TimescaleDB's time_bucket_gapfill to generate uniform buckets across the full requested range.
 func (db *DB) GetHistory(ctx context.Context, monitorID int, rangeStr string) ([]models.HistoryPoint, error) {
-	if rangeStr == "recent" || rangeStr == "" {
-		rows, err := db.pool.Query(ctx, `
-			SELECT time, status, COALESCE(latency_ms, 0) FROM (
-				SELECT time, status, latency_ms
-				FROM monitor_history
-				WHERE monitor_id = $1 AND time >= NOW() - INTERVAL '90 minutes'
-				ORDER BY time DESC
-				LIMIT 120
-			) sub
-			ORDER BY time ASC
-		`, monitorID)
-		if err != nil {
-			return []models.HistoryPoint{}, nil
-		}
-		defer rows.Close()
-
-		var points []models.HistoryPoint
-		for rows.Next() {
-			var p models.HistoryPoint
-			if err := rows.Scan(&p.Time, &p.Status, &p.LatencyMs); err == nil {
-				points = append(points, p)
-			}
-		}
-		if points == nil {
-			return []models.HistoryPoint{}, nil
-		}
-		return points, nil
-	}
-
 	var interval string
 	var bucket string
 
@@ -974,34 +947,33 @@ func (db *DB) GetHistory(ctx context.Context, monitorID int, rangeStr string) ([
 	case "30d", "1m":
 		interval = "30 days"
 		bucket = "6 hours"
-	default:
+	default: // "recent"
 		interval = "90 minutes"
 		bucket = "1 minute"
 	}
 
-	// Downsampling Query:
-	// - time_bucket agrupa los puntos por intervalo (ej. cada 15 min)
-	// - el estado del bucket es el PEOR observado (DOWN > DEGRADED > MAINTENANCE > UP)
-	// - avg() promedia la latencia
 	query := `
 		SELECT 
-			time_bucket($1::interval, time) AS bucket,
-			CASE
-				WHEN bool_or(status = 'DOWN') THEN 'DOWN'
-				WHEN bool_or(status = 'DEGRADED') THEN 'DEGRADED'
-				WHEN bool_or(status = 'MAINTENANCE') THEN 'MAINTENANCE'
-				WHEN bool_or(status = 'UP') THEN 'UP'
-				ELSE 'UNKNOWN'
-			END AS status,
-			COALESCE(AVG(latency_ms), 0)::int AS latency_ms
+			time_bucket_gapfill($1::interval, time, NOW() - $2::interval, NOW()) AS bucket,
+			COALESCE(
+				CASE
+					WHEN bool_or(status = 'DOWN') THEN 'DOWN'
+					WHEN bool_or(status = 'DEGRADED') THEN 'DEGRADED'
+					WHEN bool_or(status = 'MAINTENANCE') THEN 'MAINTENANCE'
+					WHEN bool_or(status = 'UP') THEN 'UP'
+					ELSE NULL
+				END,
+				'UNKNOWN'
+			) AS status,
+			COALESCE(AVG(latency_ms)::int, 0) AS latency_ms
 		FROM monitor_history
-		WHERE monitor_id = $2 AND time >= NOW() - $3::interval
+		WHERE monitor_id = $3 AND time >= NOW() - $2::interval AND time <= NOW()
 		GROUP BY bucket
 		ORDER BY bucket ASC
 		LIMIT 2000
 	`
 
-	rows, err := db.pool.Query(ctx, query, bucket, monitorID, interval)
+	rows, err := db.pool.Query(ctx, query, bucket, interval, monitorID)
 	if err != nil {
 		return []models.HistoryPoint{}, nil
 	}

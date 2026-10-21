@@ -1,7 +1,8 @@
 /**
  * components/LatencyChart.tsx
- * Gráfica de línea de latencia por rango de tiempo.
- * Soporta los rangos: recent | 3h | 6h | 24h | 1w (igual que Uptime Kuma)
+ * Gráfica de línea de latencia por rango de tiempo con dominio temporal estricto.
+ * Soporta los rangos: recent (90m) | 3h | 6h | 24h | 1w (7d) | 30d
+ * Plataforma: UptimeCore
  */
 import React, { useState } from 'react'
 import {
@@ -19,50 +20,74 @@ const RANGES: { label: string; value: TimeRange }[] = [
   { label: '30d (Mes)', value: '30d' },
 ]
 
+const RANGE_DURATIONS_MS: Record<TimeRange, number> = {
+  recent: 90 * 60 * 1000,
+  '3h': 3 * 3600 * 1000,
+  '6h': 6 * 3600 * 1000,
+  '24h': 24 * 3600 * 1000,
+  '1w': 7 * 86400 * 1000,
+  '30d': 30 * 86400 * 1000,
+}
+
 interface Props {
-  /** Todos los puntos del monitor (el padre filtra por range) */
+  /** Todos los puntos del monitor en el rango */
   data: HistoryPoint[]
+  /** Rango activo controlado por el padre */
+  range?: TimeRange
   onRangeChange?: (range: TimeRange) => void
 }
 
-export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChange }: Props) {
-  const [range, setRange] = useState<TimeRange>('recent')
+export const LatencyChart = React.memo(function LatencyChart({ data, range: propRange, onRangeChange }: Props) {
+  const [internalRange, setInternalRange] = useState<TimeRange>(propRange || 'recent')
+  const activeRange = propRange || internalRange
 
   const handleRange = (r: TimeRange) => {
-    setRange(r)
+    setInternalRange(r)
     onRangeChange?.(r)
   }
 
+  // Dominio temporal estricto: el eje X SIEMPRE abarca la duración total del filtro
+  const nowMs = Date.now()
+  const durationMs = RANGE_DURATIONS_MS[activeRange] || 90 * 60 * 1000
+  const endMs = Math.max(nowMs, data.length > 0 ? new Date(data[data.length - 1].time).getTime() : nowMs)
+  const startMs = endMs - durationMs
+
   const formatXAxis = (val: number) => {
     const d = new Date(val)
-    if (range === '1w' || range === '30d') {
-      return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) + ' ' +
+    if (activeRange === '30d') {
+      return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+    }
+    if (activeRange === '1w') {
+      return (
+        d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) +
+        ' ' +
         d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      )
     }
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
-  // Formatear datos para recharts usando timestamps
+  // Formatear datos para recharts usando timestamps numéricos
   const chartData = data.map((p, index) => {
     let timeMs = new Date(p.time).getTime()
-    if (index > 0 && new Date(data[index-1].time).getTime() === timeMs) {
-       timeMs += 1; // Evitar colisiones exactas en Recharts
+    if (index > 0 && new Date(data[index - 1].time).getTime() === timeMs) {
+      timeMs += 1 // Evitar colisiones exactas en Recharts
     }
     return {
       raw_time: timeMs,
-      latency: p.status === 'DOWN' ? 0 : p.latency_ms,
+      latency: p.status === 'DOWN' ? 0 : p.status === 'UNKNOWN' ? null : p.latency_ms,
       status: p.status,
     }
   })
 
-  // Identificar bloques continuos
-  const maintenanceBlocks: { start: number, end: number }[] = []
-  let currentMaint: { start: number, end: number } | null = null
+  // Identificar bloques continuos de mantenimiento y caídas
+  const maintenanceBlocks: { start: number; end: number }[] = []
+  let currentMaint: { start: number; end: number } | null = null
 
-  const downBlocks: { start: number, end: number }[] = []
-  let currentDown: { start: number, end: number } | null = null
+  const downBlocks: { start: number; end: number }[] = []
+  let currentDown: { start: number; end: number } | null = null
 
-  chartData.forEach((d) => {
+  chartData.forEach(d => {
     if (d.status === 'MAINTENANCE') {
       if (!currentMaint) currentMaint = { start: d.raw_time, end: d.raw_time }
       else currentMaint.end = d.raw_time
@@ -85,7 +110,6 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
   })
   if (currentMaint) maintenanceBlocks.push(currentMaint)
   if (currentDown) downBlocks.push(currentDown)
-
 
   return (
     <div>
@@ -114,9 +138,9 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
                 fontSize: 11.5,
                 fontWeight: 700,
                 cursor: 'pointer',
-                background: range === r.value ? 'var(--color-accent)' : 'var(--color-bg-primary)',
-                color: range === r.value ? '#fff' : 'var(--color-text-secondary)',
-                border: `1px solid ${range === r.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                background: activeRange === r.value ? 'var(--color-accent)' : 'var(--color-bg-primary)',
+                color: activeRange === r.value ? '#fff' : 'var(--color-text-secondary)',
+                border: `1px solid ${activeRange === r.value ? 'var(--color-accent)' : 'var(--color-border)'}`,
                 transition: 'all 0.15s',
               }}
             >
@@ -126,7 +150,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
         </div>
       </div>
 
-      {/* Gráfica */}
+      {/* Gráfica con eje X proporcional al periodo completo */}
       <ResponsiveContainer width="100%" height={190}>
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           <defs>
@@ -158,7 +182,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
             dataKey="raw_time"
             type="number"
             scale="time"
-            domain={['dataMin', 'dataMax']}
+            domain={[startMs, endMs]}
             tickFormatter={formatXAxis}
             tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
             tickLine={false}
@@ -177,9 +201,12 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelFormatter={(label: any) => label ? new Date(label).toLocaleString('es-MX') : ''}
+            labelFormatter={(label: any) => (label ? new Date(label).toLocaleString('es-MX') : '')}
             formatter={(val: any, _name: any, props: any) => {
-              const status = props?.payload?.status;
+              const status = props?.payload?.status
+              if (status === 'UNKNOWN' || val == null) {
+                return ['Sin datos / Previo a monitoreo', 'Estado']
+              }
               const suffix =
                 status === 'MAINTENANCE'
                   ? ' (En Mantenimiento)'
@@ -187,8 +214,8 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
                   ? ' (Caído)'
                   : status === 'DEGRADED'
                   ? ' (Degradado)'
-                  : '';
-              return [`${val} ms${suffix}`, 'Latencia'];
+                  : ''
+              return [`${val} ms${suffix}`, 'Latencia']
             }}
           />
           <Area
@@ -198,6 +225,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, onRangeChan
             strokeWidth={2}
             fill="url(#latencyGrad)"
             dot={false}
+            connectNulls={false}
             activeDot={{ r: 4, strokeWidth: 0, fill: '#22c55e' }}
           />
         </AreaChart>

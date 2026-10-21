@@ -88,6 +88,7 @@ interface SlaReportModalProps {
   onClose: () => void
   initialGroupId?: number | null
   initialMonitorId?: number | null
+  initialRange?: string | null
   groups?: MonitorGroup[]
 }
 
@@ -355,7 +356,7 @@ function buildPrintableHtml(
           </div>
           <div style="text-align: right; font-size: 8.5px; line-height: 1.3;">
             <div>Alcance: <strong style="color: #4f46e5;">${scopeLabel}</strong></div>
-            <div style="color: #64748b;">Periodo: <strong>${report.overall.evaluated_period}</strong></div>
+            <div style="color: #64748b;">Periodo: <strong>${(report.overall.start_time && report.overall.end_time) ? `${formatDate(report.overall.start_time)} - ${formatDate(report.overall.end_time)}` : report.overall.evaluated_period}</strong></div>
             <div style="color: #64748b;">Emisión: ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
           </div>
         </div>
@@ -374,6 +375,7 @@ export function SlaReportModal({
   onClose,
   initialGroupId = null,
   initialMonitorId = null,
+  initialRange = null,
   groups: propGroups,
 }: SlaReportModalProps) {
   const storeGroups = useMonitorStore(s => s.groups)
@@ -384,7 +386,13 @@ export function SlaReportModal({
   }, [propGroups, storeGroups])
 
   // ── Parámetros de consulta ──
-  const [selectedRange, setSelectedRange] = useState<string>('month')
+  const [selectedRange, setSelectedRange] = useState<string>(() => {
+    if (initialRange) {
+      if (initialRange === '1w') return '7d'
+      return initialRange
+    }
+    return '30d'
+  })
   const [customStart, setCustomStart] = useState<string>(() => {
     const d = new Date()
     d.setDate(1)
@@ -927,10 +935,11 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value="month">📅 Este Mes (Acumulado)</option>
+                <option value="30d">📆 Últimos 30 Días (Mensual)</option>
+                <option value="7d">⚡ Últimos 7 Días (Semanal)</option>
+                <option value="24h">⏱️ Últimas 24 Horas (Diario)</option>
+                <option value="month">📅 Este Mes en Curso (Acumulado)</option>
                 <option value="last_month">⏮️ Mes Anterior Completo</option>
-                <option value="7d">⚡ Últimos 7 Días</option>
-                <option value="30d">📆 Últimos 30 Días</option>
                 <option value="today">☀️ Hoy (00:00 - Actual)</option>
                 <option value="yesterday">🌙 Ayer (Día Completo)</option>
                 <option value="custom">🛠️ Rango Personalizado...</option>

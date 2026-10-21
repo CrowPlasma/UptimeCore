@@ -144,7 +144,7 @@ export const MonitorCard = React.memo(function MonitorCard({
   }, [group.id])
 
   const [diagnosticMonitor, setDiagnosticMonitor] = useState<Monitor | null>(null)
-  const [slaReportMonitor, setSlaReportMonitor] = useState<Monitor | null>(null)
+  const [slaReportTarget, setSlaReportTarget] = useState<{ monitor: Monitor; range: TimeRange } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     { type: 'group' } | { type: 'monitor'; monitorId: number } | null
   >(null)
@@ -405,7 +405,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                   onEdit={() => onOpenModal({ type: 'edit_monitor', group, monitor })}
                   onDelete={() => setConfirmDelete({ type: 'monitor', monitorId: monitor.id })}
                   onDiagnose={() => setDiagnosticMonitor(monitor)}
-                  onSlaReport={() => setSlaReportMonitor(monitor)}
+                  onSlaReport={(range) => setSlaReportTarget({ monitor, range })}
                 />
               ))
             )}
@@ -437,11 +437,12 @@ export const MonitorCard = React.memo(function MonitorCard({
       )}
 
       {/* Modal de Reporte Ejecutivo de SLA individual */}
-      {slaReportMonitor && (
+      {slaReportTarget && (
         <SlaReportModal
-          onClose={() => setSlaReportMonitor(null)}
+          onClose={() => setSlaReportTarget(null)}
           initialGroupId={group.id}
-          initialMonitorId={slaReportMonitor.id}
+          initialMonitorId={slaReportTarget.monitor.id}
+          initialRange={slaReportTarget.range}
           groups={useMonitorStore.getState().groups}
         />
       )}
@@ -488,7 +489,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
   onEdit: () => void
   onDelete: () => void
   onDiagnose: () => void
-  onSlaReport: () => void
+  onSlaReport: (range: TimeRange) => void
 }) {
   const { toggleMonitor, toggleMaintenance } = useMonitorStore()
   const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
@@ -565,10 +566,10 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       const cur = combinedHistory[i]
       const prev = i > 0 ? combinedHistory[i - 1] : null
       if (cur.status === 'DOWN') {
-        if (!prev || prev.status !== 'DOWN') {
+        if (!prev || (prev.status !== 'DOWN' && prev.status !== 'UNKNOWN')) {
           outagesCount++
         }
-        if (prev) {
+        if (prev && prev.status !== 'UNKNOWN') {
           const deltaSec = Math.max(
             1,
             Math.round((new Date(cur.time).getTime() - new Date(prev.time).getTime()) / 1000)
@@ -889,7 +890,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
               </button>
 
               <button
-                onClick={onSlaReport}
+                onClick={() => onSlaReport(histRange)}
                 style={{
                   padding: '5px 11px',
                   borderRadius: 7,
@@ -998,6 +999,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
 
           {/* Gráfica interactiva con selector Reciente | 3h | 6h | 24h | 7d | 30d */}
           <LatencyChart
+            range={histRange}
             data={combinedHistory}
             onRangeChange={(r) => setHistRange(r)}
           />
