@@ -60,30 +60,13 @@ export function Navbar() {
       {/* Logo y Nombre de la Aplicación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <UptimeCoreLogo size={34} />
-        <div>
-          <span style={{
-            fontWeight: 800, fontSize: 18,
-            letterSpacing: '-0.04em',
-            color: 'var(--color-text-primary)',
-          }}>
-            Uptime<span style={{ color: '#2563eb' }}>Core</span>
-          </span>
-          <span style={{
-            fontSize: 10.5,
-            fontWeight: 700,
-            padding: '2px 7px',
-            borderRadius: 6,
-            background: 'rgba(99, 102, 241, 0.14)',
-            color: 'var(--color-accent)',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
-            fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
-            letterSpacing: '0.02em',
-            marginLeft: 8,
-            verticalAlign: 'middle',
-          }}>
-            v1.0.7
-          </span>
-        </div>
+        <span style={{
+          fontWeight: 800, fontSize: 18,
+          letterSpacing: '-0.04em',
+          color: 'var(--color-text-primary)',
+        }}>
+          Uptime<span style={{ color: '#2563eb' }}>Core</span>
+        </span>
       </div>
 
       {/* Identidad de la Entidad (Centro Absoluto) */}
