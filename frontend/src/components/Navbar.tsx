@@ -3,9 +3,10 @@
  * Navbar limpio: logo, branding de entidad corporativa (centro), telemetría en vivo, toggle de tema y ajustes.
  */
 import { useState, useEffect } from 'react'
-import { Sun, Moon, Cpu, Settings } from 'lucide-react'
+import { Sun, Moon, Settings } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { useMonitorStore } from '../store/monitorStore'
+import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 export function Navbar() {
   const { theme, toggle } = useTheme()
@@ -56,14 +57,7 @@ export function Navbar() {
     }}>
       {/* Logo y Nombre de la Aplicación */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 9,
-          background: 'linear-gradient(135deg, #2563eb, #1e40af)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
-        }}>
-          <Cpu size={18} color="#fff" />
-        </div>
+        <UptimeCoreLogo size={34} />
         <div>
           <span style={{
             fontWeight: 800, fontSize: 18,

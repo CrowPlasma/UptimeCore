@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import type { MonitorGroup } from '../types'
 import { useMonitorStore } from '../store/monitorStore'
+import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 export interface SlaReportMonitor {
   monitor_id: number
@@ -141,7 +142,13 @@ function buildPrintableHtml(
 
   const logoHtml = entity.logo
     ? `<img src="${entity.logo}" alt="Logo" style="max-height: 42px; max-width: 140px; object-fit: contain;" />`
-    : `<div style="width: 36px; height: 36px; border-radius: 6px; background: #4f46e5; color: #fff; font-weight: 900; font-size: 16px; display: flex; align-items: center; justify-content: center;">U</div>`
+    : `<div style="width: 36px; height: 36px; border-radius: 9px; background: #0f172a; border: 1px solid #4f46e5; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(37,99,235,0.25);">
+        <svg viewBox="0 0 32 32" width="26" height="26" fill="none">
+          <circle cx="16" cy="16" r="11" stroke="#6366f1" stroke-width="2.6" stroke-dasharray="55 14" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="6.5" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2.5 2.5" stroke-opacity="0.7"/>
+          <circle cx="16" cy="16" r="3" fill="#22c55e"/>
+        </svg>
+      </div>`
 
   const kpisHtml = `
     <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin-bottom: 11px;">
@@ -1079,22 +1086,7 @@ export function SlaReportModal({
                       }}
                     />
                   ) : (
-                    <div
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 8,
-                        background: 'linear-gradient(135deg, #6366f1, #3b82f6)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#fff',
-                        fontWeight: 900,
-                        fontSize: 18,
-                      }}
-                    >
-                      U
-                    </div>
+                    <UptimeCoreLogo size={42} />
                   )}
 
                   <div>

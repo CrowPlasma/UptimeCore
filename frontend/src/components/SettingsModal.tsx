@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2, Info, Cpu, ExternalLink } from 'lucide-react'
+import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2, Info, ExternalLink } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import { TagsSettings } from './TagsSettings'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useMonitorStore } from '../store/monitorStore'
+import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -549,19 +550,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       alignItems: 'center',
                       gap: 18,
                     }}>
-                      <div style={{
-                        width: 52,
-                        height: 52,
-                        borderRadius: 14,
-                        background: 'linear-gradient(135deg, #2563eb, #1e40af)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
-                        flexShrink: 0,
-                      }}>
-                        <Cpu size={28} color="#fff" />
-                      </div>
+                      <UptimeCoreLogo size={52} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.03em' }}>
