@@ -466,27 +466,45 @@ export function Dashboard() {
 
   const stats = useMemo(() => {
     let up = 0, down = 0, degraded = 0, maintenance = 0, paused = 0
-    let epTotal = 0, epUp = 0, epDown = 0
+    let epTotal = 0, epUp = 0, epDown = 0, epDegraded = 0, epMaintenance = 0, epPaused = 0
 
     groups.forEach(g => {
+      // Un grupo cuenta en 'paused' o 'maintenance' si todo el grupo o al menos uno de sus sensores lo está
+      // (coincidiendo 100% con la lógica del filtro groupMatchesStatusOrTag)
+      const hasPaused = g.overall_status === 'PAUSED' || Boolean(g.monitors?.some(m => !m.is_active || m.current_status === 'PAUSED'))
+      const hasMaint = g.overall_status === 'MAINTENANCE' || Boolean(g.monitors?.some(m => m.is_active !== false && (m.current_status === 'MAINTENANCE' || m.is_maintenance)))
+
+      if (hasPaused) paused++
+      if (hasMaint) maintenance++
+
       const st = g.overall_status || 'UNKNOWN'
       if (st === 'UP') up++
       else if (st === 'DOWN') down++
       else if (st === 'DEGRADED') degraded++
-      else if (st === 'MAINTENANCE') maintenance++
-      else if (st === 'PAUSED') paused++
 
       g.monitors?.forEach(m => {
         epTotal++
-        if (m.current_status === 'UP') epUp++
-        else if (m.current_status === 'DOWN') epDown++
+        const mPaused = !m.is_active || m.current_status === 'PAUSED'
+        const mMaint = !mPaused && (m.is_maintenance === true || m.current_status === 'MAINTENANCE')
+
+        if (mPaused) {
+          epPaused++
+        } else if (mMaint) {
+          epMaintenance++
+        } else if (m.current_status === 'UP') {
+          epUp++
+        } else if (m.current_status === 'DOWN') {
+          epDown++
+        } else if (m.current_status === 'DEGRADED') {
+          epDegraded++
+        }
       })
     })
 
     return {
       totalGroups: groups.length,
       up, down, degraded, maintenance, paused,
-      epTotal, epUp, epDown
+      epTotal, epUp, epDown, epDegraded, epMaintenance, epPaused
     }
   }, [groups])
 
@@ -598,8 +616,8 @@ export function Dashboard() {
           <StatCard icon={<CheckCircle size={14} />}   label={isEn ? "Online" : "Operativos"}     value={stats.up}          sublabel={`${stats.epUp} ${isEn ? "active eps" : "ep activos"}`}   color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
           <StatCard icon={<XCircle size={14} />}       label={isEn ? "Alerting" : "Caídos"}       value={stats.down}        sublabel={`${stats.epDown} ${isEn ? "down eps" : "ep caídos"}`}    color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
           <StatCard icon={<AlertTriangle size={14} />} label={isEn ? "Degraded" : "Degradados"}  value={stats.degraded}    sublabel={isEn ? "Partial failure" : "Falla parcial"}               color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
-          <StatCard icon={<Wrench size={14} />}        label={isEn ? "Maintenance" : "Mantenimiento"} value={stats.maintenance} sublabel={isEn ? "0 active" : "0 activos"}                     color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
-          <StatCard icon={<Pause size={14} />}         label={isEn ? "Paused" : "En Pausa"}       value={stats.paused}      sublabel={isEn ? "0 active" : "0 activos"}                         color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
+          <StatCard icon={<Wrench size={14} />}        label={isEn ? "Maintenance" : "Mantenimiento"} value={stats.maintenance} sublabel={stats.epMaintenance === 1 ? (isEn ? "1 in maint." : "1 en mant.") : `${stats.epMaintenance} ${isEn ? "in maint." : "en mant."}`} color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
+          <StatCard icon={<Pause size={14} />}         label={isEn ? "Paused" : "En Pausa"}       value={stats.paused}      sublabel={stats.epPaused === 1 ? (isEn ? "1 paused ep" : "1 ep en pausa") : `${stats.epPaused} ${isEn ? "paused eps" : "ep en pausa"}`} color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
         </div>
 
         {/* ── Barra Unificada de Controles (Búsqueda a la izquierda, Todo a la derecha) ──── */}
