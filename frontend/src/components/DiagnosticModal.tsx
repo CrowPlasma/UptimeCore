@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import type { Monitor } from '../types'
 import { SshTerminalView } from './SshTerminalView'
+import { useTranslation } from '../i18n'
 
 export type DiagnosticToolMode = 'PAPING' | 'PING' | 'TRACEROUTE' | 'HTTP' | 'DNS' | 'SSH'
 
@@ -107,6 +108,7 @@ async function copyTextSafe(text: string): Promise<boolean> {
 }
 
 export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitors, onClose }: Props) {
+  const { t, isEn } = useTranslation()
   const initialParsed = parseMonitorTargetAndPort(initialMonitor)
 
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(initialMonitor ?? null)
@@ -199,8 +201,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
       const limit = runMaxProbes > 0 ? runMaxProbes : 100
       const headerDesc =
         runMode === 'PAPING'
-          ? `▶ Ejecutando PAPING (TCP Port Ping) hacia ${cleanTarget} en puerto TCP ${runPort} (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`
-          : `▶ Ejecutando PING (ICMP Echo) hacia ${cleanTarget} con 64 bytes de datos (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`
+          ? (isEn
+              ? `▶ Running PAPING (TCP Port Ping) to ${cleanTarget} on TCP port ${runPort} (${runMaxProbes === 0 ? 'Continuous' : `${limit} packets`})...`
+              : `▶ Ejecutando PAPING (TCP Port Ping) hacia ${cleanTarget} en puerto TCP ${runPort} (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`)
+          : (isEn
+              ? `▶ Running PING (ICMP Echo) to ${cleanTarget} with 64 bytes of data (${runMaxProbes === 0 ? 'Continuous' : `${limit} packets`})...`
+              : `▶ Ejecutando PING (ICMP Echo) hacia ${cleanTarget} con 64 bytes de datos (${runMaxProbes === 0 ? 'Continuo' : `${limit} paquetes`})...`)
       appendLine(headerDesc, 'info')
 
       let localSent = 0
@@ -235,13 +241,13 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             localLats.push(lat)
             setLatencies([...localLats])
             appendLine(
-              data.raw_line || `[#${seq}] Respuesta OK (${lat} ms)`,
+              data.raw_line || (isEn ? `[#${seq}] Response OK (${lat} ms)` : `[#${seq}] Respuesta OK (${lat} ms)`),
               lat > 250 ? 'warn' : 'ok',
               { latencyMs: lat }
             )
           } else {
             appendLine(
-              data.raw_line || `[#${seq}] Tiempo de espera agotado / Falló conexión`,
+              data.raw_line || (isEn ? `[#${seq}] Request timed out / Connection failed` : `[#${seq}] Tiempo de espera agotado / Falló conexión`),
               'err'
             )
           }
@@ -249,7 +255,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           if (runIdRef.current !== myRunId) break
           localSent++
           setSent(localSent)
-          appendLine(`[#${seq}] Error de comunicación con el servidor de diagnóstico`, 'err')
+          appendLine(isEn ? `[#${seq}] Communication error with diagnostic server` : `[#${seq}] Error de comunicación con el servidor de diagnóstico`, 'err')
         }
 
         if (seq < limit && runIdRef.current === myRunId) {
@@ -268,7 +274,9 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             : '0'
 
         appendLine(
-          `─── Resumen ${runMode} (${cleanTarget}${runMode === 'PAPING' ? `:${runPort}` : ''}): Enviados=${localSent}, Exitosos=${localRecv}, Perdidos=${lost} (${lossPct}%) | Mín=${minLat}ms · Prom=${avgLat}ms · Máx=${maxLat}ms ───`,
+          isEn
+            ? `─── ${runMode} Summary (${cleanTarget}${runMode === 'PAPING' ? `:${runPort}` : ''}): Sent=${localSent}, Successful=${localRecv}, Lost=${lost} (${lossPct}%) | Min=${minLat}ms · Avg=${avgLat}ms · Max=${maxLat}ms ───`
+            : `─── Resumen ${runMode} (${cleanTarget}${runMode === 'PAPING' ? `:${runPort}` : ''}): Enviados=${localSent}, Exitosos=${localRecv}, Perdidos=${lost} (${lossPct}%) | Mín=${minLat}ms · Prom=${avgLat}ms · Máx=${maxLat}ms ───`,
           lost === 0 ? 'ok' : lost === localSent ? 'err' : 'warn'
         )
       }
@@ -278,10 +286,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
 
     if (runMode === 'TRACEROUTE') {
       appendLine(
-        `▶ Ejecutando Traza de Ruta (TRACEROUTE ICMP/UDP) hacia ${cleanTarget} (máx. ${runMaxHops} saltos)...`,
+        isEn
+          ? `▶ Running Route Trace (TRACEROUTE ICMP/UDP) to ${cleanTarget} (max. ${runMaxHops} hops)...`
+          : `▶ Ejecutando Traza de Ruta (TRACEROUTE ICMP/UDP) hacia ${cleanTarget} (máx. ${runMaxHops} saltos)...`,
         'info'
       )
-      appendLine(`Salto      IP del Router / Nodo      Latencia RTT`, 'info')
+      appendLine(isEn ? `Hop        Router / Node IP          RTT Latency` : `Salto      IP del Router / Nodo      Latencia RTT`, 'info')
 
       for (let hop = 1; hop <= runMaxHops; hop++) {
         if (runIdRef.current !== myRunId) break
@@ -306,7 +316,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             const lat = Number(data.latency_ms) || 0
             setLatencies(prev => [...prev, lat])
             appendLine(
-              data.raw_line || `Salto ${hop}: ${data.hop_ip} (${lat} ms)`,
+              data.raw_line || (isEn ? `Hop ${hop}: ${data.hop_ip} (${lat} ms)` : `Salto ${hop}: ${data.hop_ip} (${lat} ms)`),
               data.reached ? 'ok' : lat > 200 ? 'warn' : 'ok',
               {
                 hop,
@@ -317,21 +327,23 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             )
             if (data.reached) {
               appendLine(
-                `✅ Traza completada con éxito en ${hop} ${hop === 1 ? 'salto' : 'saltos'} hacia ${data.resolved_ip || cleanTarget}.`,
+                isEn
+                  ? `✅ Trace completed successfully in ${hop} ${hop === 1 ? 'hop' : 'hops'} to ${data.resolved_ip || cleanTarget}.`
+                  : `✅ Traza completada con éxito en ${hop} ${hop === 1 ? 'salto' : 'saltos'} hacia ${data.resolved_ip || cleanTarget}.`,
                 'ok'
               )
               break
             }
           } else {
             appendLine(
-              data.raw_line || `Salto ${hop}: * * * (Sin respuesta ICMP en este salto)`,
+              data.raw_line || (isEn ? `Hop ${hop}: * * * (No ICMP response at this hop)` : `Salto ${hop}: * * * (Sin respuesta ICMP en este salto)`),
               'warn',
               { hop, hopIp: '*', latencyMs: 0 }
             )
           }
         } catch {
           if (runIdRef.current !== myRunId) break
-          appendLine(`Salto ${hop}: Error consultando salto`, 'err')
+          appendLine(isEn ? `Hop ${hop}: Error querying hop` : `Salto ${hop}: Error consultando salto`, 'err')
         }
       }
 
@@ -342,8 +354,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
     if (runMode === 'HTTP' || runMode === 'DNS') {
       appendLine(
         runMode === 'HTTP'
-          ? `▶ Inspeccionando respuesta HTTP/HTTPS y Certificado SSL de ${cleanTarget} (Puerto ${runPort})...`
-          : `▶ Resolviendo registros DNS directos e inversos (PTR) para ${cleanTarget}...`,
+          ? (isEn
+              ? `▶ Inspecting HTTP/HTTPS response and SSL Certificate of ${cleanTarget} (Port ${runPort})...`
+              : `▶ Inspeccionando respuesta HTTP/HTTPS y Certificado SSL de ${cleanTarget} (Puerto ${runPort})...`)
+          : (isEn
+              ? `▶ Resolving forward and reverse (PTR) DNS records for ${cleanTarget}...`
+              : `▶ Resolviendo registros DNS directos e inversos (PTR) para ${cleanTarget}...`),
         'info'
       )
       try {
@@ -367,11 +383,11 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
         const outLines: string[] =
           Array.isArray(data.raw_lines) && data.raw_lines.length > 0
             ? data.raw_lines
-            : [data.raw_line || 'Sin salida']
+            : [data.raw_line || (isEn ? 'No output' : 'Sin salida')]
         outLines.forEach(l => appendLine(l, data.ok ? 'ok' : 'err'))
       } catch {
         if (runIdRef.current !== myRunId) return
-        appendLine('❌ Error ejecutando prueba diagnóstica en el servidor.', 'err')
+        appendLine(isEn ? '❌ Error executing diagnostic test on server.' : '❌ Error ejecutando prueba diagnóstica en el servidor.', 'err')
       }
       if (runIdRef.current === myRunId) setIsRunning(false)
     }
@@ -396,16 +412,25 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
   })()
 
   const buildReportText = () => {
-    const header = [
+    const header = (isEn ? [
+      `====================================================================`,
+      `  UPTIMECORE - LIVE DIAGNOSTIC REPORT (${mode})`,
+      `====================================================================`,
+      selectedMonitor ? `Site / Sensor : ${initialGroupName ? `${initialGroupName} · ` : ''}${selectedMonitor.name}` : '',
+      `Target        : ${target}${mode === 'PAPING' || mode === 'HTTP' ? ` (TCP Port: ${port})` : ''}`,
+      `Date & Time   : ${new Date().toLocaleString('en-US')}`,
+      `Statistics    : Sent=${sent} | Received=${received} | Loss=${lossPercent}% | Min=${minLatency}ms | Avg=${avgLatency}ms | Max=${maxLatency}ms | Jitter=${jitterMs}ms`,
+      `--------------------------------------------------------------------`,
+    ] : [
       `====================================================================`,
       `  UPTIMECORE - REPORTE DE DIAGNÓSTICO EN VIVO (${mode})`,
       `====================================================================`,
       selectedMonitor ? `Sitio / Sensor : ${initialGroupName ? `${initialGroupName} · ` : ''}${selectedMonitor.name}` : '',
       `Objetivo       : ${target}${mode === 'PAPING' || mode === 'HTTP' ? ` (Puerto TCP: ${port})` : ''}`,
       `Fecha y Hora   : ${new Date().toLocaleString('es-MX')}`,
-      ` Estadísticas  : Enviados=${sent} | Exitosos=${received} | Pérdida=${lossPercent}% | Mín=${minLatency}ms | Prom=${avgLatency}ms | Máx=${maxLatency}ms | Jitter=${jitterMs}ms`,
+      `Estadísticas   : Enviados=${sent} | Exitosos=${received} | Pérdida=${lossPercent}% | Mín=${minLatency}ms | Prom=${avgLatency}ms | Máx=${maxLatency}ms | Jitter=${jitterMs}ms`,
       `--------------------------------------------------------------------`,
-    ]
+    ])
       .filter(Boolean)
       .join('\r\n')
 
@@ -466,21 +491,21 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
     // Title
     ctx.fillStyle = '#38bdf8'
     ctx.font = 'bold 16px Consolas, monospace'
-    ctx.fillText(`UPTIMECORE · DIAGNÓSTICO EN VIVO [${mode}]`, 24, 30)
+    ctx.fillText(isEn ? `UPTIMECORE · LIVE DIAGNOSTICS [${mode}]` : `UPTIMECORE · DIAGNÓSTICO EN VIVO [${mode}]`, 24, 30)
 
     ctx.fillStyle = '#cbd5e1'
     ctx.font = '12.5px Consolas, monospace'
-    const subtitle = `${selectedMonitor ? `${initialGroupName ? initialGroupName + ' · ' : ''}${selectedMonitor.name}  |  ` : ''}Host: ${target}${mode === 'PAPING' || mode === 'HTTP' ? `:${port}` : ''}  |  ${new Date().toLocaleString('es-MX')}`
+    const subtitle = `${selectedMonitor ? `${initialGroupName ? initialGroupName + ' · ' : ''}${selectedMonitor.name}  |  ` : ''}Host: ${target}${mode === 'PAPING' || mode === 'HTTP' ? `:${port}` : ''}  |  ${new Date().toLocaleString(isEn ? 'en-US' : 'es-MX')}`
     ctx.fillText(subtitle, 24, 54)
 
     // KPI boxes
     const kpis = [
-      { label: mode === 'TRACEROUTE' ? 'SALTOS' : 'ENVIADOS', val: String(sent), color: '#f8fafc' },
-      { label: mode === 'TRACEROUTE' ? 'RESPONDIERON' : 'EXITOSOS', val: String(received), color: '#4ade80' },
-      { label: 'PÉRDIDA', val: `${lossPercent}%`, color: Number(lossPercent) > 0 ? '#f87171' : '#4ade80' },
-      { label: 'MÍNIMO', val: minLatency === '—' ? '—' : `${minLatency} ms`, color: '#38bdf8' },
-      { label: 'PROMEDIO', val: avgLatency === '—' ? '—' : `${avgLatency} ms`, color: '#c084fc' },
-      { label: 'MÁXIMO', val: maxLatency === '—' ? '—' : `${maxLatency} ms`, color: '#fbbf24' },
+      { label: mode === 'TRACEROUTE' ? (isEn ? 'HOPS' : 'SALTOS') : (isEn ? 'SENT' : 'ENVIADOS'), val: String(sent), color: '#f8fafc' },
+      { label: mode === 'TRACEROUTE' ? (isEn ? 'RESPONDED' : 'RESPONDIERON') : (isEn ? 'SUCCESSFUL' : 'EXITOSOS'), val: String(received), color: '#4ade80' },
+      { label: isEn ? 'LOSS' : 'PÉRDIDA', val: `${lossPercent}%`, color: Number(lossPercent) > 0 ? '#f87171' : '#4ade80' },
+      { label: isEn ? 'MIN' : 'MÍNIMO', val: minLatency === '—' ? '—' : `${minLatency} ms`, color: '#38bdf8' },
+      { label: isEn ? 'AVG' : 'PROMEDIO', val: avgLatency === '—' ? '—' : `${avgLatency} ms`, color: '#c084fc' },
+      { label: isEn ? 'MAX' : 'MÁXIMO', val: maxLatency === '—' ? '—' : `${maxLatency} ms`, color: '#fbbf24' },
       { label: 'JITTER', val: `${jitterMs} ms`, color: '#2dd4bf' },
     ]
     const boxW = (width - 48 - 6 * 8) / 7
@@ -536,12 +561,12 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
   }
 
   const TOOLS: { id: DiagnosticToolMode; label: string; sub: string; icon: React.ReactNode }[] = [
-    { id: 'PAPING', label: 'PAPING (TCP)', sub: 'Ping a puerto TCP específico', icon: <Wifi size={15} /> },
-    { id: 'PING', label: 'PING (ICMP)', sub: 'Ping ICMP estándar en vivo', icon: <Activity size={15} /> },
-    { id: 'TRACEROUTE', label: 'TRACEROUTE', sub: 'Traza de ruta salto a salto', icon: <Route size={15} /> },
-    { id: 'HTTP', label: 'HTTP / SSL', sub: 'Respuesta web y vigencia SSL', icon: <Globe size={15} /> },
-    { id: 'DNS', label: 'DNS / PTR', sub: 'Resolución directa e inversa', icon: <Search size={15} /> },
-    { id: 'SSH', label: 'SHELL (SSH)', sub: 'Terminal interactiva multi-tab', icon: <Terminal size={15} /> },
+    { id: 'PAPING', label: 'PAPING (TCP)', sub: isEn ? 'TCP port connectivity ping' : 'Ping a puerto TCP específico', icon: <Wifi size={15} /> },
+    { id: 'PING', label: 'PING (ICMP)', sub: isEn ? 'Real-time standard ICMP ping' : 'Ping ICMP estándar en vivo', icon: <Activity size={15} /> },
+    { id: 'TRACEROUTE', label: 'TRACEROUTE', sub: isEn ? 'Hop-by-hop route trace' : 'Traza de ruta salto a salto', icon: <Route size={15} /> },
+    { id: 'HTTP', label: 'HTTP / SSL', sub: isEn ? 'Web response & SSL validity' : 'Respuesta web y vigencia SSL', icon: <Globe size={15} /> },
+    { id: 'DNS', label: 'DNS / PTR', sub: isEn ? 'Forward & reverse DNS lookup' : 'Resolución directa e inversa', icon: <Search size={15} /> },
+    { id: 'SSH', label: 'SHELL (SSH)', sub: isEn ? 'Interactive multi-tab terminal' : 'Terminal interactiva multi-tab', icon: <Terminal size={15} /> },
   ]
 
   return (
@@ -610,7 +635,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <h2 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                  Consola de Diagnóstico en Vivo
+                  {isEn ? 'Live Diagnostics Console' : 'Consola de Diagnóstico en Vivo'}
                 </h2>
                 {selectedMonitor && (
                   <span
@@ -630,7 +655,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 )}
               </div>
               <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
-                Elige la herramienta, el puerto o protocolo deseado y haz clic en <strong>Ejecutar</strong> cuando estés listo
+                {isEn ? 'Choose tool, target, and protocol, then click Run when ready' : 'Elige la herramienta, el puerto o protocolo deseado y haz clic en Ejecutar cuando estés listo'}
               </p>
             </div>
           </div>
@@ -652,7 +677,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
               alignItems: 'center',
               justifyContent: 'center',
             }}
-            title="Cerrar diagnóstico"
+            title={isEn ? 'Close diagnostics' : 'Cerrar diagnóstico'}
           >
             <X size={18} />
           </button>
@@ -672,7 +697,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             }}
           >
             <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5, marginRight: 4 }}>
-              <Server size={12} /> Sensores del grupo:
+              <Server size={12} /> {isEn ? 'Group Sensors:' : 'Sensores del grupo:'}
             </span>
             {groupMonitors.map(gm => {
               const isSel = selectedMonitor?.id === gm.id
@@ -787,13 +812,13 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             {/* Host / IP */}
             <div style={{ flex: '1 1 260px' }}>
               <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
-                HOST / DIRECCIÓN IP / DOMINIO
+                {isEn ? 'HOST / IP ADDRESS / DOMAIN' : 'HOST / DIRECCIÓN IP / DOMINIO'}
               </label>
               <input
                 type="text"
                 value={target}
                 onChange={e => setTarget(e.target.value)}
-                placeholder="Ej. 192.168.1.1 o router.ejemplo.com"
+                placeholder={isEn ? 'e.g. 192.168.1.1 or router.example.com' : 'Ej. 192.168.1.1 o router.ejemplo.com'}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && target.trim() && !isRunning) {
                     executeRun(mode, target, port, intervalMs, maxProbes, maxHops)
@@ -817,7 +842,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             {(mode === 'PAPING' || mode === 'HTTP') && (
               <div style={{ width: 130 }}>
                 <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#38bdf8', marginBottom: 4 }}>
-                  PUERTO TCP
+                  {isEn ? 'TCP PORT' : 'PUERTO TCP'}
                 </label>
                 <input
                   type="number"
@@ -851,7 +876,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
               <>
                 <div style={{ width: 125 }}>
                   <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
-                    INTERVALO
+                    {isEn ? 'INTERVAL' : 'INTERVALO'}
                   </label>
                   <select
                     value={intervalMs}
@@ -867,15 +892,15 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                       fontWeight: 600,
                     }}
                   >
-                    <option value={500}>Cada 0.5 seg</option>
-                    <option value={1000}>Cada 1 seg</option>
-                    <option value={2000}>Cada 2 seg</option>
+                    <option value={500}>{isEn ? 'Every 0.5s' : 'Cada 0.5 seg'}</option>
+                    <option value={1000}>{isEn ? 'Every 1s' : 'Cada 1 seg'}</option>
+                    <option value={2000}>{isEn ? 'Every 2s' : 'Cada 2 seg'}</option>
                   </select>
                 </div>
 
                 <div style={{ width: 145 }}>
                   <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
-                    MUESTRAS
+                    {isEn ? 'SAMPLES' : 'MUESTRAS'}
                   </label>
                   <select
                     value={maxProbes}
@@ -891,10 +916,10 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                       fontWeight: 600,
                     }}
                   >
-                    <option value={10}>10 paquetes</option>
-                    <option value={25}>25 paquetes</option>
-                    <option value={50}>50 paquetes</option>
-                    <option value={0}>Continuo (∞)</option>
+                    <option value={10}>{isEn ? '10 packets' : '10 paquetes'}</option>
+                    <option value={25}>{isEn ? '25 packets' : '25 paquetes'}</option>
+                    <option value={50}>{isEn ? '50 packets' : '50 paquetes'}</option>
+                    <option value={0}>{isEn ? 'Continuous (∞)' : 'Continuo (∞)'}</option>
                   </select>
                 </div>
               </>
@@ -904,7 +929,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             {mode === 'TRACEROUTE' && (
               <div style={{ width: 140 }}>
                 <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
-                  MÁX. SALTOS (TTL)
+                  {isEn ? 'MAX HOPS (TTL)' : 'MÁX. SALTOS (TTL)'}
                 </label>
                 <select
                   value={maxHops}
@@ -920,9 +945,9 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                     fontWeight: 600,
                   }}
                 >
-                  <option value={15}>15 saltos</option>
-                  <option value={20}>20 saltos</option>
-                  <option value={30}>30 saltos</option>
+                  <option value={15}>{isEn ? '15 hops' : '15 saltos'}</option>
+                  <option value={20}>{isEn ? '20 hops' : '20 saltos'}</option>
+                  <option value={30}>{isEn ? '30 hops' : '30 saltos'}</option>
                 </select>
               </div>
             )}
@@ -948,7 +973,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                     boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)',
                   }}
                 >
-                  <Play size={14} fill="#fff" /> Ejecutar {mode}
+                  <Play size={14} fill="#fff" /> {isEn ? `Run ${mode}` : `Ejecutar ${mode}`}
                 </button>
               ) : (
                 <button
@@ -967,7 +992,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                     gap: 7,
                   }}
                 >
-                  <Square size={13} fill="#f87171" /> Detener
+                  <Square size={13} fill="#f87171" /> {isEn ? 'Stop' : 'Detener'}
                 </button>
               )}
             </div>
@@ -977,7 +1002,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           {(mode === 'PAPING' || mode === 'HTTP') && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={11} /> Seleccionar puerto rápido:
+                <Sparkles size={11} /> {isEn ? 'Quick port select:' : 'Seleccionar puerto rápido:'}
               </span>
               {selectedMonitor?.port &&
                 !QUICK_PORTS.some(q => q.port === selectedMonitor.port) && (
@@ -1003,7 +1028,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                       cursor: 'pointer',
                     }}
                   >
-                    {selectedMonitor.port} (Del Sensor)
+                    {selectedMonitor.port} {isEn ? '(From Sensor)' : '(Del Sensor)'}
                   </button>
                 )}
               {QUICK_PORTS.map(q => {
@@ -1050,16 +1075,16 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
           }}
         >
           {[
-            { label: mode === 'TRACEROUTE' ? 'SALTOS' : 'ENVIADOS', val: String(sent), color: '#e2e8f0' },
-            { label: mode === 'TRACEROUTE' ? 'RESPONDIERON' : 'EXITOSOS', val: String(received), color: '#22c55e' },
+            { label: mode === 'TRACEROUTE' ? (isEn ? 'HOPS' : 'SALTOS') : (isEn ? 'SENT' : 'ENVIADOS'), val: String(sent), color: '#e2e8f0' },
+            { label: mode === 'TRACEROUTE' ? (isEn ? 'RESPONDED' : 'RESPONDIERON') : (isEn ? 'SUCCESSFUL' : 'EXITOSOS'), val: String(received), color: '#22c55e' },
             {
-              label: 'PÉRDIDA',
+              label: isEn ? 'LOSS' : 'PÉRDIDA',
               val: `${lossPercent}%`,
               color: Number(lossPercent) > 0 ? '#ef4444' : '#22c55e',
             },
-            { label: 'MÍNIMO', val: minLatency === '—' ? '—' : `${minLatency} ms`, color: '#38bdf8' },
-            { label: 'PROMEDIO', val: avgLatency === '—' ? '—' : `${avgLatency} ms`, color: '#a855f7' },
-            { label: 'MÁXIMO', val: maxLatency === '—' ? '—' : `${maxLatency} ms`, color: '#f59e0b' },
+            { label: isEn ? 'MIN' : 'MÍNIMO', val: minLatency === '—' ? '—' : `${minLatency} ms`, color: '#38bdf8' },
+            { label: isEn ? 'AVG' : 'PROMEDIO', val: avgLatency === '—' ? '—' : `${avgLatency} ms`, color: '#a855f7' },
+            { label: isEn ? 'MAX' : 'MÁXIMO', val: maxLatency === '—' ? '—' : `${maxLatency} ms`, color: '#f59e0b' },
             { label: 'JITTER', val: `${jitterMs} ms`, color: '#14b8a6' },
           ].map(stat => (
             <div
@@ -1113,7 +1138,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
             >
               <Terminal size={30} style={{ opacity: 0.45 }} />
               <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>
-                Escribe una IP o dominio arriba y presiona <strong>Ejecutar {mode}</strong>
+                {isEn ? `Type an IP or domain above and click Run ${mode}` : `Escribe una IP o dominio arriba y presiona Ejecutar ${mode}`}
               </div>
             </div>
           ) : (
@@ -1199,7 +1224,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                   display: 'inline-block',
                 }}
               />
-              Ejecutando {mode} en tiempo real...
+              {isEn ? `Running ${mode} in real time...` : `Ejecutando ${mode} en tiempo real...`}
             </div>
           )}
         </div>
@@ -1236,7 +1261,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 gap: 6,
               }}
             >
-              <Trash2 size={13} /> Limpiar
+              <Trash2 size={13} /> {isEn ? 'Clear' : 'Limpiar'}
             </button>
 
             {/* 1. Copiar Texto al Portapapeles */}
@@ -1257,10 +1282,10 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 alignItems: 'center',
                 gap: 6,
               }}
-              title="Copia el reporte en formato TEXTO al portapapeles para pegarlo con Ctrl+V"
+              title={isEn ? 'Copy report in text format to clipboard (Ctrl+V)' : 'Copia el reporte en formato TEXTO al portapapeles para pegarlo con Ctrl+V'}
             >
               {copiedTxt ? <Check size={14} /> : <Copy size={13} />}
-              {copiedTxt ? '¡Texto copiado (Ctrl+V)!' : 'Copiar Texto (Portapapeles)'}
+              {copiedTxt ? (isEn ? 'Text copied (Ctrl+V)!' : '¡Texto copiado (Ctrl+V)!') : (isEn ? 'Copy Text (Clipboard)' : 'Copiar Texto (Portapapeles)')}
             </button>
 
             {/* 2. Descargar archivo .TXT */}
@@ -1281,9 +1306,9 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 alignItems: 'center',
                 gap: 6,
               }}
-              title="Descarga el resultado como archivo de texto (.txt)"
+              title={isEn ? 'Download output as text file (.txt)' : 'Descarga el resultado como archivo de texto (.txt)'}
             >
-              <FileText size={13} /> Descargar .TXT
+              <FileText size={13} /> {isEn ? 'Download .TXT' : 'Descargar .TXT'}
             </button>
 
             {/* 3. Capturar y Descargar Imagen (.PNG) */}
@@ -1304,10 +1329,10 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
                 alignItems: 'center',
                 gap: 6,
               }}
-              title="Genera y descarga una captura en IMAGEN (.PNG) de la consola y sus métricas"
+              title={isEn ? 'Generate and download a PNG screenshot of the console and metrics' : 'Genera y descarga una captura en IMAGEN (.PNG) de la consola y sus métricas'}
             >
               {exportedImg ? <Check size={14} /> : <Camera size={13} />}
-              {exportedImg ? '¡Imagen .PNG descargada!' : 'Descargar Imagen (.PNG)'}
+              {exportedImg ? (isEn ? 'PNG Image Downloaded!' : '¡Imagen .PNG descargada!') : (isEn ? 'Download Image (.PNG)' : 'Descargar Imagen (.PNG)')}
             </button>
           </div>
 
@@ -1327,7 +1352,7 @@ export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitor
               cursor: 'pointer',
             }}
           >
-            Cerrar
+            {t.common.close}
           </button>
         </div>
           </>

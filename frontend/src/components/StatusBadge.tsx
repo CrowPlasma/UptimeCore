@@ -3,16 +3,18 @@
  * Componente reutilizable: badge de color con el estado de un monitor.
  * Verde = UP | Rojo = DOWN | Amarillo = DEGRADED | Gris = UNKNOWN/PAUSED
  */
+import React from 'react'
 import type { MonitorStatus } from '../types'
 import { Loader2 } from 'lucide-react'
+import { useI18nStore } from '../i18n'
 
-const statusConfig: Record<MonitorStatus, { label: string; bg: string; dot: string }> = {
-  UP:       { label: 'UP',      bg: '#22c55e25', dot: '#22c55e' },
-  DOWN:     { label: 'DOWN',    bg: '#ef444425', dot: '#ef4444' },
-  DEGRADED: { label: 'DEGRAD.', bg: '#f59e0b25', dot: '#f59e0b' },
-  UNKNOWN:  { label: 'UNKNWN', bg: '#9ca3af25', dot: '#9ca3af' },
-  PAUSED:   { label: 'PAUSADO', bg: '#6366f125', dot: '#6366f1' },
-  MAINTENANCE: { label: 'MANT.', bg: '#3b82f625', dot: '#3b82f6' }, // Blue color for Maintenance
+const statusStyle: Record<MonitorStatus, { bg: string; dot: string }> = {
+  UP:          { bg: '#22c55e25', dot: '#22c55e' },
+  DOWN:        { bg: '#ef444425', dot: '#ef4444' },
+  DEGRADED:    { bg: '#f59e0b25', dot: '#f59e0b' },
+  UNKNOWN:     { bg: '#9ca3af25', dot: '#9ca3af' },
+  PAUSED:      { bg: '#6366f125', dot: '#6366f1' },
+  MAINTENANCE: { bg: '#3b82f625', dot: '#3b82f6' },
 }
 
 interface Props {
@@ -20,10 +22,19 @@ interface Props {
   size?: 'sm' | 'md'
 }
 
-export function StatusBadge({ status, size = 'md' }: Props) {
-  const cfg = statusConfig[status] ?? statusConfig.UNKNOWN
+export const StatusBadge = React.memo(function StatusBadge({ status, size = 'md' }: Props) {
+  const isEn = useI18nStore(s => s.language === 'en')
+  const cfg = statusStyle[status] ?? statusStyle.UNKNOWN
   const fontSize = size === 'sm' ? '10px' : '12px'
   const padding = size === 'sm' ? '2px 7px' : '3px 10px'
+
+  const label =
+    status === 'UP' ? 'UP' :
+    status === 'DOWN' ? 'DOWN' :
+    status === 'DEGRADED' ? 'DEGRAD.' :
+    status === 'PAUSED' ? (isEn ? 'PAUSED' : 'PAUSADO') :
+    status === 'MAINTENANCE' ? (isEn ? 'MAINT.' : 'MANT.') :
+    (isEn ? 'UNKNWN' : 'DESCON.')
 
   return (
     <span style={{
@@ -50,7 +61,7 @@ export function StatusBadge({ status, size = 'md' }: Props) {
           animation: status === 'UP' ? 'pulse 2s infinite' : 'none',
         }} />
       )}
-      {cfg.label}
+      {label}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -59,4 +70,4 @@ export function StatusBadge({ status, size = 'md' }: Props) {
       `}</style>
     </span>
   )
-}
+})

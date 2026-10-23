@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { X, RefreshCw, Download, AlertOctagon, CheckCircle2, Clock, Activity, Search, Filter } from 'lucide-react'
+import { useTranslation } from '../i18n'
 
 export interface RawIncidentEvent {
   monitor_id?: number
@@ -42,13 +43,6 @@ interface Props {
   onClose: () => void
 }
 
-const RANGES = [
-  { key: '3h',  label: 'Últimas 3h' },
-  { key: '24h', label: 'Últimas 24h' },
-  { key: '7d',  label: 'Últimos 7 días' },
-  { key: '30d', label: 'Últimos 30 días' },
-]
-
 export function formatDuration(seconds: number): string {
   const sec = Math.max(0, Math.floor(Number(seconds) || 0))
   if (sec === 0) return '1s'
@@ -64,11 +58,11 @@ export function formatDuration(seconds: number): string {
   return parts.join(' ') || '1s'
 }
 
-function formatDateTime(iso?: string | null): string {
+function formatDateTime(iso?: string | null, locale: string = 'es-MX'): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '—'
-  return d.toLocaleString('es-MX', {
+  return d.toLocaleString(locale, {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -77,34 +71,58 @@ function formatDateTime(iso?: string | null): string {
   })
 }
 
-/** Traduce errores técnicos crudos a un diagnóstico claro en español */
-function humanizeError(rawError: string, protocol: string): { summary: string; detail: string } {
+/** Traduce errores técnicos crudos a un diagnóstico claro en español o inglés */
+function humanizeError(rawError: string, protocol: string, isEn?: boolean): { summary: string; detail: string } {
   const err = (rawError || '').trim()
   const lower = err.toLowerCase()
 
   if (!err) {
-    return { summary: 'Sin respuesta del host', detail: `El chequeo ${protocol} no obtuvo respuesta.` }
+    return {
+      summary: isEn ? 'No response from host' : 'Sin respuesta del host',
+      detail: isEn ? `Check ${protocol} received no response.` : `El chequeo ${protocol} no obtuvo respuesta.`,
+    }
   }
   if (lower.includes('ping: exit status 1') || lower.includes('100% packet loss')) {
-    return { summary: 'Sin respuesta a Ping (Host inalcanzable)', detail: err }
+    return {
+      summary: isEn ? 'Ping timeout (Host unreachable)' : 'Sin respuesta a Ping (Host inalcanzable)',
+      detail: err,
+    }
   }
   if (lower.includes('i/o timeout') || lower.includes('context deadline exceeded') || lower.includes('timeout')) {
-    return { summary: 'Tiempo de espera agotado (Timeout)', detail: err }
+    return {
+      summary: isEn ? 'Connection timeout' : 'Tiempo de espera agotado (Timeout)',
+      detail: err,
+    }
   }
   if (lower.includes('connection refused')) {
-    return { summary: 'Conexión rechazada (Puerto cerrado)', detail: err }
+    return {
+      summary: isEn ? 'Connection refused (Port closed)' : 'Conexión rechazada (Puerto cerrado)',
+      detail: err,
+    }
   }
   if (lower.includes('no such host')) {
-    return { summary: 'Error DNS (Host no encontrado)', detail: err }
+    return {
+      summary: isEn ? 'DNS error (Host not found)' : 'Error DNS (Host no encontrado)',
+      detail: err,
+    }
   }
   if (lower.includes('network is unreachable') || lower.includes('no route to host')) {
-    return { summary: 'Red o ruta inalcanzable', detail: err }
+    return {
+      summary: isEn ? 'Network or route unreachable' : 'Red o ruta inalcanzable',
+      detail: err,
+    }
   }
   if (lower.includes('certificate') || lower.includes('x509') || lower.includes('ssl')) {
-    return { summary: 'Problema con Certificado SSL/TLS', detail: err }
+    return {
+      summary: isEn ? 'SSL/TLS Certificate problem' : 'Problema con Certificado SSL/TLS',
+      detail: err,
+    }
   }
   if (lower.startsWith('http ')) {
-    return { summary: `Respuesta HTTP inválida (${err})`, detail: 'El servidor devolvió un código de error HTTP.' }
+    return {
+      summary: isEn ? `Invalid HTTP response (${err})` : `Respuesta HTTP inválida (${err})`,
+      detail: isEn ? 'Server returned an HTTP error code.' : 'El servidor devolvió un código de error HTTP.',
+    }
   }
   return { summary: err, detail: '' }
 }
@@ -134,12 +152,20 @@ function normalizeIncident(raw: RawIncidentEvent): NormalizedIncident {
 }
 
 export function IncidentLogModal({ onClose }: Props) {
+  const { isEn, locale } = useTranslation()
   const [range, setRange] = useState('24h')
   const [incidents, setIncidents] = useState<NormalizedIncident[]>([])
   const [loading, setLoading] = useState(true)
   const [stateFilter, setStateFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
   const [hideMicroCuts, setHideMicroCuts] = useState<boolean>(true)
   const [search, setSearch] = useState('')
+
+  const ranges = useMemo(() => [
+    { key: '3h',  label: isEn ? 'Last 3h' : 'Últimas 3h' },
+    { key: '24h', label: isEn ? 'Last 24h' : 'Últimas 24h' },
+    { key: '7d',  label: isEn ? 'Last 7 days' : 'Últimos 7 días' },
+    { key: '30d', label: isEn ? 'Last 30 days' : 'Últimos 30 días' },
+  ], [isEn])
 
   const fetchIncidents = useCallback(async (r: string) => {
     setLoading(true)
@@ -178,7 +204,7 @@ export function IncidentLogModal({ onClose }: Props) {
         const target = (inc.target || '').toLowerCase()
         const type = (inc.type || '').toLowerCase()
         const err = (inc.error_msg || '').toLowerCase()
-        const diag = humanizeError(inc.error_msg, inc.type).summary.toLowerCase()
+        const diag = humanizeError(inc.error_msg, inc.type, isEn).summary.toLowerCase()
         if (
           !groupName.includes(q) &&
           !monName.includes(q) &&
@@ -192,7 +218,7 @@ export function IncidentLogModal({ onClose }: Props) {
       }
       return true
     })
-  }, [baseIncidents, stateFilter, search])
+  }, [baseIncidents, stateFilter, search, isEn])
 
   const stats = useMemo(() => {
     const total = baseIncidents.length
@@ -209,7 +235,20 @@ export function IncidentLogModal({ onClose }: Props) {
     if (filtered.length === 0) return
     const esc = (val: string) => `"${String(val ?? '').replace(/"/g, '""')}"`
 
-    const headers = [
+    const headers = isEn ? [
+      'Current Status',
+      'Event Type',
+      'Group',
+      'Endpoint',
+      'Protocol',
+      'IP / Target',
+      'Outage Start',
+      'Recovery Time',
+      'Duration',
+      'Duration (Seconds)',
+      'Diagnosis',
+      'Technical Detail',
+    ] : [
       'Estado Actual',
       'Tipo de Evento',
       'Grupo',
@@ -225,16 +264,16 @@ export function IncidentLogModal({ onClose }: Props) {
     ]
 
     const rows = filtered.map(inc => {
-      const diag = humanizeError(inc.error_msg, inc.type)
+      const diag = humanizeError(inc.error_msg, inc.type, isEn)
       return [
-        esc(inc.is_ongoing ? 'ACTIVO (SIN RESPUESTA)' : 'RECUPERADO'),
-        esc(inc.status === 'DEGRADED' ? 'Degradacion' : 'Caida Total'),
+        esc(inc.is_ongoing ? (isEn ? 'ACTIVE (NO RESPONSE)' : 'ACTIVO (SIN RESPUESTA)') : (isEn ? 'RECOVERED' : 'RECUPERADO')),
+        esc(inc.status === 'DEGRADED' ? (isEn ? 'Degradation' : 'Degradacion') : (isEn ? 'Total Outage' : 'Caida Total')),
         esc(inc.group_name),
         esc(inc.monitor_name),
         esc(inc.type),
         esc(inc.target),
-        esc(formatDateTime(inc.started_at)),
-        esc(inc.is_ongoing ? 'Sigue caido' : formatDateTime(inc.resolved_at)),
+        esc(formatDateTime(inc.started_at, locale)),
+        esc(inc.is_ongoing ? (isEn ? 'Still down' : 'Sigue caido') : formatDateTime(inc.resolved_at, locale)),
         esc(formatDuration(inc.duration_sec)),
         String(inc.duration_sec),
         esc(diag.summary),
@@ -248,7 +287,7 @@ export function IncidentLogModal({ onClose }: Props) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `bitacora-incidentes-${range}-${new Date().toISOString().slice(0, 10)}.csv`)
+    link.setAttribute('download', `${isEn ? 'incident-log' : 'bitacora-incidentes'}-${range}-${new Date().toISOString().slice(0, 10)}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -285,10 +324,12 @@ export function IncidentLogModal({ onClose }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              📋 Bitácora de Caídas y Recuperaciones
+              {isEn ? '📋 Outage & Recovery Incident Log' : '📋 Bitácora de Caídas y Recuperaciones'}
             </h2>
             <p style={{ fontSize: 12.5, color: 'var(--color-text-muted)', marginTop: 3 }}>
-              Registro detallado de cuándo dejó de responder cada servicio, cuándo se restableció y cuánto tiempo estuvo afectado.
+              {isEn
+                ? 'Detailed history of when each service stopped responding, when it recovered, and downtime duration.'
+                : 'Registro detallado de cuándo dejó de responder cada servicio, cuándo se restableció y cuánto tiempo estuvo afectado.'}
             </p>
           </div>
 
@@ -308,12 +349,12 @@ export function IncidentLogModal({ onClose }: Props) {
                 opacity: filtered.length === 0 ? 0.5 : 1,
               }}
             >
-              <Download size={14} /> Exportar CSV ({filtered.length})
+              <Download size={14} /> {isEn ? `Export CSV (${filtered.length})` : `Exportar CSV (${filtered.length})`}
             </button>
             <button
               type="button"
               onClick={() => fetchIncidents(range)}
-              title="Actualizar bitácora"
+              title={isEn ? 'Refresh incident log' : 'Actualizar bitácora'}
               style={{
                 width: 34, height: 34, borderRadius: 8,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -351,30 +392,30 @@ export function IncidentLogModal({ onClose }: Props) {
         }}>
           <KpiBox
             icon={<AlertOctagon size={18} />}
-            label="Caídos en este momento"
+            label={isEn ? 'Down Right Now' : 'Caídos en este momento'}
             value={String(stats.ongoing)}
-            sub={stats.ongoing > 0 ? 'Requieren atención' : 'Todo operativo ahora'}
+            sub={stats.ongoing > 0 ? (isEn ? 'Require immediate attention' : 'Requieren atención') : (isEn ? 'All systems operational now' : 'Todo operativo ahora')}
             color={stats.ongoing > 0 ? '#ef4444' : '#22c55e'}
           />
           <KpiBox
             icon={<CheckCircle2 size={18} />}
-            label="Incidentes ya Recuperados"
+            label={isEn ? 'Recovered Incidents' : 'Incidentes ya Recuperados'}
             value={String(stats.resolved)}
-            sub="Restablecidos en el periodo"
+            sub={isEn ? 'Restored within period' : 'Restablecidos en el periodo'}
             color="#22c55e"
           />
           <KpiBox
             icon={<Activity size={18} />}
-            label="Total de Eventos"
+            label={isEn ? 'Total Outage Events' : 'Total de Eventos'}
             value={String(stats.total)}
-            sub={`En rango de ${range}`}
+            sub={isEn ? `In range of ${range}` : `En rango de ${range}`}
             color="#6366f1"
           />
           <KpiBox
             icon={<Clock size={18} />}
-            label="Tiempo Promedio de Caída (MTTR)"
+            label={isEn ? 'Mean Time to Recovery (MTTR)' : 'Tiempo Promedio de Caída (MTTR)'}
             value={stats.resolved > 0 ? formatDuration(stats.mttrSec) : '—'}
-            sub="Promedio en recuperarse"
+            sub={isEn ? 'Average recovery duration' : 'Promedio en recuperarse'}
             color="#f59e0b"
           />
         </div>
@@ -388,7 +429,7 @@ export function IncidentLogModal({ onClose }: Props) {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por grupo, endpoint, IP/host o causa..."
+                placeholder={isEn ? 'Search by group, endpoint, host/IP or diagnosis...' : 'Buscar por grupo, endpoint, IP/host o causa...'}
                 style={{
                   width: '100%', padding: '8px 12px 8px 34px',
                   borderRadius: 8, border: '1px solid var(--color-border)',
@@ -401,9 +442,9 @@ export function IncidentLogModal({ onClose }: Props) {
             {/* Estado: Todos / En Curso / Recuperados */}
             <div style={{ display: 'flex', gap: 4, background: 'var(--color-bg-primary)', padding: 3, borderRadius: 8, border: '1px solid var(--color-border)' }}>
               {([
-                { key: 'all', label: 'Todos' },
-                { key: 'ongoing', label: `Caídos Ahora (${stats.ongoing})` },
-                { key: 'resolved', label: `Recuperados (${stats.resolved})` },
+                { key: 'all', label: isEn ? 'All' : 'Todos' },
+                { key: 'ongoing', label: isEn ? `Down Now (${stats.ongoing})` : `Caídos Ahora (${stats.ongoing})` },
+                { key: 'resolved', label: isEn ? `Recovered (${stats.resolved})` : `Recuperados (${stats.resolved})` },
               ] as const).map(tab => (
                 <button
                   key={tab.key}
@@ -425,7 +466,7 @@ export function IncidentLogModal({ onClose }: Props) {
             <button
               type="button"
               onClick={() => setHideMicroCuts(v => !v)}
-              title="Oculta parpadeos breves menores a 90 segundos que se recuperaron solos en el siguiente chequeo"
+              title={isEn ? 'Hides short blips under 90s that recovered automatically by next check' : 'Oculta parpadeos breves menores a 90 segundos que se recuperaron solos en el siguiente chequeo'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '7px 11px', borderRadius: 8, fontSize: 11.5, fontWeight: 700,
@@ -437,14 +478,14 @@ export function IncidentLogModal({ onClose }: Props) {
             >
               <Filter size={12} />
               {hideMicroCuts
-                ? `Sin micro-cortes ${microCutsCount > 0 ? `(${microCutsCount} ocultos)` : ''}`
-                : 'Mostrando micro-cortes (<90s)'}
+                ? (isEn ? `No micro-cuts ${microCutsCount > 0 ? `(${microCutsCount} hidden)` : ''}` : `Sin micro-cortes ${microCutsCount > 0 ? `(${microCutsCount} ocultos)` : ''}`)
+                : (isEn ? 'Showing micro-cuts (<90s)' : 'Mostrando micro-cortes (<90s)')}
             </button>
           </div>
 
           {/* Selector de rango temporal */}
           <div style={{ display: 'flex', gap: 6 }}>
-            {RANGES.map(r => (
+            {ranges.map(r => (
               <button
                 key={r.key}
                 type="button"
@@ -473,18 +514,22 @@ export function IncidentLogModal({ onClose }: Props) {
         }}>
           {loading ? (
             <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
-              Cargando historial de incidentes...
+              {isEn ? 'Loading incident history...' : 'Cargando historial de incidentes...'}
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
               <CheckCircle2 size={38} color="#22c55e" style={{ margin: '0 auto 10px auto', opacity: 0.85 }} />
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>
-                No hay caídas que coincidan con el filtro actual
+                {isEn ? 'No incidents match the active filter' : 'No hay caídas que coincidan con el filtro actual'}
               </div>
               <div style={{ fontSize: 12.5 }}>
                 {hideMicroCuts && microCutsCount > 0
-                  ? `Se ocultaron ${microCutsCount} micro-cortes breves (< 90s). Haz clic en "Sin micro-cortes" arriba si deseas inspeccionarlos.`
-                  : 'Todos los servicios se han mantenido estables en este rango de tiempo.'}
+                  ? (isEn
+                    ? `Hidden ${microCutsCount} brief micro-cuts (< 90s). Click "No micro-cuts" above if you wish to inspect them.`
+                    : `Se ocultaron ${microCutsCount} micro-cortes breves (< 90s). Haz clic en "Sin micro-cortes" arriba si deseas inspeccionarlos.`)
+                  : (isEn
+                    ? 'All services have remained stable in this time range.'
+                    : 'Todos los servicios se han mantenido estables en este rango de tiempo.')}
               </div>
             </div>
           ) : (
@@ -502,19 +547,19 @@ export function IncidentLogModal({ onClose }: Props) {
                   top: 0,
                   zIndex: 2,
                 }}>
-                  <th style={{ padding: '12px 14px' }}>Estado del Evento</th>
-                  <th style={{ padding: '12px 14px' }}>Grupo / Endpoint</th>
-                  <th style={{ padding: '12px 14px' }}>Protocolo y Destino</th>
-                  <th style={{ padding: '12px 14px' }}>Inicio de Falla</th>
-                  <th style={{ padding: '12px 14px' }}>Hora de Recuperación</th>
-                  <th style={{ padding: '12px 14px' }}>Tiempo Caído</th>
-                  <th style={{ padding: '12px 14px' }}>Diagnóstico / Causa</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Event Status' : 'Estado del Evento'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Group / Endpoint' : 'Grupo / Endpoint'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Protocol & Target' : 'Protocolo y Destino'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Outage Start' : 'Inicio de Falla'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Recovery Time' : 'Hora de Recuperación'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Downtime' : 'Tiempo Caído'}</th>
+                  <th style={{ padding: '12px 14px' }}>{isEn ? 'Diagnosis / Cause' : 'Diagnóstico / Causa'}</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((inc, idx) => {
                   const isDown = inc.status === 'DOWN'
-                  const diag = humanizeError(inc.error_msg, inc.type)
+                  const diag = humanizeError(inc.error_msg, inc.type, isEn)
                   return (
                     <tr
                       key={`${inc.monitor_id}-${inc.started_at}-${idx}`}
@@ -525,7 +570,7 @@ export function IncidentLogModal({ onClose }: Props) {
                           : 'transparent',
                       }}
                     >
-                      {/* 1. Estado del Evento (Sin contradicciones tipo "RESUELTO (DOWN)") */}
+                      {/* 1. Estado del Evento */}
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                         {inc.is_ongoing ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -541,10 +586,10 @@ export function IncidentLogModal({ onClose }: Props) {
                                 background: isDown ? '#ef4444' : '#f59e0b',
                                 boxShadow: `0 0 8px ${isDown ? '#ef4444' : '#f59e0b'}`,
                               }} />
-                              {isDown ? 'CAÍDO AHORA' : 'DEGRADADO AHORA'}
+                              {isDown ? (isEn ? 'DOWN NOW' : 'CAÍDO AHORA') : (isEn ? 'DEGRADED NOW' : 'DEGRADADO AHORA')}
                             </span>
                             <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', paddingLeft: 4 }}>
-                              Incidente en curso
+                              {isEn ? 'Ongoing incident' : 'Incidente en curso'}
                             </span>
                           </div>
                         ) : (
@@ -557,10 +602,10 @@ export function IncidentLogModal({ onClose }: Props) {
                               border: '1px solid rgba(34, 197, 94, 0.35)',
                             }}>
                               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
-                              RECUPERADO
+                              {isEn ? 'RECOVERED' : 'RECUPERADO'}
                             </span>
                             <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', paddingLeft: 4 }}>
-                              {isDown ? 'Fue caída total' : 'Fue degradación'}
+                              {isDown ? (isEn ? 'Was total outage' : 'Fue caída total') : (isEn ? 'Was degradation' : 'Fue degradación')}
                             </span>
                           </div>
                         )}
@@ -572,7 +617,7 @@ export function IncidentLogModal({ onClose }: Props) {
                           {inc.group_name}
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                          Endpoint: <strong style={{ color: 'var(--color-text-secondary)' }}>{inc.monitor_name}</strong>
+                          {isEn ? 'Endpoint' : 'Endpoint'}: <strong style={{ color: 'var(--color-text-secondary)' }}>{inc.monitor_name}</strong>
                         </div>
                       </td>
 
@@ -596,18 +641,18 @@ export function IncidentLogModal({ onClose }: Props) {
 
                       {/* 4. Inicio de Falla */}
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: 'var(--color-text-secondary)' }}>
-                        {formatDateTime(inc.started_at)}
+                        {formatDateTime(inc.started_at, locale)}
                       </td>
 
                       {/* 5. Hora de Recuperación */}
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>
                         {inc.is_ongoing ? (
                           <span style={{ color: '#f87171', fontWeight: 700 }}>
-                            Sigue sin responder...
+                            {isEn ? 'Still not responding...' : 'Sigue sin responder...'}
                           </span>
                         ) : (
                           <span style={{ color: '#4ade80', fontWeight: 600 }}>
-                            {formatDateTime(inc.resolved_at)}
+                            {formatDateTime(inc.resolved_at, locale)}
                           </span>
                         )}
                       </td>

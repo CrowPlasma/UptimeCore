@@ -13,6 +13,7 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import type { Monitor } from '../types'
+import { useTranslation } from '../i18n'
 
 interface TabSession {
   id: string
@@ -88,9 +89,10 @@ function getSshPort(m?: Monitor | null): number {
 }
 
 export function SshTerminalView({ initialMonitor, initialGroupName: _initialGroupName, groupMonitors }: Props) {
+  const { t, isEn } = useTranslation()
   const defaultHost = cleanHost(initialMonitor?.target) || '192.168.1.1'
   const defaultPort = getSshPort(initialMonitor)
-  const defaultTitle = initialMonitor ? initialMonitor.name : 'Sesión SSH 1'
+  const defaultTitle = initialMonitor ? initialMonitor.name : (isEn ? 'SSH Session 1' : 'Sesión SSH 1')
 
   // Lista de sesiones / pestañas
   const [tabs, setTabs] = useState<TabSession[]>([
@@ -215,7 +217,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             } else if (term) {
               term.write(text)
             }
-            triggerToast('Pegado desde portapapeles')
+            triggerToast(isEn ? 'Pasted from clipboard' : 'Pegado desde portapapeles')
             return
           }
         }
@@ -294,12 +296,22 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
         // Escribir mensaje de bienvenida
         term.writeln('\x1b[1;36m┌──────────────────────────────────────────────────────────┐\x1b[0m')
         term.writeln('\x1b[1;36m│\x1b[0m  \x1b[1;37mUptimeCore Web SSH Shell\x1b[0m  \x1b[90m(100% Local / Zero Cloud)\x1b[0m       \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl + Shift + C:\x1b[0m Copia selección al portapapeles    \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl + Shift + V:\x1b[0m Pega comandos en la shell          \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl + C:\x1b[0m         Interrupción remota (SIGINT nativo) \x1b[1;36m│\x1b[0m')
-        term.writeln('\x1b[1;36m│\x1b[0m  \x1b[35m✔ Clic Derecho:\x1b[0m     Menú contextual desplegable        \x1b[1;36m│\x1b[0m')
+        if (isEn) {
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl + Shift + C:\x1b[0m Copy selection to clipboard        \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl + Shift + V:\x1b[0m Paste commands into shell          \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl + C:\x1b[0m         Remote interrupt (native SIGINT)    \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[35m✔ Right Click:\x1b[0m      Dropdown context menu               \x1b[1;36m│\x1b[0m')
+        } else {
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[32m✔ Ctrl + Shift + C:\x1b[0m Copia selección al portapapeles    \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[36m✔ Ctrl + Shift + V:\x1b[0m Pega comandos en la shell          \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[33m✔ Ctrl + C:\x1b[0m         Interrupción remota (SIGINT nativo) \x1b[1;36m│\x1b[0m')
+          term.writeln('\x1b[1;36m│\x1b[0m  \x1b[35m✔ Clic Derecho:\x1b[0m     Menú contextual desplegable        \x1b[1;36m│\x1b[0m')
+        }
         term.writeln('\x1b[1;36m└──────────────────────────────────────────────────────────┘\x1b[0m')
-        term.writeln(`\x1b[90mObjetivo: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`)
+        term.writeln(isEn 
+          ? `\x1b[90mTarget: ${tab.host}:${tab.port} · Click "Connect"\x1b[0m\r\n`
+          : `\x1b[90mObjetivo: ${tab.host}:${tab.port} · Haz clic en "Conectar"\x1b[0m\r\n`
+        )
 
         // Enviar teclas directamente al WebSocket (texto plano directo, cero overhead)
         term.onData(data => {
@@ -317,7 +329,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               const sel = term.getSelection()
               if (sel) {
                 copyTextSafe(sel)
-                triggerToast('Copiado al portapapeles')
+                triggerToast(isEn ? 'Copied to clipboard' : 'Copiado al portapapeles')
               }
             }
             return false
@@ -441,14 +453,14 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
           ? {
               ...t,
               status: 'connecting',
-              statusMsg: `Conectando a ${tab.host}:${tab.port}...`,
+              statusMsg: isEn ? `Connecting to ${tab.host}:${tab.port}...` : `Conectando a ${tab.host}:${tab.port}...`,
               password: effectivePassword,
             }
           : t
       )
     )
 
-    term.writeln(`\r\n\x1b[33m➜ Conectando a ${tab.user}@${tab.host}:${tab.port}...\x1b[0m`)
+    term.writeln(`\r\n\x1b[33m➜ ${isEn ? 'Connecting to' : 'Conectando a'} ${tab.user}@${tab.host}:${tab.port}...\x1b[0m`)
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/api/ssh/ws`
@@ -459,9 +471,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       ws.binaryType = 'arraybuffer'
       wsInstances.current[tab.id] = ws
     } catch (err: any) {
-      term.writeln(`\x1b[31m✖ Error creando WebSocket: ${err?.message || err}\x1b[0m\r\n`)
+      term.writeln(`\x1b[31m✖ ${isEn ? 'Error creating WebSocket:' : 'Error creando WebSocket:'} ${err?.message || err}\x1b[0m\r\n`)
       setTabs(prev =>
-        prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: 'Error de conexión WebSocket' } : t))
+        prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: isEn ? 'WebSocket connection error' : 'Error de conexión WebSocket' } : t))
       )
       return
     }
@@ -531,7 +543,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   ? {
                       ...t,
                       status: 'connected',
-                      statusMsg: `Conectado como ${msg.message || tab.user}`,
+                      statusMsg: isEn ? `Connected as ${msg.message || tab.user}` : `Conectado como ${msg.message || tab.user}`,
                       fingerprint: msg.fingerprint,
                     }
                   : t
@@ -583,9 +595,9 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
 
     ws.onerror = () => {
       setTabs(prev =>
-        prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: 'Fallo en WebSocket' } : t))
+        prev.map(t => (t.id === tab.id ? { ...t, status: 'error', statusMsg: isEn ? 'WebSocket failure' : 'Fallo en WebSocket' } : t))
       )
-      term.writeln('\r\n\x1b[31m✖ Conexión con el servidor interrumpida\x1b[0m\r\n')
+      term.writeln(isEn ? '\r\n\x1b[31m✖ Server connection interrupted\x1b[0m\r\n' : '\r\n\x1b[31m✖ Conexión con el servidor interrumpida\x1b[0m\r\n')
     }
 
     ws.onclose = () => {
@@ -595,7 +607,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       setTabs(prev =>
         prev.map(t =>
           t.id === tab.id && t.status !== 'error'
-            ? { ...t, status: 'disconnected', statusMsg: 'Sesión desconectada' }
+            ? { ...t, status: 'disconnected', statusMsg: isEn ? 'Session disconnected' : 'Sesión desconectada' }
             : t
         )
       )
@@ -620,10 +632,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     }
     const term = termInstances.current[tabId]
     if (term) {
-      term.writeln('\r\n\x1b[33m● Sesión cerrada por el usuario\x1b[0m\r\n')
+      term.writeln(isEn ? '\r\n\x1b[33m● Session closed by user\x1b[0m\r\n' : '\r\n\x1b[33m● Sesión cerrada por el usuario\x1b[0m\r\n')
     }
     setTabs(prev =>
-      prev.map(t => (t.id === tabId ? { ...t, status: 'disconnected', statusMsg: 'Desconectado' } : t))
+      prev.map(t => (t.id === tabId ? { ...t, status: 'disconnected', statusMsg: isEn ? 'Disconnected' : 'Desconectado' } : t))
     )
   }
 
@@ -648,7 +660,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       setTabs([
         {
           id: newId,
-          title: 'Sesión SSH',
+          title: isEn ? 'SSH Session' : 'Sesión SSH',
           host: defaultHost,
           port: 22,
           user: 'admin',
@@ -670,7 +682,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     const newId = `tab-${Date.now()}`
     const host = preset ? cleanHost(preset.target) : defaultHost
     const port = getSshPort(preset)
-    const title = preset ? preset.name : `Sesión ${tabs.length + 1}`
+    const title = preset ? preset.name : (isEn ? `Session ${tabs.length + 1}` : `Sesión ${tabs.length + 1}`)
 
     // Si ya existe una pestaña con ese monitor/host, cambiar a ella
     if (preset) {
@@ -718,7 +730,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       const sel = activeTerm.getSelection()
       if (sel) {
         await copyTextSafe(sel)
-        triggerToast('Copiado al portapapeles')
+        triggerToast(isEn ? 'Copied to clipboard' : 'Copiado al portapapeles')
       }
     }
     setContextMenu(prev => ({ ...prev, visible: false }))
@@ -740,7 +752,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       } else if (activeTerm) {
         activeTerm.write(pasteInputText)
       }
-      triggerToast('Texto enviado a la shell')
+      triggerToast(isEn ? 'Text sent to shell' : 'Texto enviado a la shell')
     }
     setPasteModalOpen(false)
     setPasteInputText('')
@@ -760,7 +772,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     const ws = wsInstances.current[activeTabId]
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send('\x03')
-      triggerToast('Enviado SIGINT (Ctrl+C)')
+      triggerToast(isEn ? 'Sent SIGINT (Ctrl+C)' : 'Enviado SIGINT (Ctrl+C)')
     }
     setContextMenu(prev => ({ ...prev, visible: false }))
   }
@@ -860,7 +872,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   borderRadius: 4,
                   marginLeft: 2,
                 }}
-                title="Cerrar pestaña"
+                title={isEn ? 'Close tab' : 'Cerrar pestaña'}
               >
                 <X size={12} />
               </button>
@@ -886,10 +898,10 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             cursor: 'pointer',
             whiteSpace: 'nowrap',
           }}
-          title="Abrir nueva sesión SSH personalizada"
+          title={isEn ? 'Open new custom SSH session' : 'Abrir nueva sesión SSH personalizada'}
         >
           <Plus size={13} />
-          <span>Nueva Pestaña</span>
+          <span>{isEn ? 'New Tab' : 'Nueva Pestaña'}</span>
         </button>
 
         {/* CHIPS RÁPIDOS DE SENSORES DEL GRUPO (1-clic para abrir o cambiar a ese equipo) */}
@@ -904,7 +916,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             }}
           >
             <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-              Sensores:
+              {isEn ? 'Sensors:' : 'Sensores:'}
             </span>
             {groupMonitors.map(gm => {
               const hostClean = cleanHost(gm.target)
@@ -927,7 +939,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                     color: isOpen ? '#4ade80' : '#cbd5e1',
                     whiteSpace: 'nowrap',
                   }}
-                  title={`Abrir sesión SSH para ${gm.name} (${hostClean}:22)`}
+                  title={isEn ? `Open SSH session for ${gm.name} (${hostClean}:22)` : `Abrir sesión SSH para ${gm.name} (${hostClean}:22)`}
                 >
                   <Server size={10} color={isOpen ? '#4ade80' : '#94a3b8'} />
                   <span>{isOpen ? `● ${gm.name}` : `+ ${gm.name}`}</span>
@@ -961,7 +973,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               const val = e.target.value
               setTabs(prev => prev.map(t => (t.id === activeTab.id ? { ...t, host: val } : t)))
             }}
-            placeholder="IP o Hostname"
+            placeholder={isEn ? "IP or Hostname" : "IP o Hostname"}
             style={{
               flex: 1,
               padding: '6px 10px',
@@ -978,7 +990,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
 
         {/* Puerto */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 115 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Puerto:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>{isEn ? 'Port:' : 'Puerto:'}</span>
           <input
             type="number"
             value={activeTab.port}
@@ -1004,7 +1016,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
 
         {/* Usuario */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 145 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Usuario:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>{isEn ? 'User:' : 'Usuario:'}</span>
           <input
             type="text"
             value={activeTab.user}
@@ -1030,7 +1042,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
 
         {/* Contraseña con toggle de visibilidad */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: 180, position: 'relative' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>Clave:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>{isEn ? 'Pass:' : 'Clave:'}</span>
           <input
             type={isShowPassword ? 'text' : 'password'}
             value={activeTab.password}
@@ -1039,7 +1051,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               const val = e.target.value
               setTabs(prev => prev.map(t => (t.id === activeTab.id ? { ...t, password: val } : t)))
             }}
-            placeholder="Opcional (pedir en shell)"
+            placeholder={isEn ? 'Optional (prompt)' : 'Opcional (pedir en shell)'}
             style={{
               width: '100%',
               padding: '6px 28px 6px 8px',
@@ -1068,7 +1080,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               alignItems: 'center',
               padding: 0,
             }}
-            title={isShowPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+            title={isShowPassword ? (isEn ? 'Hide password' : 'Ocultar contraseña') : (isEn ? 'Show password' : 'Ver contraseña')}
           >
             {isShowPassword ? <EyeOff size={13} /> : <Eye size={13} />}
           </button>
@@ -1092,7 +1104,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               gap: 6,
             }}
           >
-            <Square size={13} fill="#f87171" /> Desconectar
+            <Square size={13} fill="#f87171" /> {isEn ? 'Disconnect' : 'Desconectar'}
           </button>
         ) : (
           <button
@@ -1122,7 +1134,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             ) : (
               <Play size={13} fill="#ffffff" />
             )}
-            <span>{activeTab.status === 'connecting' ? 'Conectando...' : 'Conectar'}</span>
+            <span>{activeTab.status === 'connecting' ? (isEn ? 'Connecting...' : 'Conectando...') : (isEn ? 'Connect' : 'Conectar')}</span>
           </button>
         )}
 
@@ -1142,7 +1154,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   : '#94a3b8',
             }}
           >
-            {activeTab.statusMsg || 'Desconectado'}
+            {activeTab.statusMsg || (isEn ? 'Disconnected' : 'Desconectado')}
           </span>
         </div>
       </div>
@@ -1233,16 +1245,16 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span>
-            <strong style={{ color: '#38bdf8' }}>Ctrl+Shift+C:</strong> Copiar
+            <strong style={{ color: '#38bdf8' }}>Ctrl+Shift+C:</strong> {isEn ? 'Copy' : 'Copiar'}
           </span>
           <span>
-            <strong style={{ color: '#4ade80' }}>Ctrl+Shift+V:</strong> Pegar
+            <strong style={{ color: '#4ade80' }}>Ctrl+Shift+V:</strong> {isEn ? 'Paste' : 'Pegar'}
           </span>
           <span>
-            <strong style={{ color: '#fbbf24' }}>Ctrl+C:</strong> Interrumpir (SIGINT nativo)
+            <strong style={{ color: '#fbbf24' }}>Ctrl+C:</strong> {isEn ? 'Interrupt (SIGINT)' : 'Interrumpir (SIGINT nativo)'}
           </span>
           <span>
-            <strong style={{ color: '#a855f7' }}>Clic Derecho:</strong> Menú desplegable
+            <strong style={{ color: '#a855f7' }}>{isEn ? 'Right Click:' : 'Clic Derecho:'}</strong> {isEn ? 'Context menu' : 'Menú desplegable'}
           </span>
         </div>
         <div>
@@ -1313,7 +1325,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <Copy size={13} color={contextMenu.hasSelection ? '#38bdf8' : '#475569'} />
-            <span>Copiar Selección</span>
+            <span>{isEn ? 'Copy Selection' : 'Copiar Selección'}</span>
           </button>
 
           {/* Opción: Pegar */}
@@ -1337,7 +1349,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <Clipboard size={13} color="#4ade80" />
-            <span>Pegar Texto</span>
+            <span>{isEn ? 'Paste Text' : 'Pegar Texto'}</span>
           </button>
 
           <div style={{ height: 1, background: 'rgba(148,163,184,0.15)', margin: '4px 0' }} />
@@ -1363,7 +1375,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <Square size={12} color="#fbbf24" fill="#fbbf24" />
-            <span>Enviar Ctrl+C (Interrumpir)</span>
+            <span>{isEn ? 'Send Ctrl+C (Interrupt)' : 'Enviar Ctrl+C (Interrumpir)'}</span>
           </button>
 
           {/* Opción: Limpiar Pantalla */}
@@ -1387,7 +1399,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <Trash2 size={13} color="#94a3b8" />
-            <span>Limpiar Terminal</span>
+            <span>{isEn ? 'Clear Terminal' : 'Limpiar Terminal'}</span>
           </button>
 
           {/* Opción: Reconectar si desconectado */}
@@ -1415,7 +1427,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               <RefreshCw size={13} color="#38bdf8" />
-              <span>Reconectar</span>
+              <span>{isEn ? 'Reconnect' : 'Reconectar'}</span>
             </button>
           )}
         </div>
@@ -1453,7 +1465,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14 }}>
                 <Clipboard size={16} color="#4ade80" />
-                <span>Pegar comando en la Terminal</span>
+                <span>{isEn ? 'Paste Command into Terminal' : 'Pegar comando en la Terminal'}</span>
               </div>
               <button
                 onClick={() => setPasteModalOpen(false)}
@@ -1463,14 +1475,14 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
               </button>
             </div>
             <p style={{ margin: '0 0 10px', fontSize: 12, color: '#94a3b8' }}>
-              Pega aquí el texto o comando que deseas enviar a la shell activa:
+              {isEn ? 'Paste here the text or command to send to the active shell:' : 'Pega aquí el texto o comando que deseas enviar a la shell activa:'}
             </p>
             <textarea
               ref={pasteInputRef}
               rows={5}
               value={pasteInputText}
               onChange={e => setPasteInputText(e.target.value)}
-              placeholder="Pega aquí con Ctrl+V..."
+              placeholder={isEn ? 'Paste here with Ctrl+V...' : 'Pega aquí con Ctrl+V...'}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -1502,7 +1514,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   cursor: 'pointer',
                 }}
               >
-                Cancelar
+                {t.common.cancel}
               </button>
               <button
                 onClick={handleConfirmPasteModal}
@@ -1519,7 +1531,7 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
                   opacity: pasteInputText.trim() ? 1 : 0.5,
                 }}
               >
-                Enviar a la Shell
+                {isEn ? 'Send to Shell' : 'Enviar a la Shell'}
               </button>
             </div>
           </div>

@@ -21,6 +21,7 @@ import { useMonitorStore, aggregateGroupHistory } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DiagnosticModal } from './DiagnosticModal'
 import { SlaReportModal } from './SlaReportModal'
+import { useTranslation } from '../i18n'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function statusColor(s?: MonitorStatus) {
@@ -32,17 +33,8 @@ function statusColor(s?: MonitorStatus) {
   return '#94a3b8'
 }
 
-const RANGE_LABELS: Record<TimeRange, string> = {
-  recent: 'Últimos 90 min (Reciente)',
-  '3h': 'Últimas 3 Horas',
-  '6h': 'Últimas 6 Horas',
-  '24h': 'Últimas 24 Horas (Diario)',
-  '1w': 'Últimos 7 Días (Semanal)',
-  '30d': 'Últimos 30 Días (Mensual)',
-}
-
-function formatDurationHuman(totalSec: number): string {
-  if (totalSec <= 0) return '0s (Sin caídas)'
+function formatDurationHuman(totalSec: number, isEn?: boolean): string {
+  if (totalSec <= 0) return isEn ? '0s (No outages)' : '0s (Sin caídas)'
   const d = Math.floor(totalSec / 86400)
   const h = Math.floor((totalSec % 86400) / 3600)
   const m = Math.floor((totalSec % 3600) / 60)
@@ -75,14 +67,18 @@ interface Props {
   searchTerm?: string
   activeFilter?: string
   isExpanded?: boolean
-  onToggleExpand?: () => void
+  onToggleExpand?: (groupId: number) => void
 }
 
 // ── MonitorCard ───────────────────────────────────────────────────────────
 export const MonitorCard = React.memo(function MonitorCard({
   group, onOpenModal, activeFilter = 'all', isExpanded: controlledExpanded, onToggleExpand,
 }: Props) {
-  const { deleteGroup, deleteMonitor, toggleGroup, toggleGroupMaintenance } = useMonitorStore()
+  const { t, isEn } = useTranslation()
+  const deleteGroup = useMonitorStore(s => s.deleteGroup)
+  const deleteMonitor = useMonitorStore(s => s.deleteMonitor)
+  const toggleGroup = useMonitorStore(s => s.toggleGroup)
+  const toggleGroupMaintenance = useMonitorStore(s => s.toggleGroupMaintenance)
 
   // Soporte de estado controlado por Dashboard (Expandir/Colapsar todos) con fallback local persistente
   const [localExpanded, setLocalExpanded] = useState<boolean>(() => {
@@ -100,7 +96,7 @@ export const MonitorCard = React.memo(function MonitorCard({
 
   const handleToggle = React.useCallback(() => {
     if (onToggleExpand) {
-      onToggleExpand()
+      onToggleExpand(group.id)
     } else {
       setLocalExpanded(prev => {
         const next = !prev
@@ -188,6 +184,26 @@ export const MonitorCard = React.memo(function MonitorCard({
       ? 'MAINTENANCE'
       : status
 
+  const handleToggleMonitor = React.useCallback((mid: number) => {
+    setActiveMonitorId(id => id === mid ? null : mid)
+  }, [setActiveMonitorId])
+
+  const handleEditMonitor = React.useCallback((m: Monitor) => {
+    onOpenModal({ type: 'edit_monitor', group, monitor: m })
+  }, [onOpenModal, group])
+
+  const handleDeleteMonitor = React.useCallback((mid: number) => {
+    setConfirmDelete({ type: 'monitor', monitorId: mid })
+  }, [])
+
+  const handleDiagnoseMonitor = React.useCallback((m: Monitor) => {
+    setDiagnosticMonitor(m)
+  }, [])
+
+  const handleSlaReport = React.useCallback((m: Monitor, range: TimeRange) => {
+    setSlaReportTarget({ monitor: m, range })
+  }, [])
+
   return (
     <>
       <div style={{
@@ -271,7 +287,7 @@ export const MonitorCard = React.memo(function MonitorCard({
               />
             ) : (
               <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sin endpoints</span>
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{isEn ? 'No endpoints' : 'Sin endpoints'}</span>
               </div>
             )}
           </div>
@@ -294,7 +310,7 @@ export const MonitorCard = React.memo(function MonitorCard({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, width: 105, overflow: 'hidden' }}>
               {groupMetrics.pausedCount > 0 && status !== 'PAUSED' ? (
                 <span
-                  title={`${groupMetrics.pausedCount} de ${groupMetrics.total} sensores en pausa`}
+                  title={isEn ? `${groupMetrics.pausedCount} of ${groupMetrics.total} sensors paused` : `${groupMetrics.pausedCount} de ${groupMetrics.total} sensores en pausa`}
                   style={{
                     fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 99,
                     background: activeFilter === 'paused' ? 'rgba(99, 102, 241, 0.22)' : 'rgba(100, 116, 139, 0.16)',
@@ -303,11 +319,11 @@ export const MonitorCard = React.memo(function MonitorCard({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {groupMetrics.pausedCount} PAUSA
+                  {groupMetrics.pausedCount} {isEn ? 'PAUSED' : 'PAUSA'}
                 </span>
               ) : groupMetrics.maintCount > 0 && status !== 'MAINTENANCE' ? (
                 <span
-                  title={`${groupMetrics.maintCount} de ${groupMetrics.total} sensores en mantenimiento`}
+                  title={isEn ? `${groupMetrics.maintCount} of ${groupMetrics.total} sensors in maintenance` : `${groupMetrics.maintCount} de ${groupMetrics.total} sensores en mantenimiento`}
                   style={{
                     fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 99,
                     background: 'rgba(59, 130, 246, 0.18)',
@@ -316,7 +332,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {groupMetrics.maintCount} MANT.
+                  {groupMetrics.maintCount} {isEn ? 'MAINT.' : 'MANT.'}
                 </span>
               ) : (
                 <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
@@ -337,7 +353,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                 <>
                   <Btn
                     icon={<Terminal size={13} strokeWidth={2.3} />}
-                    title="Diagnóstico en Vivo del Grupo (Paping / Ping / Traceroute)"
+                    title={isEn ? "Live Group Diagnostics (Paping / Ping / Traceroute)" : "Diagnóstico en Vivo del Grupo (Paping / Ping / Traceroute)"}
                     onClick={() => {
                       const firstActive = group.monitors.find(m => m.is_active !== false && m.current_status !== 'PAUSED') || group.monitors[0]
                       setDiagnosticMonitor(firstActive)
@@ -346,7 +362,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                   />
                   <Btn
                     icon={<Wrench size={12} strokeWidth={2.5} />}
-                    title={groupMetrics.allMaint ? "Quitar Mantenimiento a todo el grupo" : "Poner todo el grupo en Mantenimiento"}
+                    title={groupMetrics.allMaint ? (isEn ? "Remove maintenance from entire group" : "Quitar Mantenimiento a todo el grupo") : (isEn ? "Set entire group into maintenance" : "Poner todo el grupo en Mantenimiento")}
                     onClick={() => toggleGroupMaintenance(group.id)}
                     customColor={groupMetrics.allMaint
                       ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
@@ -355,7 +371,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                   />
                   <Btn
                     icon={!groupMetrics.allPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />}
-                    title={!groupMetrics.allPaused ? "Pausar todo el grupo" : "Reanudar todo el grupo"}
+                    title={!groupMetrics.allPaused ? (isEn ? "Pause entire group" : "Pausar todo el grupo") : (isEn ? "Resume entire group" : "Reanudar todo el grupo")}
                     onClick={() => toggleGroup(group.id)}
                     customColor={groupMetrics.allPaused
                       ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
@@ -364,9 +380,9 @@ export const MonitorCard = React.memo(function MonitorCard({
                   />
                 </>
               )}
-              <Btn icon={<Plus size={13} />}   title="Agregar endpoint"  onClick={() => { onOpenModal({ type: 'new_monitor', group }); if (!expanded) handleToggle(); }} />
-              <Btn icon={<Pencil size={13} />} title="Editar grupo"      onClick={() => onOpenModal({ type: 'edit_group', group })} />
-              <Btn icon={<Trash2 size={13} />} title="Eliminar grupo"    danger onClick={() => setConfirmDelete({ type: 'group' })} />
+              <Btn icon={<Plus size={13} />}   title={isEn ? "Add endpoint" : "Agregar endpoint"}  onClick={() => { onOpenModal({ type: 'new_monitor', group }); if (!expanded) handleToggle(); }} />
+              <Btn icon={<Pencil size={13} />} title={isEn ? "Edit group" : "Editar grupo"}      onClick={() => onOpenModal({ type: 'edit_group', group })} />
+              <Btn icon={<Trash2 size={13} />} title={isEn ? "Delete group" : "Eliminar grupo"}    danger onClick={() => setConfirmDelete({ type: 'group' })} />
             </div>
 
             {/* Slot 5: Chevron */}
@@ -386,12 +402,12 @@ export const MonitorCard = React.memo(function MonitorCard({
                 padding: '32px 28px', textAlign: 'center',
                 color: 'var(--color-text-muted)', fontSize: 13,
               }}>
-                Sin endpoints configurados. &nbsp;
+                {t.monitor.noEndpoints} &nbsp;
                 <button
                   onClick={() => onOpenModal({ type: 'new_monitor', group })}
                   style={{ color: 'var(--color-accent)', fontWeight: 700 }}
                 >
-                  + Agregar primero
+                  {t.monitor.addFirstEndpoint}
                 </button>
               </div>
             ) : (
@@ -399,13 +415,14 @@ export const MonitorCard = React.memo(function MonitorCard({
                 <MonitorRow
                   key={monitor.id}
                   monitor={monitor}
-                  group={group}
+                  groupId={group.id}
+                  groupName={group.name}
                   isActive={activeMonitorId === monitor.id}
-                  onToggle={() => setActiveMonitorId(id => id === monitor.id ? null : monitor.id)}
-                  onEdit={() => onOpenModal({ type: 'edit_monitor', group, monitor })}
-                  onDelete={() => setConfirmDelete({ type: 'monitor', monitorId: monitor.id })}
-                  onDiagnose={() => setDiagnosticMonitor(monitor)}
-                  onSlaReport={(range) => setSlaReportTarget({ monitor, range })}
+                  onToggle={handleToggleMonitor}
+                  onEdit={handleEditMonitor}
+                  onDelete={handleDeleteMonitor}
+                  onDiagnose={handleDiagnoseMonitor}
+                  onSlaReport={handleSlaReport}
                 />
               ))
             )}
@@ -419,7 +436,7 @@ export const MonitorCard = React.memo(function MonitorCard({
                   fontSize: 12, fontWeight: 600, color: 'var(--color-accent)',
                 }}
               >
-                <Plus size={13} /> Agregar endpoint
+                <Plus size={13} /> {isEn ? 'Add endpoint' : 'Agregar endpoint'}
               </button>
             </div>
           </div>
@@ -450,9 +467,9 @@ export const MonitorCard = React.memo(function MonitorCard({
       {/* Confirmación de borrado (GRUPO) */}
       {confirmDelete?.type === 'group' && (
         <ConfirmDialog
-          title={`¿Eliminar GRUPO "${group.name}"?`}
-          message="⚠️ ATENCIÓN: Se eliminará todo el grupo, incluyendo todos sus endpoints y el historial completo. Esta acción no se puede deshacer."
-          confirmLabel="Eliminar Grupo Completo"
+          title={isEn ? `Delete GROUP "${group.name}"?` : `¿Eliminar GRUPO "${group.name}"?`}
+          message={isEn ? "⚠️ ATTENTION: The entire group, including all its endpoints and history will be deleted. This cannot be undone." : "⚠️ ATENCIÓN: Se eliminará todo el grupo, incluyendo todos sus endpoints y el historial completo. Esta acción no se puede deshacer."}
+          confirmLabel={isEn ? "Delete Entire Group" : "Eliminar Grupo Completo"}
           onConfirm={async () => {
             await deleteGroup(group.id)
             setConfirmDelete(null)
@@ -464,9 +481,9 @@ export const MonitorCard = React.memo(function MonitorCard({
       {/* Confirmación de borrado (ENDPOINT/MONITOR) */}
       {confirmDelete?.type === 'monitor' && (
         <ConfirmDialog
-          title="¿Eliminar solo este endpoint?"
-          message="Se eliminará únicamente este endpoint y su historial. El grupo principal se mantendrá intacto."
-          confirmLabel="Eliminar Endpoint"
+          title={isEn ? "Delete this endpoint only?" : "¿Eliminar solo este endpoint?"}
+          message={isEn ? "Only this endpoint and its history will be deleted. The parent group will remain intact." : "Se eliminará únicamente este endpoint y su historial. El grupo principal se mantendrá intacto."}
+          confirmLabel={isEn ? "Delete Endpoint" : "Eliminar Endpoint"}
           onConfirm={async () => {
             const mid = (confirmDelete as { type: 'monitor'; monitorId: number }).monitorId
             await deleteMonitor(group.id, mid)
@@ -481,17 +498,30 @@ export const MonitorCard = React.memo(function MonitorCard({
 })
 
 // ── Fila de endpoint hijo ─────────────────────────────────────────────────
-function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDiagnose, onSlaReport }: {
+const MonitorRow = React.memo(function MonitorRow({
+  monitor,
+  groupId,
+  groupName,
+  isActive,
+  onToggle,
+  onEdit,
+  onDelete,
+  onDiagnose,
+  onSlaReport,
+}: {
   monitor: Monitor
-  group: MonitorGroup
+  groupId: number
+  groupName: string
   isActive: boolean
-  onToggle: () => void
-  onEdit: () => void
-  onDelete: () => void
-  onDiagnose: () => void
-  onSlaReport: (range: TimeRange) => void
+  onToggle: (id: number) => void
+  onEdit: (m: Monitor) => void
+  onDelete: (id: number) => void
+  onDiagnose: (m: Monitor) => void
+  onSlaReport: (m: Monitor, range: TimeRange) => void
 }) {
-  const { toggleMonitor, toggleMaintenance } = useMonitorStore()
+  const toggleMonitor = useMonitorStore(s => s.toggleMonitor)
+  const toggleMaintenance = useMonitorStore(s => s.toggleMaintenance)
+  const { t, isEn, locale } = useTranslation()
   const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
   const isMaint = !isPaused && (monitor.is_maintenance === true || monitor.current_status === 'MAINTENANCE')
   const status: MonitorStatus = isPaused
@@ -502,6 +532,18 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [histRange, setHistRange] = useState<TimeRange>('recent')
   const [histLoading, setHistLoading] = useState(false)
+
+  const getRangeLabel = (range: TimeRange) => {
+    switch (range) {
+      case 'recent': return t.monitor.rangeLabelRecent
+      case '3h': return t.monitor.rangeLabel3h
+      case '6h': return t.monitor.rangeLabel6h
+      case '24h': return t.monitor.rangeLabel24h
+      case '1w': return t.monitor.rangeLabel7d
+      case '30d': return t.monitor.rangeLabel30d
+      default: return range
+    }
+  }
 
   // Cargar historia cuando se activa el panel
   useEffect(() => {
@@ -535,6 +577,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
 
   // ── Cálculo enriquecido de SLA, Disponibilidad, Tiempo Caído, Jitter y P95 ──
   const slaStats = React.useMemo(() => {
+    if (!isActive) return null
     // Excluir muestras en mantenimiento/pausa del cálculo de penalización SLA
     const operational = combinedHistory.filter(
       h => h.status !== 'MAINTENANCE' && h.status !== 'PAUSED' && h.status !== 'UNKNOWN'
@@ -631,15 +674,38 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
 
   // Exportar Reporte SLA + Historial del sensor en CSV
   const exportMonitorSlaCsv = () => {
-    const rows: string[][] = [
+    if (!slaStats) return
+    const rows: string[][] = isEn ? [
+      ['AVAILABILITY & SLA REPORT - UPTIMECORE'],
+      ['Site / Group', groupName],
+      ['Sensor / Link', monitor.name],
+      ['Target (IP/Host)', `${monitor.target}${monitor.port ? ':' + monitor.port : ''}`],
+      ['Protocol', monitor.type],
+      ['Evaluated Period', getRangeLabel(histRange)],
+      ['SLA Availability (%)', slaStats.slaPctFormatted ? `${slaStats.slaPctFormatted}%` : 'N/A'],
+      ['Estimated Downtime', formatDurationHuman(slaStats.downtimeSec, isEn)],
+      ['Recorded Outages', String(slaStats.outagesCount)],
+      ['Average Latency (ms)', slaStats.avgLat != null ? String(slaStats.avgLat) : 'N/A'],
+      ['Minimum Latency (ms)', slaStats.minLat != null ? String(slaStats.minLat) : 'N/A'],
+      ['Peak Maximum Latency (ms)', slaStats.maxLat != null ? String(slaStats.maxLat) : 'N/A'],
+      ['P95 Percentile (ms)', slaStats.p95Lat != null ? String(slaStats.p95Lat) : 'N/A'],
+      ['Stability Jitter (ms)', String(slaStats.jitterMs)],
+      [],
+      ['Timestamp', 'Status', 'Latency (ms)'],
+      ...combinedHistory.map(h => [
+        new Date(h.time).toLocaleString(locale),
+        h.status,
+        String(h.latency_ms ?? 0),
+      ]),
+    ] : [
       ['REPORTE DE DISPONIBILIDAD Y SLA - UPTIMECORE'],
-      ['Sitio / Grupo', group.name],
+      ['Sitio / Grupo', groupName],
       ['Sensor / Enlace', monitor.name],
       ['Objetivo (IP/Host)', `${monitor.target}${monitor.port ? ':' + monitor.port : ''}`],
       ['Protocolo', monitor.type],
-      ['Periodo Evaluado', RANGE_LABELS[histRange] || histRange],
+      ['Periodo Evaluado', getRangeLabel(histRange)],
       ['Disponibilidad SLA (%)', slaStats.slaPctFormatted ? `${slaStats.slaPctFormatted}%` : 'N/A'],
-      ['Tiempo Caido Estimado', formatDurationHuman(slaStats.downtimeSec)],
+      ['Tiempo Caido Estimado', formatDurationHuman(slaStats.downtimeSec, isEn)],
       ['Cortes Registrados', String(slaStats.outagesCount)],
       ['Latencia Promedio (ms)', slaStats.avgLat != null ? String(slaStats.avgLat) : 'N/A'],
       ['Latencia Minima (ms)', slaStats.minLat != null ? String(slaStats.minLat) : 'N/A'],
@@ -649,7 +715,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       [],
       ['Fecha y Hora', 'Estado', 'Latencia (ms)'],
       ...combinedHistory.map(h => [
-        new Date(h.time).toLocaleString('es-MX'),
+        new Date(h.time).toLocaleString(locale),
         h.status,
         String(h.latency_ms ?? 0),
       ]),
@@ -664,7 +730,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const safeName = `${group.name}_${monitor.name}_${histRange}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const safeName = `${groupName}_${monitor.name}_${histRange}`.replace(/[^a-zA-Z0-9_-]/g, '_')
     a.href = url
     a.download = `SLA_${safeName}.csv`
     a.click()
@@ -688,7 +754,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           background: isActive ? 'var(--color-bg-primary)' : 'transparent',
           transition: 'background 0.15s',
         }}
-        onClick={onToggle}
+        onClick={() => onToggle(monitor.id)}
       >
         {/* Columna 1: Identidad del Endpoint (350px balanceado) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, paddingLeft: 10, paddingRight: 6, overflow: 'hidden' }}>
@@ -754,7 +820,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
 
           {/* Slot 2: Intervalo de chequeo */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: 105 }}>
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }} title="Intervalo de verificación">
+            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }} title={isEn ? "Check interval" : "Intervalo de verificación"}>
               ⏱ {monitor.interval_seconds}s
             </span>
           </div>
@@ -768,14 +834,14 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', width: '100%' }} onClick={e => e.stopPropagation()}>
             <Btn
               icon={<Terminal size={13} strokeWidth={2.3} />}
-              title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
-              onClick={onDiagnose}
+              title={t.monitor.liveDiag}
+              onClick={() => onDiagnose(monitor)}
               customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
             />
             <Btn 
               icon={<Wrench size={12} strokeWidth={2.5} />} 
-              title={isMaint ? "Quitar Mantenimiento" : "Modo Mantenimiento"} 
-              onClick={() => toggleMaintenance(group.id, monitor.id)} 
+              title={isMaint ? t.monitor.maintMonitorOff : t.monitor.maintMonitorOn} 
+              onClick={() => toggleMaintenance(groupId, monitor.id)} 
               customColor={isMaint 
                 ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
                 : undefined
@@ -783,15 +849,15 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
             />
             <Btn 
               icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
-              title={!isPaused ? "Pausar monitoreo" : "Reanudar monitoreo"} 
-              onClick={() => toggleMonitor(group.id, monitor.id)} 
+              title={!isPaused ? t.monitor.pauseMonitor : t.monitor.resumeMonitor} 
+              onClick={() => toggleMonitor(groupId, monitor.id)} 
               customColor={isPaused 
                 ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
                 : undefined
               }
             />
-            <Btn icon={<Pencil size={12} />} title="Editar" onClick={onEdit} />
-            <Btn icon={<Trash2 size={12} />} title="Eliminar" danger onClick={onDelete} />
+            <Btn icon={<Pencil size={12} />} title={t.common.edit} onClick={() => onEdit(monitor)} />
+            <Btn icon={<Trash2 size={12} />} title={t.common.delete} danger onClick={() => onDelete(monitor.id)} />
           </div>
 
           {/* Slot 5: Chevron */}
@@ -804,7 +870,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       </div>
 
       {/* ══ Panel expandido: Resumen Ejecutivo de SLA, Calidad de Enlace + Gráfica ══ */}
-      {isActive && (
+      {isActive && slaStats && (
         <div style={{
           padding: '20px 30px 26px 48px',
           background: 'var(--color-bg-primary)',
@@ -821,7 +887,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
-                📊 Resumen de Disponibilidad y SLA · <span style={{ color: 'var(--color-accent)' }}>{RANGE_LABELS[histRange]}</span>
+                {t.monitor.slaSummaryTitle}<span style={{ color: 'var(--color-accent)' }}>{getRangeLabel(histRange)}</span>
               </span>
 
               {slaStats.slaPctNum != null && (
@@ -855,23 +921,23 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                 }}>
                   {slaStats.slaPctNum >= 99.0 ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
                   {slaStats.slaPctNum >= 99.9
-                    ? 'SLA Óptimo (≥99.9%)'
+                    ? t.monitor.slaOptimal
                     : slaStats.slaPctNum >= 99.0
-                    ? 'SLA Aceptable (≥99.0%)'
-                    : 'SLA Crítico (<99.0%)'}
+                    ? t.monitor.slaAcceptable
+                    : t.monitor.slaCritical}
                 </span>
               )}
 
               {histLoading && (
                 <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <TrendingUp size={13} /> Actualizando periodo...
+                  <TrendingUp size={13} /> {isEn ? 'Updating period...' : 'Actualizando periodo...'}
                 </span>
               )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
-                onClick={onDiagnose}
+                onClick={() => onDiagnose(monitor)}
                 style={{
                   padding: '5px 11px',
                   borderRadius: 7,
@@ -886,11 +952,11 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                   border: '1px solid rgba(56, 189, 248, 0.35)',
                 }}
               >
-                <Terminal size={13} /> Diagnóstico en Vivo (Paping / Traza)
+                <Terminal size={13} /> {isEn ? 'Live Diagnostics (Paping / Trace)' : 'Diagnóstico en Vivo (Paping / Traza)'}
               </button>
 
               <button
-                onClick={() => onSlaReport(histRange)}
+                onClick={() => onSlaReport(monitor, histRange)}
                 style={{
                   padding: '5px 11px',
                   borderRadius: 7,
@@ -904,9 +970,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                   color: 'var(--color-accent)',
                   border: '1px solid rgba(99, 102, 241, 0.35)',
                 }}
-                title="Generar informe técnico e imprimir o exportar SLA para este enlace"
+                title={isEn ? "Generate technical report and print or export SLA for this link" : "Generar informe técnico e imprimir o exportar SLA para este enlace"}
               >
-                <FileSpreadsheet size={13} /> Reporte SLA
+                <FileSpreadsheet size={13} /> {t.monitor.slaReportBtn}
               </button>
 
               <button
@@ -924,9 +990,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
                   color: 'var(--color-text-secondary)',
                   border: '1px solid var(--color-border)',
                 }}
-                title="Descargar reporte CSV de SLA e historial de este enlace"
+                title={isEn ? "Download CSV SLA report and history for this link" : "Descargar reporte CSV de SLA e historial de este enlace"}
               >
-                <Download size={13} /> Exportar CSV
+                <Download size={13} /> {t.monitor.exportCsvBtn}
               </button>
             </div>
           </div>
@@ -939,9 +1005,9 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
             marginBottom: 18,
           }}>
             <SlaMetricCard
-              label="DISPONIBILIDAD / SLA"
+              label={t.monitor.kpiAvailability}
               value={slaStats.slaPctFormatted != null ? `${slaStats.slaPctFormatted}%` : '—'}
-              sub={`${slaStats.upSamples}/${slaStats.totalSamples} muestras OK`}
+              sub={`${slaStats.upSamples}/${slaStats.totalSamples} ${t.monitor.samplesOk}`}
               color={
                 slaStats.slaPctNum == null
                   ? undefined
@@ -953,26 +1019,26 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
               }
             />
             <SlaMetricCard
-              label="TIEMPO CAÍDO (DOWNTIME)"
-              value={formatDurationHuman(slaStats.downtimeSec)}
+              label={t.monitor.kpiDowntime}
+              value={formatDurationHuman(slaStats.downtimeSec, isEn)}
               sub={
                 slaStats.outagesCount === 0
-                  ? '0 incidentes en el periodo'
-                  : `${slaStats.outagesCount} ${slaStats.outagesCount === 1 ? 'corte registrado' : 'cortes registrados'}`
+                  ? t.monitor.noOutagesRecorded
+                  : `${slaStats.outagesCount} ${slaStats.outagesCount === 1 ? t.monitor.outageCountSingular : t.monitor.outageCountPlural}`
               }
               color={slaStats.downtimeSec > 0 ? '#f87171' : '#22c55e'}
             />
             <SlaMetricCard
-              label="LATENCIA ACTUAL / PROM"
+              label={t.monitor.kpiCurrentAvgLatency}
               value={
                 status === 'DOWN' || status === 'PAUSED' || status === 'MAINTENANCE' || status === 'UNKNOWN'
                   ? '—'
                   : `${monitor.current_latency_ms ?? '?'} ms`
               }
-              sub={`Promedio: ${slaStats.avgLat != null ? `${slaStats.avgLat} ms` : '—'}`}
+              sub={`${t.monitor.avgLabel} ${slaStats.avgLat != null ? `${slaStats.avgLat} ms` : '—'}`}
             />
             <SlaMetricCard
-              label="MÍNIMA / PICO MÁXIMO"
+              label={t.monitor.kpiMinMaxLatency}
               value={
                 slaStats.minLat != null && slaStats.maxLat != null
                   ? `${slaStats.minLat} / ${slaStats.maxLat} ms`
@@ -980,20 +1046,20 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
               }
               sub={
                 slaStats.degradedSamples > 0
-                  ? `${slaStats.degradedSamples} muestras con lentitud`
-                  : 'Sin picos fuera de umbral'
+                  ? `${slaStats.degradedSamples} ${t.monitor.degradedSamplesNotice}`
+                  : t.monitor.noLatencySpikes
               }
             />
             <SlaMetricCard
-              label="ESTABILIDAD (JITTER / P95)"
+              label={t.monitor.kpiStability}
               value={`${slaStats.jitterMs} ms`}
-              sub={`Percentil P95: ${slaStats.p95Lat != null ? `${slaStats.p95Lat} ms` : '—'}`}
+              sub={`${t.monitor.p95Label} ${slaStats.p95Lat != null ? `${slaStats.p95Lat} ms` : '—'}`}
               color={slaStats.jitterMs > 35 ? '#f59e0b' : '#38bdf8'}
             />
             <SlaMetricCard
-              label="CONFIGURACIÓN SENSOR"
+              label={t.monitor.kpiSensorConfig}
               value={`${monitor.type}${monitor.port ? `:${monitor.port}` : ''}`}
-              sub={`Cada ${monitor.interval_seconds}s · ${monitor.retries} reintentos`}
+              sub={`${t.monitor.intervalLabel} ${monitor.interval_seconds}s · ${monitor.retries} ${t.monitor.retriesLabel}`}
             />
           </div>
 
@@ -1007,7 +1073,7 @@ function MonitorRow({ monitor, group, isActive, onToggle, onEdit, onDelete, onDi
       )}
     </div>
   )
-}
+})
 
 // ── Botón de acción pequeño ────────────────────────────────────────────────
 function Btn({ icon, title, onClick, danger, customColor }: {

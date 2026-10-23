@@ -2,9 +2,11 @@
  * components/UptimeBar.tsx
  * Barra de historial de estado estilo Uptime Kuma / NOC.
  * Muestra N barras verticales esbeltas y proporcionadas representando el estado en el tiempo.
+ * Optimizado para alto rendimiento (500+ endpoints sin sobrecargar el hilo principal).
  */
 import React from 'react'
 import type { HistoryPoint } from '../types'
+import { useI18nStore } from '../i18n'
 
 const COLOR: Record<string, string> = {
   UP:          '#22c55e',
@@ -15,6 +17,15 @@ const COLOR: Record<string, string> = {
   UNKNOWN:     '#64748b',
 }
 
+function formatBarTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
 interface Props {
   history: HistoryPoint[]
   /** Número máximo de barras a renderizar (homologado a 36 barras esbeltas) */
@@ -22,14 +33,17 @@ interface Props {
 }
 
 export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 36 }: Props) {
+  const isEn = useI18nStore(s => s.language === 'en')
   // Tomar los últimos N puntos
   const points = history.slice(-maxBars)
 
   // Rellenar con barras vacías (UNKNOWN) al principio si hay menos datos que maxBars
-  const padded: Array<HistoryPoint | null> = [
-    ...Array(Math.max(0, maxBars - points.length)).fill(null),
-    ...points,
-  ]
+  const padCount = Math.max(0, maxBars - points.length)
+  const padded: Array<HistoryPoint | null> = padCount > 0
+    ? [...Array(padCount).fill(null), ...points]
+    : points
+
+  const emptyText = isEn ? 'No data' : 'Sin datos'
 
   return (
     <div style={{
@@ -43,8 +57,8 @@ export const UptimeBar = React.memo(function UptimeBar({ history, maxBars = 36 }
         const isNewest = i === padded.length - 1 && p != null
         const color = p ? (COLOR[p.status] ?? COLOR.UNKNOWN) : 'rgba(148, 163, 184, 0.22)'
         const title = p
-          ? `${new Date(p.time).toLocaleTimeString()} · ${p.status} · ${p.latency_ms}ms`
-          : 'Sin datos'
+          ? `${formatBarTime(p.time)} · ${p.status} · ${p.latency_ms}ms`
+          : emptyText
         return (
           <div
             key={p ? `${p.time}-${i}` : `empty-${i}`}

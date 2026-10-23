@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Tag as TagIcon, Plus, Trash2, Pipette } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { ConfirmDialog } from './ConfirmDialog'
+import { useTranslation } from '../i18n'
 
 const PRESET_COLORS = [
   // Azules, Índigos y Violetas
@@ -19,6 +20,7 @@ const PRESET_COLORS = [
 ]
 
 export function TagsSettings() {
+  const { isEn } = useTranslation()
   const { allTags, fetchTags, fetchGroups } = useMonitorStore()
   const [name, setName] = useState('')
   const [color, setColor] = useState(PRESET_COLORS[0])
@@ -65,22 +67,30 @@ export function TagsSettings() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <h3 style={{ margin: 0, fontSize: 18, borderBottom: '1px solid var(--color-border)', paddingBottom: 10 }}>Gestión de Etiquetas</h3>
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Crea y administra las etiquetas que podrás asignar a tus grupos de monitoreo.</p>
+      <h3 style={{ margin: 0, fontSize: 18, borderBottom: '1px solid var(--color-border)', paddingBottom: 10 }}>
+        {isEn ? 'Tag Management' : 'Gestión de Etiquetas'}
+      </h3>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+        {isEn ? 'Create and manage tags to assign to your monitor groups.' : 'Crea y administra las etiquetas que podrás asignar a tus grupos de monitoreo.'}
+      </p>
       
       <form onSubmit={handleCreate} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', background: 'var(--color-bg-card)', padding: 16, borderRadius: 8, border: '1px solid var(--color-border)' }}>
         <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Nombre de Etiqueta</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+            {isEn ? 'Tag Name' : 'Nombre de Etiqueta'}
+          </label>
           <input 
             value={name} 
             onChange={e => setName(e.target.value)} 
-            placeholder="Ej. Producción, API, MX..." 
+            placeholder={isEn ? 'e.g. Production, API, US-East...' : 'Ej. Producción, API, MX...'} 
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '2 1 300px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Color de Etiqueta</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+              {isEn ? 'Tag Color' : 'Color de Etiqueta'}
+            </label>
             <span style={{
               fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
               color, display: 'flex', alignItems: 'center', gap: 5,
@@ -108,7 +118,7 @@ export function TagsSettings() {
 
             {/* Selector de color personalizado nativo (Rueda de color con Pipeta) */}
             <label
-              title="Elegir color personalizado..."
+              title={isEn ? 'Choose custom color...' : 'Elegir color personalizado...'}
               style={{
                 width: 24, height: 24, borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -132,14 +142,14 @@ export function TagsSettings() {
           </div>
         </div>
         <button disabled={loading || !name.trim()} style={{ background: 'var(--color-accent)', color: '#fff', padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, height: 36 }}>
-          <Plus size={16} /> Agregar
+          <Plus size={16} /> {isEn ? 'Add Tag' : 'Agregar'}
         </button>
       </form>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
         {allTags.length === 0 ? (
           <div style={{ width: '100%', textAlign: 'center', padding: 30, color: 'var(--color-text-muted)', border: '1px dashed var(--color-border)', borderRadius: 8 }}>
-            No hay etiquetas creadas.
+            {isEn ? 'No tags created yet. Add one above.' : 'No hay etiquetas creadas todavía. Agrega una arriba.'}
           </div>
         ) : (
           allTags.map(t => (
@@ -156,9 +166,9 @@ export function TagsSettings() {
 
       {tagToDelete !== null && (
         <ConfirmDialog
-          title="Eliminar Etiqueta"
-          message="¿Seguro que deseas eliminar esta etiqueta? Se quitará de todos los grupos que la usen."
-          confirmLabel="Eliminar"
+          title={isEn ? 'Delete Tag' : 'Eliminar Etiqueta'}
+          message={isEn ? 'Are you sure you want to delete this tag? It will be removed from all associated groups.' : '¿Seguro que deseas eliminar esta etiqueta? Se quitará de todos los grupos que la usen.'}
+          confirmLabel={isEn ? 'Delete' : 'Eliminar'}
           onConfirm={performDelete}
           onCancel={() => setTagToDelete(null)}
         />

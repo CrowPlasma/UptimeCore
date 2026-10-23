@@ -12,6 +12,7 @@ import type { MonitorGroup, Monitor, MonitorStatus } from '../types'
 import type { ModalMode } from './MonitorModal'
 import { DiagnosticModal } from './DiagnosticModal'
 import { useMonitorStore } from '../store/monitorStore'
+import { useTranslation } from '../i18n'
 
 export type NocViewType = 'cards' | 'mosaic'
 
@@ -44,13 +45,15 @@ const STATUS_COLOR: Record<MonitorStatus, string> = {
   UNKNOWN: '#6b7280',
 }
 
-const STATUS_LABEL: Record<MonitorStatus, string> = {
-  UP: 'OPERATIVO',
-  DOWN: 'CAÍDO',
-  DEGRADED: 'DEGRADADO',
-  MAINTENANCE: 'MANTENIMIENTO',
-  PAUSED: 'PAUSADO',
-  UNKNOWN: 'DESCONOCIDO',
+function getStatusLabel(st: MonitorStatus, isEn?: boolean): string {
+  switch (st) {
+    case 'UP': return isEn ? 'OPERATIONAL' : 'OPERATIVO'
+    case 'DOWN': return isEn ? 'DOWN' : 'CAÍDO'
+    case 'DEGRADED': return isEn ? 'DEGRADED' : 'DEGRADADO'
+    case 'MAINTENANCE': return isEn ? 'MAINTENANCE' : 'MANTENIMIENTO'
+    case 'PAUSED': return isEn ? 'PAUSED' : 'PAUSADO'
+    case 'UNKNOWN': default: return isEn ? 'UNKNOWN' : 'DESCONOCIDO'
+  }
 }
 
 function getMonitorEffectiveStatus(m: Monitor): MonitorStatus {
@@ -69,7 +72,11 @@ export function NocWallboard({
   sortDownFirst = false,
   onClearFilter,
 }: Props) {
-  const { toggleGroup, toggleGroupMaintenance, toggleMonitor, toggleMaintenance } = useMonitorStore()
+  const { isEn } = useTranslation()
+  const toggleGroup = useMonitorStore(s => s.toggleGroup)
+  const toggleGroupMaintenance = useMonitorStore(s => s.toggleGroupMaintenance)
+  const toggleMonitor = useMonitorStore(s => s.toggleMonitor)
+  const toggleMaintenance = useMonitorStore(s => s.toggleMaintenance)
 
   const [internalView, setInternalView] = useState<NocViewType>(() => {
     try {
@@ -184,7 +191,7 @@ export function NocWallboard({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Tipo de Vista NOC:
+            {isEn ? 'NOC View Type:' : 'Tipo de Vista NOC:'}
           </span>
 
           <div style={{
@@ -203,7 +210,7 @@ export function NocWallboard({
               }}
             >
               <Grid size={14} />
-              Mosaico
+              {isEn ? 'Mosaic' : 'Mosaico'}
             </button>
             <button
               type="button"
@@ -217,7 +224,7 @@ export function NocWallboard({
               }}
             >
               <LayoutGrid size={14} />
-              Tarjetas
+              {isEn ? 'Cards' : 'Tarjetas'}
             </button>
           </div>
 
@@ -238,7 +245,7 @@ export function NocWallboard({
                 }}
               >
                 <Layers size={13} />
-                Por Grupos ({sortedGroups.length})
+                {isEn ? `By Groups (${sortedGroups.length})` : `Por Grupos (${sortedGroups.length})`}
               </button>
               <button
                 type="button"
@@ -252,7 +259,7 @@ export function NocWallboard({
                 }}
               >
                 <Grid size={13} />
-                Todos los Sensores ({allEndpoints.length})
+                {isEn ? `All Sensors (${allEndpoints.length})` : `Todos los Sensores (${allEndpoints.length})`}
               </button>
             </div>
           ) : (
@@ -262,18 +269,20 @@ export function NocWallboard({
               border: '1px solid rgba(99, 102, 241, 0.3)',
               padding: '5px 11px', borderRadius: 8,
             }}>
-              Mostrando {sortedGroups.length} {sortedGroups.length === 1 ? 'grupo' : 'grupos'}
+              {isEn
+                ? `Showing ${sortedGroups.length} ${sortedGroups.length === 1 ? 'group' : 'groups'}`
+                : `Mostrando ${sortedGroups.length} ${sortedGroups.length === 1 ? 'grupo' : 'grupos'}`}
             </span>
           )}
         </div>
 
         {/* Leyenda rápida */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', flexWrap: 'wrap' }}>
-          <LegendDot color="#ef4444" label="Caído" />
-          <LegendDot color="#f59e0b" label="Degradado" />
-          <LegendDot color="#22c55e" label="Operativo" />
-          <LegendDot color="#3b82f6" label="Mantenimiento" />
-          <LegendDot color="#64748b" label="Pausa" />
+          <LegendDot color="#ef4444" label={isEn ? 'Down' : 'Caído'} />
+          <LegendDot color="#f59e0b" label={isEn ? 'Degraded' : 'Degradado'} />
+          <LegendDot color="#22c55e" label={isEn ? 'Operational' : 'Operativo'} />
+          <LegendDot color="#3b82f6" label={isEn ? 'Maintenance' : 'Mantenimiento'} />
+          <LegendDot color="#64748b" label={isEn ? 'Paused' : 'Pausa'} />
         </div>
       </div>
 
@@ -285,10 +294,14 @@ export function NocWallboard({
           borderRadius: 14, border: '1px dashed var(--color-border)',
         }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-            No hay elementos que coincidan con el filtro seleccionado (0 resultados)
+            {isEn
+              ? 'No items match the selected filter (0 results)'
+              : 'No hay elementos que coincidan con el filtro seleccionado (0 resultados)'}
           </p>
           <p style={{ fontSize: 12.5, marginBottom: 16 }}>
-            Prueba quitando el filtro activo o limpiando el término de búsqueda.
+            {isEn
+              ? 'Try removing the active filter or clearing the search term.'
+              : 'Prueba quitando el filtro activo o limpiando el término de búsqueda.'}
           </p>
           {onClearFilter && (
             <button
@@ -298,7 +311,7 @@ export function NocWallboard({
                 color: '#fff', fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
               }}
             >
-              Ver todos los grupos
+              {isEn ? 'View all groups' : 'Ver todos los grupos'}
             </button>
           )}
         </div>
@@ -334,9 +347,9 @@ export function NocWallboard({
 
             const badgeText =
               activeFilter === 'paused' && pausedCount > 0
-                ? `${pausedCount}/${monitors.length} PAUSA`
+                ? `${pausedCount}/${monitors.length} ${isEn ? 'PAUSED' : 'PAUSA'}`
                 : activeFilter === 'maintenance' && maintCount > 0
-                ? `${maintCount}/${monitors.length} MANT`
+                ? `${maintCount}/${monitors.length} ${isEn ? 'MAINT' : 'MANT'}`
                 : downCount > 0
                 ? `${downCount} DOWN`
                 : `${upCount}/${monitors.length}`
@@ -348,7 +361,7 @@ export function NocWallboard({
                   setSelectedGroupId(group.id)
                   setSelectedMonitorId(null)
                 }}
-                title={`${group.name} — Estado: ${STATUS_LABEL[st]} (${upCount}/${monitors.length} UP${pausedCount > 0 ? `, ${pausedCount} en pausa` : ''}${maintCount > 0 ? `, ${maintCount} en mant.` : ''}). Clic para ver detalle del grupo.`}
+                title={`${group.name} — ${isEn ? 'Status' : 'Estado'}: ${getStatusLabel(st, isEn)} (${upCount}/${monitors.length} UP${pausedCount > 0 ? `, ${pausedCount} ${isEn ? 'paused' : 'en pausa'}` : ''}${maintCount > 0 ? `, ${maintCount} ${isEn ? 'in maint.' : 'en mant.'}` : ''}). ${isEn ? 'Click to inspect group.' : 'Clic para ver detalle del grupo.'}`}
                 style={{
                   background: tileStyle.bg,
                   border: `1.5px solid ${tileStyle.border}`,
@@ -439,7 +452,7 @@ export function NocWallboard({
                   setSelectedGroupId(group.id)
                   setSelectedMonitorId(m.id)
                 }}
-                title={`Grupo: ${group.name}\nSensor: ${m.name}\nDestino: ${m.target}\nEstado: ${STATUS_LABEL[st]} (${m.current_latency_ms ?? 0}ms)\nClic para ver detalles`}
+                title={`${isEn ? 'Group' : 'Grupo'}: ${group.name}\n${isEn ? 'Sensor' : 'Sensor'}: ${m.name}\n${isEn ? 'Target' : 'Destino'}: ${m.target}\n${isEn ? 'Status' : 'Estado'}: ${getStatusLabel(st, isEn)} (${m.current_latency_ms ?? 0}ms)\n${isEn ? 'Click to inspect' : 'Clic para ver detalles'}`}
                 style={{
                   background: tileStyle.bg,
                   border: `1.5px solid ${tileStyle.border}`,
@@ -497,8 +510,8 @@ export function NocWallboard({
                     color: '#fff',
                     fontFamily: "'JetBrains Mono', monospace",
                   }}>
-                    {st === 'PAUSED' ? 'PAUSA'
-                      : st === 'MAINTENANCE' ? 'MANT'
+                    {st === 'PAUSED' ? (isEn ? 'PAUSED' : 'PAUSA')
+                      : st === 'MAINTENANCE' ? (isEn ? 'MAINT' : 'MANT')
                       : st === 'DOWN' ? 'DOWN'
                       : `${m.current_latency_ms ?? 0}ms`}
                   </span>
@@ -546,8 +559,8 @@ export function NocWallboard({
                   ))}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 3 }}>
-                  Estado del grupo: <strong style={{ color: STATUS_COLOR[inspectedGroup.overall_status || 'UNKNOWN'] }}>
-                    {STATUS_LABEL[inspectedGroup.overall_status || 'UNKNOWN']}
+                  {isEn ? 'Group status:' : 'Estado del grupo:'} <strong style={{ color: STATUS_COLOR[inspectedGroup.overall_status || 'UNKNOWN'] }}>
+                    {getStatusLabel(inspectedGroup.overall_status || 'UNKNOWN', isEn)}
                   </strong>
                   {inspectedGroup.description ? ` · ${inspectedGroup.description}` : ''}
                 </div>
@@ -555,25 +568,25 @@ export function NocWallboard({
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 <button
                   onClick={() => toggleGroupMaintenance(inspectedGroup.id)}
-                  title="Alternar Mantenimiento en todo el grupo"
+                  title={isEn ? 'Toggle maintenance across entire group' : 'Alternar Mantenimiento en todo el grupo'}
                   style={{
                     padding: '6px 10px', borderRadius: 7, border: '1px solid #3b82f6',
                     background: 'rgba(59,130,246,0.15)', color: '#60a5fa',
                     fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
                   }}
                 >
-                  <Wrench size={12} /> Mant. Grupo
+                  <Wrench size={12} /> {isEn ? 'Maint. Group' : 'Mant. Grupo'}
                 </button>
                 <button
                   onClick={() => toggleGroup(inspectedGroup.id)}
-                  title="Pausar o Reanudar todo el grupo"
+                  title={isEn ? 'Pause or resume entire group' : 'Pausar o Reanudar todo el grupo'}
                   style={{
                     padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)',
                     background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
                     fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
                   }}
                 >
-                  <Pause size={12} /> Pausa Grupo
+                  <Pause size={12} /> {isEn ? 'Pause Group' : 'Pausa Grupo'}
                 </button>
                 <button
                   onClick={() => {
@@ -581,7 +594,7 @@ export function NocWallboard({
                     closeInspector()
                     onOpenModal({ type: 'edit_group', group: g })
                   }}
-                  title="Editar Grupo"
+                  title={isEn ? 'Edit Group' : 'Editar Grupo'}
                   style={{
                     width: 30, height: 30, borderRadius: 7, border: '1px solid var(--color-border)',
                     background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
@@ -643,12 +656,12 @@ export function NocWallboard({
                               fontSize: 9.5, fontWeight: 800, padding: '1px 6px', borderRadius: 99,
                               background: 'var(--color-accent)', color: '#fff',
                             }}>
-                              Sensor seleccionado
+                              {isEn ? 'Selected sensor' : 'Sensor seleccionado'}
                             </span>
                           )}
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", marginTop: 3, paddingLeft: 16, wordBreak: 'break-all' }}>
-                          {m.target}{m.port ? `:${m.port}` : ''} · cada {m.interval_seconds}s ({m.retries} reintentos)
+                          {m.target}{m.port ? `:${m.port}` : ''} · {isEn ? `every ${m.interval_seconds}s (${m.retries} retries)` : `cada ${m.interval_seconds}s (${m.retries} reintentos)`}
                         </div>
                         {m.current_msg && (
                           <div style={{ fontSize: 11.5, color: st === 'DOWN' ? '#f87171' : '#fbbf24', fontFamily: "'JetBrains Mono', monospace", marginTop: 2, paddingLeft: 16, wordBreak: 'break-all' }}>
@@ -659,11 +672,11 @@ export function NocWallboard({
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 800, color: col, marginRight: 2 }}>
-                          {isPaused ? 'PAUSA' : isMaint ? 'MANT.' : st === 'DOWN' ? 'CAÍDO' : `${m.current_latency_ms ?? 0}ms`}
+                          {isPaused ? (isEn ? 'PAUSED' : 'PAUSA') : isMaint ? (isEn ? 'MAINT.' : 'MANT.') : st === 'DOWN' ? (isEn ? 'DOWN' : 'CAÍDO') : `${m.current_latency_ms ?? 0}ms`}
                         </span>
                         <button
                           onClick={() => setDiagnosticTarget({ monitor: m, groupName: inspectedGroup.name })}
-                          title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+                          title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
                           style={{
                             width: 28, height: 28, borderRadius: 6,
                             border: '1px solid rgba(56, 189, 248, 0.4)',
@@ -676,7 +689,7 @@ export function NocWallboard({
                         </button>
                         <button
                           onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
-                          title="Alternar Mantenimiento"
+                          title={isMaint ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Toggle Maintenance' : 'Alternar Mantenimiento')}
                           style={{
                             width: 28, height: 28, borderRadius: 6,
                             border: isMaint ? '1px solid #3b82f6' : '1px solid var(--color-border)',
@@ -689,7 +702,7 @@ export function NocWallboard({
                         </button>
                         <button
                           onClick={() => toggleMonitor(inspectedGroup.id, m.id)}
-                          title={isPaused ? 'Reanudar' : 'Pausar'}
+                          title={isPaused ? (isEn ? 'Resume' : 'Reanudar') : (isEn ? 'Pause' : 'Pausar')}
                           style={{
                             width: 28, height: 28, borderRadius: 6,
                             border: isPaused ? '1px solid #22c55e' : '1px solid var(--color-border)',
@@ -706,7 +719,7 @@ export function NocWallboard({
                             closeInspector()
                             onOpenModal({ type: 'edit_monitor', group: g, monitor: m })
                           }}
-                          title="Editar configuración del sensor"
+                          title={isEn ? 'Edit sensor configuration' : 'Editar configuración del sensor'}
                           style={{
                             width: 28, height: 28, borderRadius: 6,
                             border: '1px solid var(--color-border)',
@@ -728,7 +741,7 @@ export function NocWallboard({
                           return (
                             <span
                               key={idx}
-                              title={`${new Date(pt.time).toLocaleTimeString()} — ${pt.status} (${pt.latency_ms}ms)`}
+                              title={`${new Date(pt.time).toLocaleTimeString(isEn ? 'en-US' : 'es-MX')} — ${pt.status} (${pt.latency_ms}ms)`}
                               style={{
                                 flex: 1,
                                 height: 6,
@@ -840,7 +853,7 @@ export function NocWallboard({
                       <>
                         <button
                           onClick={() => toggleGroupMaintenance(group.id)}
-                          title={allGroupMaint ? 'Quitar Mantenimiento del Grupo' : 'Poner Grupo en Mantenimiento'}
+                          title={allGroupMaint ? (isEn ? 'Remove Group Maintenance' : 'Quitar Mantenimiento del Grupo') : (isEn ? 'Put Group in Maintenance' : 'Poner Grupo en Mantenimiento')}
                           style={{
                             width: 24, height: 24, borderRadius: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -854,7 +867,7 @@ export function NocWallboard({
                         </button>
                         <button
                           onClick={() => toggleGroup(group.id)}
-                          title={allGroupPaused ? 'Reanudar Grupo' : 'Pausar Grupo'}
+                          title={allGroupPaused ? (isEn ? 'Resume Group' : 'Reanudar Grupo') : (isEn ? 'Pause Group' : 'Pausar Grupo')}
                           style={{
                             width: 24, height: 24, borderRadius: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -873,7 +886,7 @@ export function NocWallboard({
                         fontSize: 9.5, fontWeight: 800, padding: '2px 6px', borderRadius: 6,
                         background: 'rgba(100, 116, 139, 0.22)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.35)',
                       }}>
-                        {pausedCount} PAUSA
+                        {pausedCount} {isEn ? 'PAUSED' : 'PAUSA'}
                       </span>
                     )}
                     {maintCount > 0 && st !== 'MAINTENANCE' && (
@@ -881,7 +894,7 @@ export function NocWallboard({
                         fontSize: 9.5, fontWeight: 800, padding: '2px 6px', borderRadius: 6,
                         background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.38)',
                       }}>
-                        {maintCount} MANT.
+                        {maintCount} {isEn ? 'MAINT.' : 'MANT.'}
                       </span>
                     )}
                     <span style={{
@@ -889,7 +902,7 @@ export function NocWallboard({
                       background: `${STATUS_COLOR[st]}20`, color: STATUS_COLOR[st], border: `1px solid ${STATUS_COLOR[st]}45`,
                       letterSpacing: '0.03em',
                     }}>
-                      {STATUS_LABEL[st]}
+                      {getStatusLabel(st, isEn)}
                     </span>
                   </div>
                 </div>
@@ -902,7 +915,7 @@ export function NocWallboard({
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '4px 6px',
                     }}>
-                      <span>Sin endpoints</span>
+                      <span>{isEn ? 'No endpoints' : 'Sin endpoints'}</span>
                       <button
                         onClick={() => onOpenModal({ type: 'new_monitor', group })}
                         style={{
@@ -911,7 +924,7 @@ export function NocWallboard({
                           border: 'none', cursor: 'pointer', fontWeight: 700,
                         }}
                       >
-                        <Plus size={12} /> Añadir
+                        <Plus size={12} /> {isEn ? 'Add' : 'Añadir'}
                       </button>
                     </div>
                   ) : (
@@ -955,7 +968,7 @@ export function NocWallboard({
                               setSelectedMonitorId(m.id)
                             }}
                             style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flex: 1, cursor: 'pointer' }}
-                            title={`${m.name} (${m.type}: ${m.target}) — Clic para ver detalle`}
+                            title={`${m.name} (${m.type}: ${m.target}) — ${isEn ? 'Click to inspect' : 'Clic para ver detalle'}`}
                           >
                             <span style={{
                               width: 7, height: 7, borderRadius: '50%',
@@ -987,15 +1000,15 @@ export function NocWallboard({
                                 : mStatus === 'PAUSED' ? '#9ca3af'
                                 : '#22c55e',
                             }}>
-                              {isPaused ? 'PAUSA'
-                                : isMaint ? 'MANT.'
+                              {isPaused ? (isEn ? 'PAUSED' : 'PAUSA')
+                                : isMaint ? (isEn ? 'MAINT.' : 'MANT.')
                                 : mStatus === 'DOWN' ? 'DOWN'
                                 : `${m.current_latency_ms ?? 0}ms`}
                             </span>
 
                             <button
                               onClick={() => setDiagnosticTarget({ monitor: m, groupName: group.name })}
-                              title="Diagnóstico en Vivo (Paping / Ping / Traceroute)"
+                              title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
                               style={{
                                 width: 20, height: 20, borderRadius: 4, border: 'none',
                                 background: 'rgba(14, 165, 233, 0.16)',
@@ -1008,7 +1021,7 @@ export function NocWallboard({
                             </button>
                             <button
                               onClick={() => toggleMaintenance(group.id, m.id)}
-                              title={m.is_maintenance ? 'Salir de Mantenimiento' : 'Mantenimiento'}
+                              title={m.is_maintenance ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Maintenance' : 'Mantenimiento')}
                               style={{
                                 width: 20, height: 20, borderRadius: 4, border: 'none',
                                 background: isMaint ? 'rgba(59,130,246,0.25)' : 'transparent',
@@ -1021,7 +1034,7 @@ export function NocWallboard({
                             </button>
                             <button
                               onClick={() => toggleMonitor(group.id, m.id)}
-                              title={m.is_active ? 'Pausar' : 'Reanudar'}
+                              title={m.is_active ? (isEn ? 'Pause' : 'Pausar') : (isEn ? 'Resume' : 'Reanudar')}
                               style={{
                                 width: 20, height: 20, borderRadius: 4, border: 'none',
                                 background: isPaused ? 'rgba(34,197,94,0.2)' : 'transparent',

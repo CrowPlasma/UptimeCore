@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import type { MonitorGroup } from '../types'
 import { useMonitorStore } from '../store/monitorStore'
+import { useTranslation } from '../i18n'
 import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 export interface SlaReportMonitor {
@@ -107,11 +108,11 @@ function formatDurationHuman(sec: number): string {
   return parts.join(' ') || '0s'
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string = 'es-MX'): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso)
-    return d.toLocaleString('es-MX', {
+    return d.toLocaleString(locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -134,11 +135,13 @@ function buildPrintableHtml(
   report: SlaReportResponse,
   entity: { name: string; logo: string },
   scopeLabel: string,
-  slaTarget: number
+  slaTarget: number,
+  isEn?: boolean
 ): string {
   const isSingle = report.monitors.length === 1
   const m = isSingle ? report.monitors[0] : null
   const meets = report.overall.meets_sla
+  const locale = isEn ? 'en-US' : 'es-MX'
 
   const logoHtml = entity.logo
     ? `<img src="${entity.logo}" alt="Logo" style="max-height: 42px; max-width: 140px; object-fit: contain;" />`
@@ -153,49 +156,49 @@ function buildPrintableHtml(
   const kpisHtml = `
     <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin-bottom: 11px;">
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid ${meets ? '#bbf7d0' : '#fecaca'}; background: ${meets ? '#f0fdf4' : '#fef2f2'};">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">Disponibilidad SLA</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'SLA Availability' : 'Disponibilidad SLA'}</div>
         <div style="font-size: 17px; font-weight: 800; font-family: monospace; color: ${meets ? '#15803d' : '#b91c1c'}; line-height: 1.1; margin: 2px 0;">
           ${report.overall.global_sla_pct.toFixed(2)}%
         </div>
         <div style="font-size: 7.5px; font-weight: 600; color: ${meets ? '#15803d' : '#b91c1c'};">
-          ${meets ? 'CUMPLE' : 'CRÍTICO'} (≥${report.overall.target_sla_pct.toFixed(2)}%)
+          ${meets ? (isEn ? 'MEETS SLA' : 'CUMPLE') : (isEn ? 'CRITICAL' : 'CRÍTICO')} (≥${report.overall.target_sla_pct.toFixed(2)}%)
         </div>
       </div>
 
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f8fafc;">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">Cortes (Outages)</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'Outages' : 'Cortes (Outages)'}</div>
         <div style="font-size: 17px; font-weight: 800; font-family: monospace; color: ${report.overall.total_outages > 0 ? '#d97706' : '#0f172a'}; line-height: 1.1; margin: 2px 0;">
           ${report.overall.total_outages}
         </div>
-        <div style="font-size: 7.5px; color: #64748b;">Interrupciones</div>
+        <div style="font-size: 7.5px; color: #64748b;">${isEn ? 'Interruptions' : 'Interrupciones'}</div>
       </div>
 
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f8fafc;">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">Tiempo Fuera</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'Downtime' : 'Tiempo Fuera'}</div>
         <div style="font-size: 15px; font-weight: 800; font-family: monospace; color: ${report.overall.total_downtime_sec > 0 ? '#b91c1c' : '#15803d'}; line-height: 1.15; margin: 2px 0;">
           ${formatDurationHuman(report.overall.total_downtime_sec)}
         </div>
-        <div style="font-size: 7.5px; color: #64748b;">Downtime total</div>
+        <div style="font-size: 7.5px; color: #64748b;">${isEn ? 'Total downtime' : 'Downtime total'}</div>
       </div>
 
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f8fafc;">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">MTTR (Recuperación)</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'MTTR (Recovery)' : 'MTTR (Recuperación)'}</div>
         <div style="font-size: 15px; font-weight: 800; font-family: monospace; color: #0f172a; line-height: 1.15; margin: 2px 0;">
           ${report.overall.total_outages > 0 ? formatDurationHuman(report.overall.mttr_seconds) : '0s'}
         </div>
-        <div style="font-size: 7.5px; color: #64748b;">${report.overall.total_outages > 0 ? 'Media por corte' : 'Sin fallas'}</div>
+        <div style="font-size: 7.5px; color: #64748b;">${report.overall.total_outages > 0 ? (isEn ? 'Mean per outage' : 'Media por corte') : (isEn ? 'No failures' : 'Sin fallas')}</div>
       </div>
 
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f8fafc;">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">MTBF (Estabilidad)</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'MTBF (Stability)' : 'MTBF (Estabilidad)'}</div>
         <div style="font-size: 15px; font-weight: 800; font-family: monospace; color: #15803d; line-height: 1.15; margin: 2px 0;">
-          ${report.overall.total_outages > 0 ? formatDurationHuman(report.overall.mtbf_seconds) : 'Continuo'}
+          ${report.overall.total_outages > 0 ? formatDurationHuman(report.overall.mtbf_seconds) : (isEn ? 'Continuous' : 'Continuo')}
         </div>
-        <div style="font-size: 7.5px; color: #64748b;">${report.overall.total_outages > 0 ? 'Media entre fallas' : '100% en línea'}</div>
+        <div style="font-size: 7.5px; color: #64748b;">${report.overall.total_outages > 0 ? (isEn ? 'Mean between failures' : 'Media entre fallas') : (isEn ? '100% continuous' : '100% en línea')}</div>
       </div>
 
       <div style="padding: 7px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f8fafc;">
-        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">Latencia Prom.</div>
+        <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${isEn ? 'Avg. Latency' : 'Latencia Prom.'}</div>
         <div style="font-size: 17px; font-weight: 800; font-family: monospace; color: #0f172a; line-height: 1.1; margin: 2px 0;">
           ${report.overall.avg_latency_ms} ms
         </div>
@@ -209,15 +212,15 @@ function buildPrintableHtml(
     detailSectionHtml = `
       <div style="border: 1px solid #cbd5e1; border-radius: 5px; margin-bottom: 11px; overflow: hidden;">
         <div style="padding: 5px 10px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; font-size: 10px; font-weight: 800; color: #1e293b;">
-          Especificaciones Técnicas del Enlace Auditado
+          ${isEn ? 'Technical Specifications of Audited Link' : 'Especificaciones Técnicas del Enlace Auditado'}
         </div>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 12px; padding: 8px 10px; font-size: 9px;">
-          <div><span style="color: #64748b;">Nombre del Enlace:</span> <strong>${m.monitor_name}</strong></div>
-          <div><span style="color: #64748b;">Grupo / Ubicación:</span> <strong>${m.group_name || 'Sin Grupo'}</strong></div>
-          <div><span style="color: #64748b;">Host / IP Destino:</span> <strong style="font-family: monospace;">${m.target}</strong></div>
-          <div><span style="color: #64748b;">Tipo de Sensor:</span> <strong>${m.type}</strong></div>
-          <div><span style="color: #64748b;">Muestras Totales:</span> <strong>${m.total_samples.toLocaleString()} (${m.up_samples.toLocaleString()} OK / ${m.down_samples.toLocaleString()} Fallas)</strong></div>
-          <div><span style="color: #64748b;">Latencia Pico Máxima:</span> <strong>${m.max_latency_ms} ms</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Link Name:' : 'Nombre del Enlace:'}</span> <strong>${m.monitor_name}</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Group / Location:' : 'Grupo / Ubicación:'}</span> <strong>${m.group_name || (isEn ? 'No Group' : 'Sin Grupo')}</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Target Host / IP:' : 'Host / IP Destino:'}</span> <strong style="font-family: monospace;">${m.target}</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Sensor Type:' : 'Tipo de Sensor:'}</span> <strong>${m.type}</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Total Samples:' : 'Muestras Totales:'}</span> <strong>${m.total_samples.toLocaleString()} (${m.up_samples.toLocaleString()} OK / ${m.down_samples.toLocaleString()} ${isEn ? 'Failures' : 'Fallas'})</strong></div>
+          <div><span style="color: #64748b;">${isEn ? 'Peak Max Latency:' : 'Latencia Pico Máxima:'}</span> <strong>${m.max_latency_ms} ms</strong></div>
         </div>
       </div>
     `
@@ -227,10 +230,10 @@ function buildPrintableHtml(
       return `
         <tr>
           <td style="padding: 5px 6px; font-weight: 700; border-bottom: 1px solid #e2e8f0;">${mon.monitor_name}<div style="font-size: 7.5px; font-weight: 400; color: #64748b;">${mon.target}</div></td>
-          <td style="padding: 5px 6px; border-bottom: 1px solid #e2e8f0;">${mon.group_name || 'Sin Grupo'}</td>
+          <td style="padding: 5px 6px; border-bottom: 1px solid #e2e8f0;">${mon.group_name || (isEn ? 'No Group' : 'Sin Grupo')}</td>
           <td style="padding: 5px 6px; border-bottom: 1px solid #e2e8f0;"><span style="font-size: 8px; font-weight: 700; padding: 1px 3px; background: #e2e8f0; border-radius: 2px;">${mon.type}</span></td>
           <td style="padding: 5px 6px; text-align: right; font-family: monospace; font-weight: 800; color: ${ok ? '#15803d' : '#b91c1c'}; border-bottom: 1px solid #e2e8f0;">${mon.availability_pct.toFixed(2)}%</td>
-          <td style="padding: 5px 6px; text-align: center; border-bottom: 1px solid #e2e8f0;"><span style="font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: ${ok ? '#dcfce7' : '#fee2e2'}; color: ${ok ? '#15803d' : '#b91c1c'};">${ok ? 'CUMPLE' : 'CRÍTICO'}</span></td>
+          <td style="padding: 5px 6px; text-align: center; border-bottom: 1px solid #e2e8f0;"><span style="font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: ${ok ? '#dcfce7' : '#fee2e2'}; color: ${ok ? '#15803d' : '#b91c1c'};">${ok ? (isEn ? 'MEETS' : 'CUMPLE') : (isEn ? 'CRITICAL' : 'CRÍTICO')}</span></td>
           <td style="padding: 5px 6px; text-align: right; font-family: monospace; border-bottom: 1px solid #e2e8f0;">${mon.outages_count}</td>
           <td style="padding: 5px 6px; text-align: right; font-family: monospace; color: ${mon.downtime_seconds > 0 ? '#b91c1c' : '#15803d'}; font-weight: 700; border-bottom: 1px solid #e2e8f0;">${formatDurationHuman(mon.downtime_seconds)}</td>
         </tr>
@@ -240,19 +243,19 @@ function buildPrintableHtml(
     detailSectionHtml = `
       <div style="border: 1px solid #cbd5e1; border-radius: 5px; margin-bottom: 11px; overflow: hidden;">
         <div style="padding: 5px 10px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; font-size: 10px; font-weight: 800; color: #1e293b; display: flex; justify-content: space-between;">
-          <span>Desglose de Monitores y Cumplimiento Individual (${report.monitors.length} enlaces)</span>
-          <span>Meta: ≥${slaTarget.toFixed(2)}%</span>
+          <span>${isEn ? `Monitors Breakdown and Individual Compliance (${report.monitors.length} links)` : `Desglose de Monitores y Cumplimiento Individual (${report.monitors.length} enlaces)`}</span>
+          <span>${isEn ? 'Goal:' : 'Meta:'} ≥${slaTarget.toFixed(2)}%</span>
         </div>
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.5px;">
           <thead>
             <tr style="background: #f8fafc; color: #475569; text-transform: uppercase; font-size: 8px;">
-              <th style="width: 28%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Monitor / Enlace</th>
-              <th style="width: 22%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Grupo / Sede</th>
-              <th style="width: 10%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Tipo</th>
-              <th style="width: 14%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">Disponibilidad</th>
-              <th style="width: 12%; padding: 5px 6px; text-align: center; border-bottom: 1px solid #cbd5e1;">Estado</th>
-              <th style="width: 6%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">Cortes</th>
-              <th style="width: 8%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">T. Fuera</th>
+              <th style="width: 28%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Monitor / Link' : 'Monitor / Enlace'}</th>
+              <th style="width: 22%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Group / Site' : 'Grupo / Sede'}</th>
+              <th style="width: 10%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Type' : 'Tipo'}</th>
+              <th style="width: 14%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Availability' : 'Disponibilidad'}</th>
+              <th style="width: 12%; padding: 5px 6px; text-align: center; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Status' : 'Estado'}</th>
+              <th style="width: 6%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Outages' : 'Cortes'}</th>
+              <th style="width: 8%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Downtime' : 'T. Fuera'}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -265,36 +268,36 @@ function buildPrintableHtml(
   if (report.incidents.length === 0) {
     incidentsHtml = `
       <div style="border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 5px; padding: 8px; text-align: center; color: #15803d; font-size: 9.5px; font-weight: 700; margin-bottom: 11px;">
-        ✓ Cero interrupciones o caídas registradas durante el periodo evaluado. Operación 100% continua.
+        ${isEn ? '✓ Zero service interruptions or outages recorded during the evaluated period. 100% continuous operation.' : '✓ Cero interrupciones o caídas registradas durante el periodo evaluado. Operación 100% continua.'}
       </div>
     `
   } else {
     const incRows = report.incidents.slice(0, 15).map(inc => `
       <tr>
         <td style="padding: 4px 6px; font-weight: 700; border-bottom: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inc.monitor_name} <span style="font-size: 7.5px; color: #64748b;">(${inc.type})</span></td>
-        <td style="padding: 4px 6px; border-bottom: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inc.group_name || 'Sin Grupo'}</td>
-        <td style="padding: 4px 6px; font-family: monospace; font-size: 8px; border-bottom: 1px solid #e2e8f0;">${formatDate(inc.started_at)}</td>
-        <td style="padding: 4px 6px; font-family: monospace; font-size: 8px; color: ${inc.is_ongoing ? '#b91c1c' : '#0f172a'}; border-bottom: 1px solid #e2e8f0;">${inc.resolved_at ? formatDate(inc.resolved_at) : (inc.is_ongoing ? 'EN CURSO' : '—')}</td>
+        <td style="padding: 4px 6px; border-bottom: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inc.group_name || (isEn ? 'No Group' : 'Sin Grupo')}</td>
+        <td style="padding: 4px 6px; font-family: monospace; font-size: 8px; border-bottom: 1px solid #e2e8f0;">${formatDate(inc.started_at, locale)}</td>
+        <td style="padding: 4px 6px; font-family: monospace; font-size: 8px; color: ${inc.is_ongoing ? '#b91c1c' : '#0f172a'}; border-bottom: 1px solid #e2e8f0;">${inc.resolved_at ? formatDate(inc.resolved_at, locale) : (inc.is_ongoing ? (isEn ? 'ONGOING' : 'EN CURSO') : '—')}</td>
         <td style="padding: 4px 6px; text-align: right; font-family: monospace; font-weight: 700; color: ${inc.duration_sec > 600 ? '#b91c1c' : '#d97706'}; border-bottom: 1px solid #e2e8f0;">${formatDurationHuman(inc.duration_sec)}</td>
-        <td style="padding: 4px 6px; color: #475569; font-size: 8px; border-bottom: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inc.error_msg || 'Caída de enlace'}</td>
+        <td style="padding: 4px 6px; color: #475569; font-size: 8px; border-bottom: 1px solid #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${inc.error_msg || (isEn ? 'Link outage' : 'Caída de enlace')}</td>
       </tr>
     `).join('')
 
     incidentsHtml = `
       <div style="border: 1px solid #cbd5e1; border-radius: 5px; margin-bottom: 11px; overflow: hidden;">
         <div style="padding: 5px 10px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; font-size: 10px; font-weight: 800; color: #1e293b; display: flex; justify-content: space-between;">
-          <span>Registro de Incidentes y Caídas en el Periodo</span>
-          <span style="font-size: 8.5px; padding: 1px 5px; border-radius: 3px; background: #fee2e2; color: #b91c1c; font-weight: 700;">${report.incidents.length} evento(s)</span>
+          <span>${isEn ? 'Incident and Outage Log in Period' : 'Registro de Incidentes y Caídas en el Periodo'}</span>
+          <span style="font-size: 8.5px; padding: 1px 5px; border-radius: 3px; background: #fee2e2; color: #b91c1c; font-weight: 700;">${report.incidents.length} ${isEn ? 'event(s)' : 'evento(s)'}</span>
         </div>
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.5px;">
           <thead>
             <tr style="background: #f8fafc; color: #475569; text-transform: uppercase; font-size: 8px;">
-              <th style="width: 22%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Monitor / Endpoint</th>
-              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Grupo</th>
-              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Inicio de Corte</th>
-              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Restablecimiento</th>
-              <th style="width: 10%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">Duración</th>
-              <th style="width: 14%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">Diagnóstico</th>
+              <th style="width: 22%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Monitor / Endpoint' : 'Monitor / Endpoint'}</th>
+              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Group' : 'Grupo'}</th>
+              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Outage Start' : 'Inicio de Corte'}</th>
+              <th style="width: 18%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Restoration' : 'Restablecimiento'}</th>
+              <th style="width: 10%; padding: 5px 6px; text-align: right; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Duration' : 'Duración'}</th>
+              <th style="width: 14%; padding: 5px 6px; text-align: left; border-bottom: 1px solid #cbd5e1;">${isEn ? 'Diagnosis' : 'Diagnóstico'}</th>
             </tr>
           </thead>
           <tbody>${incRows}</tbody>
@@ -306,19 +309,18 @@ function buildPrintableHtml(
   const signaturesHtml = `
     <div style="border: 1px solid #cbd5e1; border-radius: 5px; padding: 9px 12px; background: #ffffff;">
       <div style="font-size: 8px; color: #64748b; line-height: 1.35; margin-bottom: 12px;">
-        <strong>Cálculo de Disponibilidad (Estándar ITIL v4):</strong> Disponibilidad = <code>(Tiempo Operativo / Tiempo Elegible) × 100</code>.
-        Mantenimientos programados y monitores pausados se excluyen para no penalizar labores preventivas autorizadas.
+        <strong>${isEn ? 'Availability Calculation (ITIL v4 Standard):' : 'Cálculo de Disponibilidad (Estándar ITIL v4):'}</strong> ${isEn ? 'Availability = (Operational Time / Eligible Time) × 100. Scheduled maintenance and paused monitors are excluded so approved preventive tasks are not penalized.' : 'Disponibilidad = (Tiempo Operativo / Tiempo Elegible) × 100. Mantenimientos programados y monitores pausados se excluyen para no penalizar labores preventivas autorizadas.'}
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 36px; text-align: center;">
         <div>
           <div style="width: 70%; height: 1px; background: #94a3b8; margin: 0 auto 3px auto;"></div>
-          <div style="font-size: 9px; font-weight: 700; color: #0f172a;">Operaciones NOC & Monitoreo</div>
-          <div style="font-size: 7.5px; color: #64748b;">Generado y auditado por UptimeCore</div>
+          <div style="font-size: 9px; font-weight: 700; color: #0f172a;">${isEn ? 'NOC & Monitoring Operations' : 'Operaciones NOC & Monitoreo'}</div>
+          <div style="font-size: 7.5px; color: #64748b;">${isEn ? 'Generated and audited by UptimeCore' : 'Generado y auditado por UptimeCore'}</div>
         </div>
         <div>
           <div style="width: 70%; height: 1px; background: #94a3b8; margin: 0 auto 3px auto;"></div>
-          <div style="font-size: 9px; font-weight: 700; color: #0f172a;">Dirección de TI / Infraestructura</div>
-          <div style="font-size: 7.5px; color: #64748b;">Firma de Conformidad & Aprobación</div>
+          <div style="font-size: 9px; font-weight: 700; color: #0f172a;">${isEn ? 'IT / Infrastructure Management' : 'Dirección de TI / Infraestructura'}</div>
+          <div style="font-size: 7.5px; color: #64748b;">${isEn ? 'Conformity & Approval Signature' : 'Firma de Conformidad & Aprobación'}</div>
         </div>
       </div>
     </div>
@@ -326,10 +328,10 @@ function buildPrintableHtml(
 
   return `
     <!DOCTYPE html>
-    <html lang="es">
+    <html lang="${isEn ? 'en' : 'es'}">
     <head>
       <meta charset="utf-8">
-      <title>Reporte SLA - ${entity.name || 'UptimeCore'}</title>
+      <title>${isEn ? 'SLA Report' : 'Reporte SLA'} - ${entity.name || 'UptimeCore'}</title>
       <style>
         @page {
           size: letter portrait;
@@ -358,13 +360,13 @@ function buildPrintableHtml(
             ${logoHtml}
             <div>
               <div style="font-size: 15px; font-weight: 800; color: #0f172a; line-height: 1.1;">${entity.name || 'UptimeCore'}</div>
-              <div style="font-size: 9.5px; font-weight: 700; color: #4f46e5; text-transform: uppercase; margin-top: 2px;">INFORME TÉCNICO DE NIVEL DE SERVICIO (SLA) & DISPONIBILIDAD</div>
+              <div style="font-size: 9.5px; font-weight: 700; color: #4f46e5; text-transform: uppercase; margin-top: 2px;">${isEn ? 'SERVICE LEVEL AGREEMENT (SLA) & AVAILABILITY TECHNICAL REPORT' : 'INFORME TÉCNICO DE NIVEL DE SERVICIO (SLA) & DISPONIBILIDAD'}</div>
             </div>
           </div>
           <div style="text-align: right; font-size: 8.5px; line-height: 1.3;">
-            <div>Alcance: <strong style="color: #4f46e5;">${scopeLabel}</strong></div>
-            <div style="color: #64748b;">Periodo: <strong>${(report.overall.start_time && report.overall.end_time) ? `${formatDate(report.overall.start_time)} - ${formatDate(report.overall.end_time)}` : report.overall.evaluated_period}</strong></div>
-            <div style="color: #64748b;">Emisión: ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+            <div>${isEn ? 'Scope:' : 'Alcance:'} <strong style="color: #4f46e5;">${scopeLabel}</strong></div>
+            <div style="color: #64748b;">${isEn ? 'Period:' : 'Periodo:'} <strong>${(report.overall.start_time && report.overall.end_time) ? `${formatDate(report.overall.start_time, locale)} - ${formatDate(report.overall.end_time, locale)}` : report.overall.evaluated_period}</strong></div>
+            <div style="color: #64748b;">${isEn ? 'Issued:' : 'Emisión:'} ${new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}</div>
           </div>
         </div>
 
@@ -385,6 +387,7 @@ export function SlaReportModal({
   initialRange = null,
   groups: propGroups,
 }: SlaReportModalProps) {
+  const { t, isEn, locale } = useTranslation()
   const storeGroups = useMonitorStore(s => s.groups)
   const effectiveGroups = useMemo(() => {
     if (propGroups && propGroups.length > 1) return propGroups
@@ -494,17 +497,17 @@ export function SlaReportModal({
   }, [loadReport])
 
   const scopeLabel = useMemo(() => {
-    if (scopeType === 'all') return 'Toda la Infraestructura'
+    if (scopeType === 'all') return isEn ? 'Entire Infrastructure' : 'Toda la Infraestructura'
     if (scopeType === 'group') {
       const g = effectiveGroups.find(x => x.id === selectedGroupId)
-      return g ? `Grupo: ${g.name}` : 'Grupo Seleccionado'
+      return g ? `${isEn ? 'Group' : 'Grupo'}: ${g.name}` : (isEn ? 'Selected Group' : 'Grupo Seleccionado')
     }
     if (scopeType === 'monitor') {
       const m = allMonitors.find(x => x.id === selectedMonitorId)
-      return m ? `Monitor: ${m.name} (${m.groupName})` : 'Monitor Seleccionado'
+      return m ? `${isEn ? 'Monitor' : 'Monitor'}: ${m.name} (${m.groupName})` : (isEn ? 'Selected Monitor' : 'Monitor Seleccionado')
     }
-    return 'Red'
-  }, [scopeType, selectedGroupId, selectedMonitorId, effectiveGroups, allMonitors])
+    return isEn ? 'Network' : 'Red'
+  }, [scopeType, selectedGroupId, selectedMonitorId, effectiveGroups, allMonitors, isEn])
 
   // Monitor único evaluado (si aplica)
   const singleMonitor = useMemo(() => {
@@ -537,7 +540,7 @@ export function SlaReportModal({
     const doc = iframe.contentWindow?.document
     if (!doc) return
 
-    const html = buildPrintableHtml(reportData, entity, scopeLabel, slaTarget)
+    const html = buildPrintableHtml(reportData, entity, scopeLabel, slaTarget, isEn)
     doc.open()
     doc.write(html)
     doc.close()
@@ -558,93 +561,93 @@ export function SlaReportModal({
     if (!reportData) return
 
     const lines: string[] = []
-    lines.push(`"INFORME EJECUTIVO DE NIVEL DE SERVICIO (SLA) Y DISPONIBILIDAD"`)
-    lines.push(`"Organización","${entity.name || 'UptimeCore'}"`)
-    lines.push(`"Periodo Evaluado","${reportData.overall.evaluated_period}"`)
-    lines.push(`"Fecha de Generación","${new Date().toLocaleString('es-MX')}"`)
-    lines.push(`"Meta SLA","${slaTarget}%"`)
-    lines.push(`"SLA Global Obtenido","${reportData.overall.global_sla_pct.toFixed(2)}%"`)
-    lines.push(`"Cumplimiento Global","${reportData.overall.meets_sla ? 'CUMPLE SLA' : 'NO CUMPLE SLA'}"`)
-    lines.push(`"Total Monitores","${reportData.overall.total_monitors}"`)
-    lines.push(`"Total Cortes (Eventos)","${reportData.overall.total_outages}"`)
-    lines.push(`"Tiempo Fuera de Servicio","${formatDurationHuman(reportData.overall.total_downtime_sec)}"`)
-    lines.push(`"Tiempo Medio de Recuperación (MTTR)","${formatDurationHuman(reportData.overall.mttr_seconds)}"`)
-    lines.push(`"Tiempo Operativo sin Fallas (MTBF)","${formatDurationHuman(reportData.overall.mtbf_seconds)}"`)
-    lines.push(`"Latencia Promedio (ms)","${reportData.overall.avg_latency_ms}"`)
-    lines.push(`"Latencia P95 (ms)","${reportData.overall.p95_latency_ms}"`)
+    lines.push(isEn ? `"SERVICE LEVEL AGREEMENT (SLA) & AVAILABILITY EXECUTIVE REPORT"` : `"INFORME EJECUTIVO DE NIVEL DE SERVICIO (SLA) Y DISPONIBILIDAD"`)
+    lines.push(`"${isEn ? 'Organization' : 'Organización'}","${entity.name || 'UptimeCore'}"`)
+    lines.push(`"${isEn ? 'Evaluated Period' : 'Periodo Evaluado'}","${reportData.overall.evaluated_period}"`)
+    lines.push(`"${isEn ? 'Generation Date' : 'Fecha de Generación'}","${new Date().toLocaleString(locale)}"`)
+    lines.push(`"${isEn ? 'SLA Target' : 'Meta SLA'}","${slaTarget}%"`)
+    lines.push(`"${isEn ? 'Global SLA Achieved' : 'SLA Global Obtenido'}","${reportData.overall.global_sla_pct.toFixed(2)}%"`)
+    lines.push(`"${isEn ? 'Global Compliance' : 'Cumplimiento Global'}","${reportData.overall.meets_sla ? (isEn ? 'MEETS SLA' : 'CUMPLE SLA') : (isEn ? 'CRITICAL' : 'NO CUMPLE SLA')}"`)
+    lines.push(`"${isEn ? 'Total Monitors' : 'Total Monitores'}","${reportData.overall.total_monitors}"`)
+    lines.push(`"${isEn ? 'Total Outages' : 'Total Cortes (Eventos)'}","${reportData.overall.total_outages}"`)
+    lines.push(`"${isEn ? 'Downtime' : 'Tiempo Fuera de Servicio'}","${formatDurationHuman(reportData.overall.total_downtime_sec)}"`)
+    lines.push(`"${isEn ? 'Mean Time to Recovery (MTTR)' : 'Tiempo Medio de Recuperación (MTTR)'}","${formatDurationHuman(reportData.overall.mttr_seconds)}"`)
+    lines.push(`"${isEn ? 'Mean Time Between Failures (MTBF)' : 'Tiempo Operativo sin Fallas (MTBF)'}","${formatDurationHuman(reportData.overall.mtbf_seconds)}"`)
+    lines.push(`"${isEn ? 'Average Latency (ms)' : 'Latencia Promedio (ms)'}","${reportData.overall.avg_latency_ms}"`)
+    lines.push(`"${isEn ? 'P95 Latency (ms)' : 'Latencia P95 (ms)'}","${reportData.overall.p95_latency_ms}"`)
     lines.push('')
 
     // Tabla 1: Desglose de Monitores
-    lines.push(`"DESGLOSE DE DISPONIBILIDAD POR MONITOR"`)
+    lines.push(isEn ? `"MONITOR AVAILABILITY BREAKDOWN"` : `"DESGLOSE DE DISPONIBILIDAD POR MONITOR"`)
     lines.push([
-      `"Monitor"`,
-      `"Grupo / Sede"`,
-      `"Tipo"`,
-      `"Destino"`,
-      `"Disponibilidad SLA (%)"`,
-      `"Cumple Meta"`,
-      `"Cortes (Eventos)"`,
-      `"Tiempo Fuera (s)"`,
-      `"Tiempo Fuera (Formato)"`,
-      `"Latencia Prom (ms)"`,
-      `"Latencia P95 (ms)"`,
-      `"Latencia Máx (ms)"`,
+      `"${isEn ? 'Monitor' : 'Monitor'}"`,
+      `"${isEn ? 'Group / Site' : 'Grupo / Sede'}"`,
+      `"${isEn ? 'Type' : 'Tipo'}"`,
+      `"${isEn ? 'Target' : 'Destino'}"`,
+      `"${isEn ? 'SLA Availability (%)' : 'Disponibilidad SLA (%)'}"`,
+      `"${isEn ? 'Meets Target' : 'Cumple Meta'}"`,
+      `"${isEn ? 'Outages' : 'Cortes (Eventos)'}"`,
+      `"${isEn ? 'Downtime (s)' : 'Tiempo Fuera (s)'}"`,
+      `"${isEn ? 'Downtime (Format)' : 'Tiempo Fuera (Formato)'}"`,
+      `"${isEn ? 'Avg Latency (ms)' : 'Latencia Prom (ms)'}"`,
+      `"${isEn ? 'P95 Latency (ms)' : 'Latencia P95 (ms)'}"`,
+      `"${isEn ? 'Max Latency (ms)' : 'Latencia Máx (ms)'}"`,
       `"MTTR"`,
-      `"Muestras Totales"`,
-      `"Muestras OK"`,
-      `"Muestras Down"`,
+      `"${isEn ? 'Total Samples' : 'Muestras Totales'}"`,
+      `"${isEn ? 'OK Samples' : 'Muestras OK'}"`,
+      `"${isEn ? 'Down Samples' : 'Muestras Down'}"`,
     ].join(','))
 
-    reportData.monitors.forEach(m => {
+    reportData.monitors.forEach(mon => {
       lines.push([
-        `"${m.monitor_name.replace(/"/g, '""')}"`,
-        `"${(m.group_name || 'Sin Grupo').replace(/"/g, '""')}"`,
-        `"${m.type}"`,
-        `"${m.target}"`,
-        `"${m.availability_pct.toFixed(2)}%"`,
-        `"${m.meets_sla ? 'SI' : 'NO'}"`,
-        `"${m.outages_count}"`,
-        `"${m.downtime_seconds}"`,
-        `"${formatDurationHuman(m.downtime_seconds)}"`,
-        `"${m.avg_latency_ms}"`,
-        `"${m.p95_latency_ms}"`,
-        `"${m.max_latency_ms}"`,
-        `"${formatDurationHuman(m.mttr_seconds)}"`,
-        `"${m.total_samples}"`,
-        `"${m.up_samples}"`,
-        `"${m.down_samples}"`,
+        `"${mon.monitor_name.replace(/"/g, '""')}"`,
+        `"${(mon.group_name || (isEn ? 'No Group' : 'Sin Grupo')).replace(/"/g, '""')}"`,
+        `"${mon.type}"`,
+        `"${mon.target}"`,
+        `"${mon.availability_pct.toFixed(2)}%"`,
+        `"${mon.meets_sla ? (isEn ? 'YES' : 'SI') : 'NO'}"`,
+        `"${mon.outages_count}"`,
+        `"${mon.downtime_seconds}"`,
+        `"${formatDurationHuman(mon.downtime_seconds)}"`,
+        `"${mon.avg_latency_ms}"`,
+        `"${mon.p95_latency_ms}"`,
+        `"${mon.max_latency_ms}"`,
+        `"${formatDurationHuman(mon.mttr_seconds)}"`,
+        `"${mon.total_samples}"`,
+        `"${mon.up_samples}"`,
+        `"${mon.down_samples}"`,
       ].join(','))
     })
 
     lines.push('')
     // Tabla 2: Registro de Incidentes
-    lines.push(`"REGISTRO DETALLADO DE INCIDENTES EN EL PERÍODO"`)
+    lines.push(isEn ? `"DETAILED INCIDENT LOG IN PERIOD"` : `"REGISTRO DETALLADO DE INCIDENTES EN EL PERÍODO"`)
     lines.push([
-      `"Monitor"`,
-      `"Grupo"`,
-      `"Tipo"`,
-      `"Estado"`,
-      `"Inicio de Corte"`,
-      `"Restablecimiento"`,
-      `"Duración"`,
-      `"Estado Actual"`,
-      `"Diagnóstico / Error"`,
+      `"${isEn ? 'Monitor' : 'Monitor'}"`,
+      `"${isEn ? 'Group' : 'Grupo'}"`,
+      `"${isEn ? 'Type' : 'Tipo'}"`,
+      `"${isEn ? 'Status' : 'Estado'}"`,
+      `"${isEn ? 'Outage Start' : 'Inicio de Corte'}"`,
+      `"${isEn ? 'Restoration' : 'Restablecimiento'}"`,
+      `"${isEn ? 'Duration' : 'Duración'}"`,
+      `"${isEn ? 'Current State' : 'Estado Actual'}"`,
+      `"${isEn ? 'Diagnosis / Error' : 'Diagnóstico / Error'}"`,
     ].join(','))
 
     if (reportData.incidents.length === 0) {
-      lines.push(`"Sin caídas registradas en este periodo"`)
+      lines.push(isEn ? `"Zero outages recorded in this period"` : `"Sin caídas registradas en este periodo"`)
     } else {
       reportData.incidents.forEach(inc => {
         lines.push([
           `"${inc.monitor_name.replace(/"/g, '""')}"`,
-          `"${(inc.group_name || 'Sin Grupo').replace(/"/g, '""')}"`,
+          `"${(inc.group_name || (isEn ? 'No Group' : 'Sin Grupo')).replace(/"/g, '""')}"`,
           `"${inc.type}"`,
           `"${inc.status}"`,
-          `"${formatDate(inc.started_at)}"`,
-          `"${inc.resolved_at ? formatDate(inc.resolved_at) : (inc.is_ongoing ? 'EN CURSO' : '—')}"`,
+          `"${formatDate(inc.started_at, locale)}"`,
+          `"${inc.resolved_at ? formatDate(inc.resolved_at, locale) : (inc.is_ongoing ? (isEn ? 'ONGOING' : 'EN CURSO') : '—')}"`,
           `"${formatDurationHuman(inc.duration_sec)}"`,
-          `"${inc.is_ongoing ? 'ACTIVO' : 'RESUELTO'}"`,
-          `"${(inc.error_msg || 'Sin respuesta').replace(/"/g, '""')}"`,
+          `"${inc.is_ongoing ? (isEn ? 'ACTIVE' : 'ACTIVO') : (isEn ? 'RESOLVED' : 'RESUELTO')}"`,
+          `"${(inc.error_msg || (isEn ? 'No response' : 'Sin respuesta')).replace(/"/g, '""')}"`,
         ].join(','))
       })
     }
@@ -654,8 +657,10 @@ export function SlaReportModal({
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const safeScope = scopeType === 'all' ? 'TodaLaRed' : (scopeType === 'group' ? 'Grupo' : 'Monitor')
-    a.download = `Reporte_SLA_${safeScope}_${new Date().toISOString().slice(0, 10)}.csv`
+    const safeScope = scopeType === 'all'
+      ? (isEn ? 'EntireNetwork' : 'TodaLaRed')
+      : (scopeType === 'group' ? (isEn ? 'Group' : 'Grupo') : 'Monitor')
+    a.download = `${isEn ? 'SLA_Report' : 'Reporte_SLA'}_${safeScope}_${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -721,10 +726,10 @@ export function SlaReportModal({
               </div>
               <div>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                  Reporte de SLA y Disponibilidad de Red
+                  {t.sla.reportTitle}
                 </h2>
                 <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  UptimeCore · Motor de Auditoría y Cumplimiento de Nivel de Servicio
+                  {isEn ? 'UptimeCore · Service Level Audit & Compliance Engine' : 'UptimeCore · Motor de Auditoría y Cumplimiento de Nivel de Servicio'}
                 </span>
               </div>
             </div>
@@ -750,10 +755,10 @@ export function SlaReportModal({
                   opacity: loading ? 0.6 : 1,
                   transition: 'all 0.15s ease',
                 }}
-                title="Generar e Imprimir PDF en 1 hoja limpia y aislada"
+                title={isEn ? 'Generate & Print clean 1-page isolated PDF' : 'Generar e Imprimir PDF en 1 hoja limpia y aislada'}
               >
                 <Printer size={15} color="var(--color-accent)" />
-                Imprimir / PDF
+                {t.sla.printButton}
               </button>
 
               {/* Botón Excel / CSV */}
@@ -776,10 +781,10 @@ export function SlaReportModal({
                   opacity: loading ? 0.6 : 1,
                   transition: 'all 0.15s ease',
                 }}
-                title="Descargar archivo estructurado compatible con Microsoft Excel (.CSV)"
+                title={isEn ? 'Download structured file compatible with Microsoft Excel (.CSV)' : 'Descargar archivo estructurado compatible con Microsoft Excel (.CSV)'}
               >
                 <Download size={15} />
-                Exportar Excel
+                {t.sla.exportCsvButton}
               </button>
 
               {/* Botón Refrescar */}
@@ -798,7 +803,7 @@ export function SlaReportModal({
                   color: 'var(--color-text-muted)',
                   cursor: loading ? 'not-allowed' : 'pointer',
                 }}
-                title="Recalcular métricas"
+                title={isEn ? 'Recalculate metrics' : 'Recalcular métricas'}
               >
                 <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
               </button>
@@ -839,7 +844,7 @@ export function SlaReportModal({
           >
             {/* Alcance (Scope) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>Alcance:</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.scopeLabel}:</span>
               <select
                 value={scopeType}
                 onChange={e => {
@@ -864,9 +869,9 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value="all">🌐 Toda la Infraestructura ({allMonitors.length} Monitores)</option>
-                <option value="group">🏢 Por Grupo ({effectiveGroups.length} Grupos)</option>
-                <option value="monitor">📍 Por Monitor Individual</option>
+                <option value="all">🌐 {t.sla.scopeAll} ({allMonitors.length} {isEn ? 'Monitors' : 'Monitores'})</option>
+                <option value="group">🏢 {t.sla.scopeGroup} ({effectiveGroups.length} {isEn ? 'Groups' : 'Grupos'})</option>
+                <option value="monitor">📍 {t.sla.scopeMonitor}</option>
               </select>
             </div>
 
@@ -890,7 +895,7 @@ export function SlaReportModal({
               >
                 {effectiveGroups.map(g => (
                   <option key={g.id} value={g.id}>
-                    {g.name} ({g.monitors?.length || 0} enlaces)
+                    {g.name} ({g.monitors?.length || 0} {isEn ? 'links' : 'enlaces'})
                   </option>
                 ))}
               </select>
@@ -926,7 +931,7 @@ export function SlaReportModal({
 
             {/* Periodo de Tiempo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>Periodo:</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.periodLabel}:</span>
               <select
                 value={selectedRange}
                 onChange={e => setSelectedRange(e.target.value)}
@@ -942,14 +947,14 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value="30d">📆 Últimos 30 Días (Mensual)</option>
-                <option value="7d">⚡ Últimos 7 Días (Semanal)</option>
-                <option value="24h">⏱️ Últimas 24 Horas (Diario)</option>
-                <option value="month">📅 Este Mes en Curso (Acumulado)</option>
-                <option value="last_month">⏮️ Mes Anterior Completo</option>
-                <option value="today">☀️ Hoy (00:00 - Actual)</option>
-                <option value="yesterday">🌙 Ayer (Día Completo)</option>
-                <option value="custom">🛠️ Rango Personalizado...</option>
+                <option value="30d">📆 {t.sla.range30d}</option>
+                <option value="7d">⚡ {t.sla.range7d}</option>
+                <option value="24h">⏱️ {t.sla.range24h}</option>
+                <option value="month">📅 {t.sla.rangeMonth}</option>
+                <option value="last_month">⏮️ {t.sla.rangeLastMonth}</option>
+                <option value="today">☀️ {t.sla.rangeToday}</option>
+                <option value="yesterday">🌙 {t.sla.rangeYesterday}</option>
+                <option value="custom">🛠️ {t.sla.rangeCustom}</option>
               </select>
             </div>
 
@@ -970,7 +975,7 @@ export function SlaReportModal({
                     fontSize: 11.5,
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>al</span>
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{isEn ? 'to' : 'al'}</span>
                 <input
                   type="date"
                   value={customEnd}
@@ -992,7 +997,7 @@ export function SlaReportModal({
 
             {/* Meta SLA con explicación de tolerancia mensual */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>Meta SLA:</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.targetSlaLabel}:</span>
               <select
                 value={slaTarget}
                 onChange={e => setSlaTarget(Number(e.target.value))}
@@ -1008,10 +1013,10 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value={99.9}>99.90% · Alta Disponibilidad (Máx. 43m/mes fuera)</option>
-                <option value={99.5}>99.50% · Estándar Corporativo (Máx. 3.6h/mes fuera)</option>
-                <option value={99.0}>99.00% · Operación Regular (Máx. 7.2h/mes fuera)</option>
-                <option value={95.0}>95.00% · Servicios Básicos (Máx. 36h/mes fuera)</option>
+                <option value={99.9}>99.90% · {isEn ? 'High Availability (Max. 43m/mo downtime)' : 'Alta Disponibilidad (Máx. 43m/mes fuera)'}</option>
+                <option value={99.5}>99.50% · {isEn ? 'Corporate Standard (Max. 3.6h/mo downtime)' : 'Estándar Corporativo (Máx. 3.6h/mes fuera)'}</option>
+                <option value={99.0}>99.00% · {isEn ? 'Regular Operations (Max. 7.2h/mo downtime)' : 'Operación Regular (Máx. 7.2h/mes fuera)'}</option>
+                <option value={95.0}>95.00% · {isEn ? 'Basic Services (Max. 36h/mo downtime)' : 'Servicios Básicos (Máx. 36h/mes fuera)'}</option>
               </select>
             </div>
           </div>
@@ -1039,7 +1044,7 @@ export function SlaReportModal({
             >
               <RefreshCw size={28} className="spin" color="var(--color-accent)" />
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                Consultando motor de series temporales y calculando SLA...
+                {isEn ? 'Querying time-series engine and calculating SLA...' : 'Consultando motor de series temporales y calculando SLA...'}
               </span>
             </div>
           ) : error ? (
@@ -1111,23 +1116,23 @@ export function SlaReportModal({
                         marginTop: 2,
                       }}
                     >
-                      Informe Técnico de Nivel de Servicio (SLA) & Disponibilidad
+                      {isEn ? 'SERVICE LEVEL AGREEMENT (SLA) & AVAILABILITY TECHNICAL REPORT' : 'INFORME TÉCNICO DE NIVEL DE SERVICIO (SLA) & DISPONIBILIDAD'}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                    Alcance: <span style={{ color: 'var(--color-accent)' }}>{scopeLabel}</span>
+                    {t.sla.scopeLabel}: <span style={{ color: 'var(--color-accent)' }}>{scopeLabel}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    Periodo:{' '}
+                    {t.sla.periodLabel}:{' '}
                     <strong style={{ color: 'var(--color-text-secondary)' }}>
                       {reportData.overall.evaluated_period}
                     </strong>
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--color-text-muted)' }}>
-                    Emisión: {new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {t.sla.issuedLabel}: {new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}
                   </div>
                 </div>
               </div>
@@ -1156,7 +1161,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      Disponibilidad SLA
+                      {t.sla.kpiAvailability}
                     </span>
                     {reportData.overall.meets_sla ? (
                       <ShieldCheck size={15} color="#22c55e" />
@@ -1175,9 +1180,9 @@ export function SlaReportModal({
                     {reportData.overall.global_sla_pct.toFixed(2)}%
                   </div>
                   <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                    Meta: ≥{reportData.overall.target_sla_pct.toFixed(2)}% ·{' '}
+                    {isEn ? 'Goal:' : 'Meta:'} ≥{reportData.overall.target_sla_pct.toFixed(2)}% ·{' '}
                     <strong style={{ color: reportData.overall.meets_sla ? '#22c55e' : '#ef4444' }}>
-                      {reportData.overall.meets_sla ? 'CUMPLE' : 'NO CUMPLE'}
+                      {reportData.overall.meets_sla ? (isEn ? 'MEETS SLA' : 'CUMPLE') : (isEn ? 'CRITICAL' : 'NO CUMPLE')}
                     </strong>
                   </div>
                 </div>
@@ -1196,7 +1201,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      Cortes (Outages)
+                      {t.sla.kpiOutages}
                     </span>
                     <AlertTriangle size={15} color="#f59e0b" />
                   </div>
@@ -1211,7 +1216,7 @@ export function SlaReportModal({
                     {reportData.overall.total_outages}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                    Interrupciones registradas
+                    {t.sla.outagesSub}
                   </div>
                 </div>
 
@@ -1229,7 +1234,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      Tiempo Fuera
+                      {t.sla.kpiDowntime}
                     </span>
                     <Clock size={15} color="var(--color-accent)" />
                   </div>
@@ -1244,7 +1249,7 @@ export function SlaReportModal({
                     {formatDurationHuman(reportData.overall.total_downtime_sec)}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                    Downtime acumulado
+                    {t.sla.downtimeSub}
                   </div>
                 </div>
 
@@ -1262,7 +1267,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      MTTR (Recuperación)
+                      {t.sla.kpiMttr}
                     </span>
                     <Zap size={15} color="#38bdf8" />
                   </div>
@@ -1277,7 +1282,7 @@ export function SlaReportModal({
                     {reportData.overall.total_outages > 0 ? formatDurationHuman(reportData.overall.mttr_seconds) : '0s'}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                    {reportData.overall.total_outages > 0 ? 'Duración promedio por corte' : 'Sin interrupciones'}
+                    {reportData.overall.total_outages > 0 ? t.sla.mttrSubNonZero : t.sla.mttrSubZero}
                   </div>
                 </div>
 
@@ -1295,7 +1300,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      MTBF (Estabilidad)
+                      {t.sla.kpiMtbf}
                     </span>
                     <ShieldCheck size={15} color="#10b981" />
                   </div>
@@ -1309,10 +1314,10 @@ export function SlaReportModal({
                   >
                     {reportData.overall.total_outages > 0
                       ? formatDurationHuman(reportData.overall.mtbf_seconds)
-                      : 'Continuo'}
+                      : (isEn ? 'Continuous' : 'Continuo')}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                    {reportData.overall.total_outages > 0 ? 'Tiempo medio entre fallas' : '100% en línea'}
+                    {reportData.overall.total_outages > 0 ? t.sla.mtbfSubNonZero : t.sla.mtbfSubContinuous}
                   </div>
                 </div>
 
@@ -1330,7 +1335,7 @@ export function SlaReportModal({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                      Latencia Prom.
+                      {t.sla.kpiAvgLatency}
                     </span>
                     <Activity size={15} color="#818cf8" />
                   </div>
@@ -1345,7 +1350,7 @@ export function SlaReportModal({
                     {reportData.overall.avg_latency_ms} <span style={{ fontSize: 13, fontWeight: 600 }}>ms</span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                    Percentil P95: <strong>{reportData.overall.p95_latency_ms} ms</strong>
+                    {isEn ? 'Percentile P95:' : 'Percentil P95:'} <strong>{reportData.overall.p95_latency_ms} ms</strong>
                   </div>
                 </div>
               </div>
@@ -1366,7 +1371,7 @@ export function SlaReportModal({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, borderBottom: '1px solid var(--color-border)', paddingBottom: 8 }}>
                     <Info size={15} color="var(--color-accent)" />
                     <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                      Ficha Técnica del Enlace Evaluado
+                      {t.sla.specsTitle}
                     </span>
                   </div>
 
@@ -1379,29 +1384,29 @@ export function SlaReportModal({
                     }}
                   >
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Nombre del Enlace:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsName}:</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.monitor_name}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Grupo / Ubicación:</span>{' '}
-                      <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.group_name || 'Sin Grupo'}</strong>
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsGroup}:</span>{' '}
+                      <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.group_name || (isEn ? 'No Group' : 'Sin Grupo')}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Destino / Host IP:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsTarget}:</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>{singleMonitor.target}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Protocolo / Sensor:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsType}:</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.type}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Muestras de Verificación:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsSamples}:</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>
-                        {singleMonitor.total_samples.toLocaleString()} pruebas ({singleMonitor.up_samples.toLocaleString()} OK / {singleMonitor.down_samples.toLocaleString()} Fallas)
+                        {singleMonitor.total_samples.toLocaleString()} {isEn ? 'probes' : 'pruebas'} ({singleMonitor.up_samples.toLocaleString()} OK / {singleMonitor.down_samples.toLocaleString()} {isEn ? 'Failures' : 'Fallas'})
                       </strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>Latencia Pico Máxima:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsPeakLatency}:</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.max_latency_ms} ms</strong>
                     </div>
                   </div>
@@ -1429,7 +1434,7 @@ export function SlaReportModal({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Server size={15} color="var(--color-accent)" />
                       <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                        Desglose de Monitores y Cumplimiento Individual
+                        {t.sla.breakdownTitle}
                       </span>
                       <span
                         style={{
@@ -1440,12 +1445,12 @@ export function SlaReportModal({
                           color: 'var(--color-text-muted)',
                         }}
                       >
-                        {reportData.monitors.length} monitores
+                        {reportData.monitors.length} {isEn ? 'monitors' : 'monitores'}
                       </span>
                     </div>
 
                     <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                      Meta: <strong>≥{slaTarget.toFixed(2)}%</strong>
+                      {t.sla.targetGoal}: <strong>≥{slaTarget.toFixed(2)}%</strong>
                     </span>
                   </div>
 
@@ -1470,12 +1475,12 @@ export function SlaReportModal({
                             letterSpacing: '0.04em',
                           }}
                         >
-                          <th style={{ width: '28%', padding: '8px 10px' }}>Monitor / Enlace</th>
-                          <th style={{ width: '22%', padding: '8px 10px' }}>Grupo / Sede</th>
-                          <th style={{ width: '10%', padding: '8px 8px' }}>Tipo</th>
-                          <th style={{ width: '16%', padding: '8px 10px', textAlign: 'right' }}>Disponibilidad</th>
-                          <th style={{ width: '12%', padding: '8px 6px', textAlign: 'center' }}>SLA</th>
-                          <th style={{ width: '12%', padding: '8px 10px', textAlign: 'right' }}>Tiempo Fuera</th>
+                          <th style={{ width: '28%', padding: '8px 10px' }}>{t.sla.thMonitor}</th>
+                          <th style={{ width: '22%', padding: '8px 10px' }}>{t.sla.thGroup}</th>
+                          <th style={{ width: '10%', padding: '8px 8px' }}>{t.sla.thType}</th>
+                          <th style={{ width: '16%', padding: '8px 10px', textAlign: 'right' }}>{t.sla.thAvailability}</th>
+                          <th style={{ width: '12%', padding: '8px 6px', textAlign: 'center' }}>{t.sla.thStatus}</th>
+                          <th style={{ width: '12%', padding: '8px 10px', textAlign: 'right' }}>{t.sla.thDowntime}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1498,7 +1503,7 @@ export function SlaReportModal({
                                 </div>
                               </td>
                               <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {mon.group_name || 'Sin Grupo'}
+                                {mon.group_name || (isEn ? 'No Group' : 'Sin Grupo')}
                               </td>
                               <td style={{ padding: '8px 8px' }}>
                                 <span
@@ -1541,7 +1546,7 @@ export function SlaReportModal({
                                   }}
                                 >
                                   {meets ? <CheckCircle2 size={10} /> : <AlertTriangle size={10} />}
-                                  {meets ? 'CUMPLE' : 'CRÍTICO'}
+                                  {meets ? (isEn ? 'MEETS' : 'CUMPLE') : (isEn ? 'CRITICAL' : 'CRÍTICO')}
                                 </span>
                               </td>
                               <td
@@ -1585,7 +1590,7 @@ export function SlaReportModal({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Clock size={15} color="var(--color-accent)" />
                     <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                      Registro de Incidentes y Caídas durante el Período Evaluado
+                      {t.sla.incidentsTitle}
                     </span>
                     <span
                       style={{
@@ -1598,7 +1603,7 @@ export function SlaReportModal({
                         fontWeight: 700,
                       }}
                     >
-                      {reportData.incidents.length} incidentes
+                      {reportData.incidents.length} {isEn ? 'events' : 'incidentes'}
                     </span>
                   </div>
                 </div>
@@ -1617,7 +1622,7 @@ export function SlaReportModal({
                   >
                     <CheckCircle2 size={26} />
                     <span style={{ fontSize: 13, fontWeight: 700 }}>
-                      Cero incidentes registrados en el periodo seleccionado. Operación 100% continua.
+                      {t.sla.zeroIncidentsBanner}
                     </span>
                   </div>
                 ) : (
@@ -1642,12 +1647,12 @@ export function SlaReportModal({
                             letterSpacing: '0.04em',
                           }}
                         >
-                          <th style={{ width: '22%', padding: '8px 10px' }}>Monitor / Endpoint</th>
-                          <th style={{ width: '18%', padding: '8px 10px' }}>Grupo</th>
-                          <th style={{ width: '18%', padding: '8px 10px' }}>Inicio de Corte</th>
-                          <th style={{ width: '18%', padding: '8px 10px' }}>Restablecimiento</th>
-                          <th style={{ width: '10%', padding: '8px 8px', textAlign: 'right' }}>Duración</th>
-                          <th style={{ width: '14%', padding: '8px 10px' }}>Diagnóstico</th>
+                          <th style={{ width: '22%', padding: '8px 10px' }}>{t.sla.thIncMonitor}</th>
+                          <th style={{ width: '18%', padding: '8px 10px' }}>{t.sla.thIncGroup}</th>
+                          <th style={{ width: '18%', padding: '8px 10px' }}>{t.sla.thIncStart}</th>
+                          <th style={{ width: '18%', padding: '8px 10px' }}>{t.sla.thIncEnd}</th>
+                          <th style={{ width: '10%', padding: '8px 8px', textAlign: 'right' }}>{t.sla.thIncDuration}</th>
+                          <th style={{ width: '14%', padding: '8px 10px' }}>{t.sla.thIncDiagnosis}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1667,7 +1672,7 @@ export function SlaReportModal({
                               </span>
                             </td>
                             <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {inc.group_name || 'Sin Grupo'}
+                              {inc.group_name || (isEn ? 'No Group' : 'Sin Grupo')}
                             </td>
                             <td
                               style={{
@@ -1677,7 +1682,7 @@ export function SlaReportModal({
                                 fontSize: 10,
                               }}
                             >
-                              {formatDate(inc.started_at)}
+                              {formatDate(inc.started_at, locale)}
                             </td>
                             <td
                               style={{
@@ -1688,9 +1693,9 @@ export function SlaReportModal({
                               }}
                             >
                               {inc.resolved_at ? (
-                                formatDate(inc.resolved_at)
+                                formatDate(inc.resolved_at, locale)
                               ) : inc.is_ongoing ? (
-                                <span style={{ fontWeight: 800, color: '#ef4444' }}>EN CURSO</span>
+                                <span style={{ fontWeight: 800, color: '#ef4444' }}>{isEn ? 'ONGOING' : 'EN CURSO'}</span>
                               ) : (
                                 '—'
                               )}
@@ -1714,9 +1719,9 @@ export function SlaReportModal({
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
                               }}
-                              title={inc.error_msg || 'Sin respuesta'}
+                              title={inc.error_msg || (isEn ? 'No response' : 'Sin respuesta')}
                             >
-                              {inc.error_msg || 'Caída de enlace'}
+                              {inc.error_msg || (isEn ? 'Link outage' : 'Caída de enlace')}
                             </td>
                           </tr>
                         ))}
@@ -1739,10 +1744,7 @@ export function SlaReportModal({
                 }}
               >
                 <div style={{ fontSize: 10.5, color: 'var(--color-text-muted)', lineHeight: 1.45 }}>
-                  <strong>Cálculo de Disponibilidad (Estándar ITIL v4):</strong> La disponibilidad se calcula como{' '}
-                  <code style={{ fontFamily: 'monospace' }}>(Tiempo Operativo / Tiempo Elegible) × 100</code>.
-                  Las ventanas de mantenimiento programado y monitores en pausa se excluyen del cálculo para no penalizar
-                  labores preventivas autorizadas.
+                  {t.sla.itilExplanation}
                 </div>
 
                 <div
@@ -1756,20 +1758,20 @@ export function SlaReportModal({
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <div style={{ width: '75%', height: 1, background: 'var(--color-border)', marginBottom: 2 }} />
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                      Operaciones NOC & Monitoreo
+                      {t.sla.signaturesNoc}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                      Generado y auditado por UptimeCore
+                      {t.sla.signaturesNocSub}
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <div style={{ width: '75%', height: 1, background: 'var(--color-border)', marginBottom: 2 }} />
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                      Dirección de TI / Infraestructura
+                      {t.sla.signaturesDir}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                      Firma de Conformidad & Aprobación
+                      {t.sla.signaturesDirSub}
                     </div>
                   </div>
                 </div>

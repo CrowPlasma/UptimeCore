@@ -4,21 +4,13 @@
  * Soporta los rangos: recent (90m) | 3h | 6h | 24h | 1w (7d) | 30d
  * Plataforma: UptimeCore
  */
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceArea,
 } from 'recharts'
 import type { HistoryPoint, TimeRange } from '../types'
-
-const RANGES: { label: string; value: TimeRange }[] = [
-  { label: 'Reciente', value: 'recent' },
-  { label: '3h',       value: '3h' },
-  { label: '6h',       value: '6h' },
-  { label: '24h',      value: '24h' },
-  { label: '7d (Sem)', value: '1w' },
-  { label: '30d (Mes)', value: '30d' },
-]
+import { useTranslation } from '../i18n'
 
 const RANGE_DURATIONS_MS: Record<TimeRange, number> = {
   recent: 90 * 60 * 1000,
@@ -38,8 +30,18 @@ interface Props {
 }
 
 export const LatencyChart = React.memo(function LatencyChart({ data, range: propRange, onRangeChange }: Props) {
+  const { t, locale } = useTranslation()
   const [internalRange, setInternalRange] = useState<TimeRange>(propRange || 'recent')
   const activeRange = propRange || internalRange
+
+  const ranges = useMemo(() => [
+    { label: t.monitor.rangeRecent, value: 'recent' as TimeRange },
+    { label: t.monitor.range3h,     value: '3h' as TimeRange },
+    { label: t.monitor.range6h,     value: '6h' as TimeRange },
+    { label: t.monitor.range24h,    value: '24h' as TimeRange },
+    { label: t.monitor.range7d,     value: '1w' as TimeRange },
+    { label: t.monitor.range30d,    value: '30d' as TimeRange },
+  ], [t])
 
   const handleRange = (r: TimeRange) => {
     setInternalRange(r)
@@ -55,11 +57,11 @@ export const LatencyChart = React.memo(function LatencyChart({ data, range: prop
   const formatXAxis = (val: number) => {
     const d = new Date(val)
     if (activeRange === '30d') {
-      return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+      return d.toLocaleDateString(locale, { day: '2-digit', month: 'short' })
     }
     if (activeRange === '1w') {
       return (
-        d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) +
+        d.toLocaleDateString(locale, { day: '2-digit', month: 'short' }) +
         ' ' +
         d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       )
@@ -117,18 +119,18 @@ export const LatencyChart = React.memo(function LatencyChart({ data, range: prop
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: 'var(--color-text-muted)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: '#22c55e', display: 'inline-block' }} /> Latencia (ms)
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: '#22c55e', display: 'inline-block' }} /> {t.chart.latencyMs}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#f87171', display: 'inline-block' }} /> Ventana Caída
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#f87171', display: 'inline-block' }} /> {t.chart.outageWindow}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#60a5fa', display: 'inline-block' }} /> Mantenimiento
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#60a5fa', display: 'inline-block' }} /> {t.chart.maintenanceWindow}
           </span>
         </div>
 
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {RANGES.map(r => (
+          {ranges.map(r => (
             <button
               key={r.value}
               onClick={() => handleRange(r.value)}
@@ -201,21 +203,21 @@ export const LatencyChart = React.memo(function LatencyChart({ data, range: prop
               borderRadius: 8,
               fontSize: 12,
             }}
-            labelFormatter={(label: any) => (label ? new Date(label).toLocaleString('es-MX') : '')}
+            labelFormatter={(label: any) => (label ? new Date(label).toLocaleString(locale) : '')}
             formatter={(val: any, _name: any, props: any) => {
               const status = props?.payload?.status
               if (status === 'UNKNOWN' || val == null) {
-                return ['Sin datos / Previo a monitoreo', 'Estado']
+                return [t.chart.noDataPoint, t.chart.statusLabel]
               }
               const suffix =
                 status === 'MAINTENANCE'
-                  ? ' (En Mantenimiento)'
+                  ? t.chart.suffixMaint
                   : status === 'DOWN'
-                  ? ' (Caído)'
+                  ? t.chart.suffixDown
                   : status === 'DEGRADED'
-                  ? ' (Degradado)'
+                  ? t.chart.suffixDegraded
                   : ''
-              return [`${val} ms${suffix}`, 'Latencia']
+              return [`${val} ms${suffix}`, t.chart.latencyLabel]
             }}
           />
           <Area

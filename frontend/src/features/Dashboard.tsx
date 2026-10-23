@@ -17,6 +17,7 @@ import { DiagnosticModal } from '../components/DiagnosticModal'
 import { SlaReportModal } from '../components/SlaReportModal'
 import { NocWallboard } from '../components/NocWallboard'
 import { isSoundEnabled, setSoundEnabled, playTestSound } from '../utils/soundAlert'
+import { useTranslation } from '../i18n'
 import type { ModalMode } from '../components/MonitorModal'
 
 // ── Tarjeta de métrica cuadrada y equilibrada ────────────────────────────────
@@ -116,29 +117,29 @@ function groupMatchesStatusOrTag(g: import('../types').MonitorGroup, filter: str
 }
 
 // ── Dropdown de filtro ─────────────────────────────────────────────────────
-function TagFilter({ allTagNames, selected, onChange, stats }: {
+function TagFilter({ allTagNames, selected, onChange, stats, isEn }: {
   allTagNames: string[]
   selected: string
   onChange: (v: string) => void
   stats: { totalGroups: number; up: number; down: number; degraded: number; maintenance: number; paused: number }
+  isEn?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const label = selected === 'all' ? `Todos (${stats.totalGroups})`
-    : selected === 'up' ? `Operativos (${stats.up})`
-    : selected === 'down' ? `Caídos (${stats.down})`
-    : selected === 'degraded' ? `Degradados (${stats.degraded})`
-    : selected === 'maintenance' ? `Mantenimiento (${stats.maintenance})`
-    : selected === 'paused' ? `En Pausa (${stats.paused})`
+  const label = selected === 'all' ? (isEn ? `All (${stats.totalGroups})` : `Todos (${stats.totalGroups})`)
+    : selected === 'up' ? (isEn ? `Online (${stats.up})` : `Operativos (${stats.up})`)
+    : selected === 'down' ? (isEn ? `Down (${stats.down})` : `Caídos (${stats.down})`)
+    : selected === 'degraded' ? (isEn ? `Degraded (${stats.degraded})` : `Degradados (${stats.degraded})`)
+    : selected === 'maintenance' ? (isEn ? `Maintenance (${stats.maintenance})` : `Mantenimiento (${stats.maintenance})`)
+    : selected === 'paused' ? (isEn ? `Paused (${stats.paused})` : `En Pausa (${stats.paused})`)
     : selected
 
-  const options: { label: string; value: string; dot: string | null; isTag?: boolean }[] = [
-    { label: `Todos los grupos (${stats.totalGroups})`, value: 'all', dot: null },
-    { label: `Operativos (${stats.up})`, value: 'up', dot: '#22c55e' },
-    { label: `Caídos (${stats.down})`, value: 'down', dot: '#ef4444' },
-    { label: `Degradados (${stats.degraded})`, value: 'degraded', dot: '#f59e0b' },
-    { label: `Mantenimiento (${stats.maintenance})`, value: 'maintenance', dot: '#3b82f6' },
-    { label: `En Pausa (${stats.paused})`, value: 'paused', dot: '#9ca3af' },
-    ...allTagNames.map(t => ({ label: t, value: t, isTag: true, dot: null })),
+  const statusOptions: { label: string; value: string; dot: string | null }[] = [
+    { label: isEn ? `All groups (${stats.totalGroups})` : `Todos los grupos (${stats.totalGroups})`, value: 'all', dot: null },
+    { label: isEn ? `Online (${stats.up})` : `Operativos (${stats.up})`, value: 'up', dot: '#22c55e' },
+    { label: isEn ? `Down (${stats.down})` : `Caídos (${stats.down})`, value: 'down', dot: '#ef4444' },
+    { label: isEn ? `Degraded (${stats.degraded})` : `Degradados (${stats.degraded})`, value: 'degraded', dot: '#f59e0b' },
+    { label: isEn ? `Maintenance (${stats.maintenance})` : `Mantenimiento (${stats.maintenance})`, value: 'maintenance', dot: '#3b82f6' },
+    { label: isEn ? `Paused (${stats.paused})` : `En Pausa (${stats.paused})`, value: 'paused', dot: '#9ca3af' },
   ]
 
   return (
@@ -160,15 +161,18 @@ function TagFilter({ allTagNames, selected, onChange, stats }: {
           <div style={{
             position: 'absolute', top: '110%', left: 0, zIndex: 11,
             background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
-            borderRadius: 12, padding: 6, minWidth: 230,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+            borderRadius: 12, padding: 6, minWidth: 230, maxWidth: 280,
+            maxHeight: 'min(380px, 65vh)',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            boxShadow: '0 10px 32px rgba(0,0,0,0.22)',
           }}>
-            {options.map(opt => {
-              const isSelected = selected === opt.value;
+            {statusOptions.map(opt => {
+              const isSelected = selected === opt.value
               return (
                 <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }} style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                  padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                  padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500,
                   cursor: 'pointer', border: 'none',
                   background: isSelected ? 'var(--color-accent)' : 'transparent',
                   color: isSelected ? '#fff' : 'var(--color-text-primary)',
@@ -176,16 +180,53 @@ function TagFilter({ allTagNames, selected, onChange, stats }: {
                   {opt.dot && (
                     <span style={{
                       width: 8, height: 8, borderRadius: '50%',
-                      background: isSelected ? '#fff' : opt.dot
+                      background: isSelected ? '#fff' : opt.dot,
+                      flexShrink: 0,
                     }} />
                   )}
-                  {opt.isTag && (
-                    <Tag size={12} color={isSelected ? '#fff' : 'var(--color-text-muted)'} />
-                  )}
-                  {opt.label}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {opt.label}
+                  </span>
                 </button>
               )
             })}
+
+            {allTagNames.length > 0 && (
+              <>
+                <div style={{
+                  height: 1,
+                  background: 'var(--color-border)',
+                  margin: '6px 4px',
+                }} />
+                <div style={{
+                  padding: '4px 10px 2px',
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--color-text-muted)',
+                }}>
+                  {isEn ? `Tags (${allTagNames.length})` : `Etiquetas (${allTagNames.length})`}
+                </div>
+                {allTagNames.map(tagName => {
+                  const isSelected = selected === tagName
+                  return (
+                    <button key={tagName} onClick={() => { onChange(tagName); setOpen(false) }} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                      padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                      cursor: 'pointer', border: 'none',
+                      background: isSelected ? 'var(--color-accent)' : 'transparent',
+                      color: isSelected ? '#fff' : 'var(--color-text-primary)',
+                    }}>
+                      <Tag size={12} color={isSelected ? '#fff' : 'var(--color-text-muted)'} style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tagName}
+                      </span>
+                    </button>
+                  )
+                })}
+              </>
+            )}
           </div>
         </>
       )}
@@ -204,7 +245,13 @@ const STATUS_ORDER: Record<string, number> = {
 }
 
 export function Dashboard() {
-  const { groups, allTags, loading, error, setSseConnected, fetchGroups } = useMonitorStore()
+  const { t, isEn, interpolate } = useTranslation()
+  const groups = useMonitorStore(s => s.groups)
+  const allTags = useMonitorStore(s => s.allTags)
+  const loading = useMonitorStore(s => s.loading)
+  const error = useMonitorStore(s => s.error)
+  const setSseConnected = useMonitorStore(s => s.setSseConnected)
+  const fetchGroups = useMonitorStore(s => s.fetchGroups)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState('all')
   const [modal, setModal] = useState<ModalMode | null>(null)
@@ -525,7 +572,7 @@ export function Dashboard() {
           padding: '12px 18px', marginBottom: 24, marginTop: 28, fontSize: 13, color: '#b91c1c',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          ⚠️ No se pudo conectar al backend: {error}. Asegúrate de que el contenedor `ping-eye-backend` esté activo.
+          ⚠️ {isEn ? 'Could not connect to backend:' : 'No se pudo conectar al backend:'} {error}. {isEn ? 'Ensure container ping-eye-backend is running.' : 'Asegúrate de que el contenedor `ping-eye-backend` esté activo.'}
         </div>
       )}
 
@@ -546,13 +593,13 @@ export function Dashboard() {
           gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
           gap: 10, marginBottom: 14,
         }}>
-          <StatCard icon={<Server size={14} />}        label="Grupos"        value={stats.totalGroups} sublabel="Monitoreados"                     color="#6366f1" active={tagFilter === 'all'}         onClick={() => setTagFilter('all')} />
-          <StatCard icon={<Activity size={14} />}      label="Endpoints"     value={stats.epTotal}     sublabel={`${stats.epUp} UP · ${stats.epDown} DOWN`} color="#06b6d4" active={false}                  onClick={() => setTagFilter('all')} />
-          <StatCard icon={<CheckCircle size={14} />}   label="Operativos"    value={stats.up}          sublabel={`${stats.epUp} ep activos`}               color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
-          <StatCard icon={<XCircle size={14} />}       label="Caídos"        value={stats.down}        sublabel={`${stats.epDown} ep caídos`}              color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
-          <StatCard icon={<AlertTriangle size={14} />} label="Degradados"    value={stats.degraded}    sublabel="Falla parcial"                           color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
-          <StatCard icon={<Wrench size={14} />}        label="Mantenimiento" value={stats.maintenance} sublabel="0 activos"                               color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
-          <StatCard icon={<Pause size={14} />}         label="En Pausa"      value={stats.paused}      sublabel="0 activos"                               color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
+          <StatCard icon={<Server size={14} />}        label={isEn ? "Groups" : "Grupos"}          value={stats.totalGroups} sublabel={isEn ? "Monitored" : "Monitoreados"}                     color="#6366f1" active={tagFilter === 'all'}         onClick={() => setTagFilter('all')} />
+          <StatCard icon={<Activity size={14} />}      label="Endpoints"                          value={stats.epTotal}     sublabel={`${stats.epUp} UP · ${stats.epDown} DOWN`} color="#06b6d4" active={false}                  onClick={() => setTagFilter('all')} />
+          <StatCard icon={<CheckCircle size={14} />}   label={isEn ? "Online" : "Operativos"}     value={stats.up}          sublabel={`${stats.epUp} ${isEn ? "active eps" : "ep activos"}`}   color="#22c55e" active={tagFilter === 'up'}          onClick={() => toggleCardFilter('up')} />
+          <StatCard icon={<XCircle size={14} />}       label={isEn ? "Alerting" : "Caídos"}       value={stats.down}        sublabel={`${stats.epDown} ${isEn ? "down eps" : "ep caídos"}`}    color="#ef4444" active={tagFilter === 'down'}        onClick={() => toggleCardFilter('down')} />
+          <StatCard icon={<AlertTriangle size={14} />} label={isEn ? "Degraded" : "Degradados"}  value={stats.degraded}    sublabel={isEn ? "Partial failure" : "Falla parcial"}               color="#f59e0b" active={tagFilter === 'degraded'}    onClick={() => toggleCardFilter('degraded')} />
+          <StatCard icon={<Wrench size={14} />}        label={isEn ? "Maintenance" : "Mantenimiento"} value={stats.maintenance} sublabel={isEn ? "0 active" : "0 activos"}                     color="#3b82f6" active={tagFilter === 'maintenance'} onClick={() => toggleCardFilter('maintenance')} />
+          <StatCard icon={<Pause size={14} />}         label={isEn ? "Paused" : "En Pausa"}       value={stats.paused}      sublabel={isEn ? "0 active" : "0 activos"}                         color="#9ca3af" active={tagFilter === 'paused'}      onClick={() => toggleCardFilter('paused')} />
         </div>
 
         {/* ── Barra Unificada de Controles (Búsqueda a la izquierda, Todo a la derecha) ──── */}
@@ -567,7 +614,7 @@ export function Dashboard() {
           <div style={{ flex: '1 1 240px', maxWidth: 360 }}>
             <input
               type="text"
-              placeholder="🔍  Buscar por nombre o IP..."
+              placeholder={`🔍  ${t.dashboard.searchPlaceholder}`}
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -591,7 +638,7 @@ export function Dashboard() {
                     handleExpandAll()
                   }
                 }}
-                title={expandedCount > 0 ? "Colapsar todos los grupos" : "Expandir todos los grupos"}
+                title={expandedCount > 0 ? (isEn ? "Collapse all groups" : "Colapsar todos los grupos") : (isEn ? "Expand all groups" : "Expandir todos los grupos")}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   height: 36, padding: '0 12px', borderRadius: 8,
@@ -605,7 +652,7 @@ export function Dashboard() {
                 {expandedCount > 0 ? (
                   <>
                     <ChevronsDownUp size={14} color="var(--color-accent)" />
-                    <span>Colapsar</span>
+                    <span>{isEn ? 'Collapse' : 'Colapsar'}</span>
                     <span style={{
                       fontSize: 10, padding: '1px 6px', borderRadius: 99,
                       background: 'var(--color-accent)', color: '#fff', fontWeight: 700,
@@ -616,7 +663,7 @@ export function Dashboard() {
                 ) : (
                   <>
                     <ChevronsUpDown size={14} color="var(--color-accent)" />
-                    <span>Expandir todo</span>
+                    <span>{isEn ? 'Expand all' : 'Expandir todo'}</span>
                   </>
                 )}
               </button>
@@ -628,12 +675,13 @@ export function Dashboard() {
               selected={tagFilter}
               stats={stats}
               onChange={(v) => setTagFilter(v)}
+              isEn={isEn}
             />
 
             {/* Caídos 1º */}
             <button
               onClick={() => setSortDownFirst(v => !v)}
-              title="Ordenar automáticamente los grupos Caídos y Degradados al principio de la lista"
+              title={isEn ? "Automatically sort Alerting and Degraded groups first" : "Ordenar automáticamente los grupos Caídos y Degradados al principio de la lista"}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 11px', borderRadius: 8,
@@ -645,7 +693,7 @@ export function Dashboard() {
               }}
             >
               <ArrowUpNarrowWide size={14} />
-              Caídos 1º
+              {isEn ? 'Down 1st' : 'Caídos 1º'}
             </button>
 
             {/* Separador vertical sutil */}
@@ -654,7 +702,7 @@ export function Dashboard() {
             {/* Bitácora */}
             <button
               onClick={() => setShowIncidentLog(true)}
-              title="Abrir Bitácora de Eventos e Historial de Caídas"
+              title={isEn ? "Open Incident and Outage Log" : "Abrir Bitácora de Eventos e Historial de Caídas"}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 12px', borderRadius: 8,
@@ -666,7 +714,7 @@ export function Dashboard() {
               }}
             >
               <ClipboardList size={14} color="var(--color-accent)" />
-              Bitácora
+              {isEn ? 'Incidents' : 'Bitácora'}
               {(stats.down + stats.degraded) > 0 && (
                 <span style={{
                   background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800,
@@ -680,7 +728,7 @@ export function Dashboard() {
             {/* Diagnóstico */}
             <button
               onClick={() => setShowDiagnosticModal(true)}
-              title="Abrir Consola de Diagnóstico en Vivo (Paping TCP, Ping ICMP, Traceroute, HTTP/SSL, DNS)"
+              title={isEn ? "Open Live Diagnostics Console (Paping, Ping, Traceroute, HTTP/SSL, DNS)" : "Abrir Consola de Diagnóstico en Vivo (Paping TCP, Ping ICMP, Traceroute, HTTP/SSL, DNS)"}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 12px', borderRadius: 8,
@@ -692,13 +740,13 @@ export function Dashboard() {
               }}
             >
               <Terminal size={14} />
-              Diagnóstico
+              {isEn ? 'Diagnostics' : 'Diagnóstico'}
             </button>
 
             {/* Reportes SLA */}
             <button
               onClick={() => setShowSlaReportModal(true)}
-              title="Abrir Generador de Reportes Ejecutivos de SLA (PDF, Excel, Impresión)"
+              title={isEn ? "Open Executive SLA Report Generator (PDF, Excel, Print)" : "Abrir Generador de Reportes Ejecutivos de SLA (PDF, Excel, Impresión)"}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 12px', borderRadius: 8,
@@ -710,13 +758,13 @@ export function Dashboard() {
               }}
             >
               <FileSpreadsheet size={14} />
-              Reportes SLA
+              {isEn ? 'SLA Reports' : 'Reportes SLA'}
             </button>
 
             {/* Modo NOC */}
             <button
               onClick={handleToggleNoc}
-              title="Alternar Modo Pantalla NOC / Wallboard compacto"
+              title={isEn ? "Toggle NOC Wallboard Mode" : "Alternar Modo Pantalla NOC / Wallboard compacto"}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 12px', borderRadius: 8,
@@ -728,13 +776,13 @@ export function Dashboard() {
               }}
             >
               <MonitorIcon size={14} />
-              Modo NOC
+              {isEn ? 'NOC Mode' : 'Modo NOC'}
             </button>
 
             {nocMode && (
               <button
                 onClick={handleFullscreen}
-                title="Pantalla completa para monitor de pared"
+                title={isEn ? "Fullscreen for wallboard display" : "Pantalla completa para monitor de pared"}
                 style={{
                   width: 36, height: 36, borderRadius: 8,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -749,7 +797,7 @@ export function Dashboard() {
             {/* Sonido */}
             <button
               onClick={handleToggleSound}
-              title={soundOn ? 'Alerta sonora ACTIVADA' : 'Activar alerta sonora'}
+              title={soundOn ? (isEn ? 'Audio alert ENABLED' : 'Alerta sonora ACTIVADA') : (isEn ? 'Enable audio alert' : 'Activar alerta sonora')}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 height: 36, padding: '0 11px', borderRadius: 8,
@@ -761,11 +809,11 @@ export function Dashboard() {
               }}
             >
               {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
-              {soundOn ? 'Sonido ON' : 'Silencio'}
+              {soundOn ? (isEn ? 'Sound ON' : 'Sonido ON') : (isEn ? 'Mute' : 'Silencio')}
             </button>
 
             {/* Refresco / Sync */}
-            <button onClick={handleRefresh} title="Actualizar ahora (Sync)" style={{
+            <button onClick={handleRefresh} title={isEn ? "Refresh now (Sync)" : "Actualizar ahora (Sync)"} style={{
               width: 36, height: 36, borderRadius: 8, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
@@ -785,7 +833,7 @@ export function Dashboard() {
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
               transition: 'opacity 0.15s ease',
             }}>
-              <PlusCircle size={15} /> Nuevo Grupo
+              <PlusCircle size={15} /> {t.dashboard.newGroup}
             </button>
           </div>
         </div>
@@ -795,7 +843,7 @@ export function Dashboard() {
       {loading && groups.length === 0 && (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--color-text-muted)' }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <p style={{ fontWeight: 600 }}>Conectando al motor de monitoreo...</p>
+          <p style={{ fontWeight: 600 }}>{isEn ? 'Connecting to monitoring engine...' : 'Conectando al motor de monitoreo...'}</p>
         </div>
       )}
 
@@ -809,15 +857,15 @@ export function Dashboard() {
               borderRadius: 14, border: '2px dashed var(--color-border)',
             }}>
               <Server size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-              <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Sin monitores aún</p>
+              <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{t.dashboard.emptyTitle}</p>
               <p style={{ fontSize: 13, marginBottom: 24 }}>
-                Crea tu primer grupo de monitores para comenzar a supervisar servicios.
+                {t.dashboard.emptySubtitle}
               </p>
               <button onClick={() => setModal({ type: 'new_group' })} style={{
                 padding: '11px 28px', borderRadius: 10, background: 'var(--color-accent)',
                 color: '#fff', fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer',
               }}>
-                + Crear primer monitor
+                {t.dashboard.addFirstGroup}
               </button>
             </div>
           ) : nocMode ? (
@@ -836,10 +884,10 @@ export function Dashboard() {
               borderRadius: 14, border: '1px dashed var(--color-border)',
             }}>
               <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-                No hay grupos que coincidan con el filtro seleccionado (0 resultados)
+                {isEn ? 'No groups match the selected filter (0 results)' : 'No hay grupos que coincidan con el filtro seleccionado (0 resultados)'}
               </p>
               <p style={{ fontSize: 12.5, marginBottom: 16 }}>
-                Prueba quitando el filtro activo o limpiando el término de búsqueda.
+                {isEn ? 'Try clearing the active filter or search term.' : 'Prueba quitando el filtro activo o limpiando el término de búsqueda.'}
               </p>
               <button
                 onClick={() => { setTagFilter('all'); setSearch('') }}
@@ -848,7 +896,7 @@ export function Dashboard() {
                   color: '#fff', fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
                 }}
               >
-                Mostrar todos los grupos ({stats.totalGroups})
+                {isEn ? `Show all groups (${stats.totalGroups})` : `Mostrar todos los grupos (${stats.totalGroups})`}
               </button>
             </div>
           ) : (
@@ -860,7 +908,7 @@ export function Dashboard() {
                 searchTerm={search}
                 activeFilter={tagFilter}
                 isExpanded={expandedGroupIds.has(group.id)}
-                onToggleExpand={() => toggleGroupExpand(group.id)}
+                onToggleExpand={toggleGroupExpand}
               />
             ))
           )}
@@ -870,7 +918,11 @@ export function Dashboard() {
       {/* ── Footer ──── */}
       {groups.length > 0 && (
         <div style={{ marginTop: 40, textAlign: 'center', fontSize: 11, color: 'var(--color-text-muted)' }}>
-          UptimeCore v1.0.6 · Mostrando {filtered.length} de {groups.length} grupos · {groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)} endpoints · Actualización en tiempo real (SSE)
+          {interpolate(t.dashboard.footerStats, {
+            count: filtered.length,
+            total: groups.length,
+            monitors: groups.reduce((a, g) => a + (g.monitors?.length ?? 0), 0)
+          })}
         </div>
       )}
 

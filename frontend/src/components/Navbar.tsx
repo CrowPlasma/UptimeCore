@@ -6,11 +6,13 @@ import { useState, useEffect } from 'react'
 import { Sun, Moon, Settings } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { useMonitorStore } from '../store/monitorStore'
+import { useTranslation } from '../i18n'
 import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 export function Navbar() {
   const { theme, toggle } = useTheme()
   const { lastEventAt, sseConnected } = useMonitorStore()
+  const { t, language, toggleLanguage, isEn } = useTranslation()
   const [entity, setEntity] = useState<{ name: string; logo: string }>({ name: '', logo: '' })
 
   useEffect(() => {
@@ -87,7 +89,7 @@ export function Navbar() {
       {/* Identidad de la Entidad (Centro Absoluto) */}
       {(entity.name || entity.logo) && (
         <div
-          title={entity.name ? `Entidad: ${entity.name}` : undefined}
+          title={entity.name ? (isEn ? `Entity: ${entity.name}` : `Entidad: ${entity.name}`) : undefined}
           style={{
             position: 'absolute',
             left: '50%',
@@ -134,9 +136,36 @@ export function Navbar() {
 
       {/* Acciones derecha */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Selector / Toggle de Idioma ES | EN */}
+        <button
+          onClick={toggleLanguage}
+          title={t.navbar.switchLanguage}
+          style={{
+            height: 32,
+            padding: '0 9px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: 'var(--color-bg-primary)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-text-secondary)',
+            cursor: 'pointer',
+            fontSize: 11.5,
+            fontWeight: 700,
+            fontFamily: "'JetBrains Mono', monospace",
+            userSelect: 'none',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <span style={{ color: language === 'es' ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>ES</span>
+          <span style={{ opacity: 0.35, fontSize: 10 }}>|</span>
+          <span style={{ color: language === 'en' ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>EN</span>
+        </button>
+
         {/* Indicador EN VIVO / Telemetría (a la izquierda de ajustes) */}
         <div
-          title={lastEventAt ? `Último evento recibido: ${new Date(lastEventAt).toLocaleTimeString()}` : 'Conexión en tiempo real activa'}
+          title={lastEventAt ? `${t.navbar.lastEvent} ${new Date(lastEventAt).toLocaleTimeString()}` : t.navbar.connected}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             height: 32, padding: '0 10px', borderRadius: 8,
@@ -155,7 +184,7 @@ export function Navbar() {
             boxShadow: sseConnected ? '0 0 6px #22c55e' : 'none',
           }} />
           <span style={{ color: sseConnected ? '#22c55e' : '#f59e0b' }}>
-            {sseConnected ? 'VIVO' : 'SYNC'}
+            {sseConnected ? (isEn ? 'LIVE' : 'VIVO') : 'SYNC'}
           </span>
           {lastEventAt && (
             <span style={{ color: 'var(--color-text-muted)', fontSize: 10.5 }}>
@@ -167,7 +196,7 @@ export function Navbar() {
         {/* Botón de Ajustes */}
         <button
           onClick={() => document.dispatchEvent(new CustomEvent('open-settings'))}
-          title="Ajustes de Sistema"
+          title={t.navbar.settings}
           style={{
             width: 36, height: 36, borderRadius: 9,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -183,7 +212,7 @@ export function Navbar() {
         {/* Toggle Dark / Light */}
         <button
           onClick={toggle}
-          title={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+          title={theme === 'dark' ? t.navbar.themeDark : t.navbar.themeLight}
           style={{
             width: 36, height: 36, borderRadius: 9,
             display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -3,6 +3,7 @@
  * Diálogo de confirmación reutilizable para acciones destructivas (borrar).
  */
 import { AlertTriangle, X } from 'lucide-react'
+import { useTranslation } from '../i18n'
 
 interface Props {
   title: string
@@ -12,7 +13,10 @@ interface Props {
   onCancel: () => void
 }
 
-export function ConfirmDialog({ title, message, confirmLabel = 'Eliminar', onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }: Props) {
+  const { t } = useTranslation()
+  const effectiveConfirmLabel = confirmLabel || t.common.delete
+
   return (
     <>
       <div
@@ -63,14 +67,14 @@ export function ConfirmDialog({ title, message, confirmLabel = 'Eliminar', onCon
             color: 'var(--color-text-secondary)',
             fontSize: 13, fontWeight: 600, cursor: 'pointer',
           }}>
-            Cancelar
+            {t.common.cancel}
           </button>
           <button onClick={onConfirm} style={{
             padding: '8px 18px', borderRadius: 8, border: 'none',
             background: '#ef4444', color: '#fff',
             fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}>
-            {confirmLabel}
+            {effectiveConfirmLabel}
           </button>
         </div>
       </div>

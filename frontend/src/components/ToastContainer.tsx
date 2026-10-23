@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { X, CheckCircle, AlertOctagon, Info, AlertTriangle } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import type { Toast } from '../store/toastStore'
+import { useTranslation } from '../i18n'
 
 function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }) {
+  const { isEn } = useTranslation()
   const [hovered, setHovered] = useState(false)
   const duration = t.durationMs ?? 8000
   const remainingRef = useRef<number>(duration)
@@ -39,7 +41,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
     : t.type === 'warning' ? '#f59e0b'
     : '#3b82f6'
 
-  const timeStr = new Date(t.createdAt).toLocaleTimeString('es-MX', {
+  const timeStr = new Date(t.createdAt).toLocaleTimeString(isEn ? 'en-US' : 'es-MX', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -85,7 +87,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
             color: 'var(--color-text-muted)',
             flexShrink: 0,
           }}>
-            {hovered && t.autoClose ? '⏸ Pausado' : timeStr}
+            {hovered && t.autoClose ? (isEn ? '⏸ Paused' : '⏸ Pausado') : timeStr}
           </span>
         </div>
 
@@ -98,7 +100,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
 
       <button
         onClick={() => onRemove(t.id)}
-        title="Cerrar notificación"
+        title={isEn ? 'Dismiss notification' : 'Cerrar notificación'}
         style={{
           background: 'transparent',
           border: 'none',
@@ -143,6 +145,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
 }
 
 export function ToastContainer() {
+  const { isEn } = useTranslation()
   const { toasts, removeToast } = useToastStore()
 
   if (toasts.length === 0) return null
@@ -172,7 +175,7 @@ export function ToastContainer() {
             boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
           }}
         >
-          🧹 Limpiar todas ({toasts.length})
+          🧹 {isEn ? 'Clear all' : 'Limpiar todas'} ({toasts.length})
         </button>
       )}
 

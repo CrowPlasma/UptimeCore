@@ -6,6 +6,7 @@
 import { create } from 'zustand'
 import { useToastStore } from './toastStore'
 import { playDownAlert, playRecoveredAlert } from '../utils/soundAlert'
+import { useI18nStore } from '../i18n'
 import type { MonitorGroup, Monitor, MonitorType, Tag, HistoryPoint } from '../types'
 
 const isActive = (m: Monitor) => m.is_active !== false && m.current_status !== 'PAUSED'
@@ -171,13 +172,17 @@ function notifyStatusTransition(
   if (oldStatus === 'UNKNOWN' || oldStatus === 'PAUSED' || oldStatus === 'MAINTENANCE') return
   if (newStatus === 'UNKNOWN') return
 
+  const isEn = useI18nStore.getState().language === 'en'
+
   if (newStatus === 'DOWN') {
     playDownAlert()
     useToastStore.getState().addToast({
       id: toastId,
       type: 'error',
-      title: '¡Monitor Caído!',
-      message: `El endpoint "${m.name}" (${m.target}) del grupo "${groupName}" dejó de responder.`,
+      title: isEn ? 'Monitor Down!' : '¡Monitor Caído!',
+      message: isEn
+        ? `Endpoint "${m.name}" (${m.target}) in group "${groupName}" stopped responding.`
+        : `El endpoint "${m.name}" (${m.target}) del grupo "${groupName}" dejó de responder.`,
     })
   } else if (newStatus === 'UP' && (oldStatus === 'DOWN' || oldStatus === 'DEGRADED')) {
     playRecoveredAlert()
@@ -185,15 +190,19 @@ function notifyStatusTransition(
     useToastStore.getState().addToast({
       id: `monitor-recovered-${m.id}`,
       type: 'success',
-      title: 'Monitor Recuperado',
-      message: `El endpoint "${m.name}" del grupo "${groupName}" vuelve a estar operativo (${latencyMs} ms).`,
+      title: isEn ? 'Monitor Recovered' : 'Monitor Recuperado',
+      message: isEn
+        ? `Endpoint "${m.name}" in group "${groupName}" is operational again (${latencyMs} ms).`
+        : `El endpoint "${m.name}" del grupo "${groupName}" vuelve a estar operativo (${latencyMs} ms).`,
     })
   } else if (newStatus === 'DEGRADED') {
     useToastStore.getState().addToast({
       id: toastId,
       type: 'warning',
-      title: 'Rendimiento Degradado',
-      message: `El endpoint "${m.name}" del grupo "${groupName}" reporta: ${errorMsg || 'alta latencia'}.`,
+      title: isEn ? 'Degraded Performance' : 'Rendimiento Degradado',
+      message: isEn
+        ? `Endpoint "${m.name}" in group "${groupName}" reports: ${errorMsg || 'high latency'}.`
+        : `El endpoint "${m.name}" del grupo "${groupName}" reporta: ${errorMsg || 'alta latencia'}.`,
     })
   }
 }
@@ -390,7 +399,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         tags: parseTags(data.tags),
       }),
     })
-    useToastStore.getState().addToast({ type: 'success', title: 'Grupo Creado', message: 'El grupo de monitoreo se ha creado exitosamente.' })
+    const isEn = useI18nStore.getState().language === 'en'; useToastStore.getState().addToast({ type: 'success', title: isEn ? 'Group Created' : 'Grupo Creado', message: isEn ? 'Monitor group created successfully.' : 'El grupo de monitoreo se ha creado exitosamente.' })
     await get().fetchGroups()
   },
 
@@ -530,7 +539,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
           ssl_expiration_days: data.ssl_expiration_days,
         }),
     })
-    useToastStore.getState().addToast({ type: 'success', title: 'Monitor Agregado', message: `El endpoint "${data.name}" se agregó correctamente.` })
+    const isEnMon = useI18nStore.getState().language === 'en'; useToastStore.getState().addToast({ type: 'success', title: isEnMon ? 'Monitor Added' : 'Monitor Agregado', message: isEnMon ? `Endpoint "${data.name}" added successfully.` : `El endpoint "${data.name}" se agregó correctamente.` })
     await get().fetchGroups()
   },
 

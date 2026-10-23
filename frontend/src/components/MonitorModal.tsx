@@ -8,19 +8,9 @@ import { X, Zap, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import type { MonitorGroup, Monitor, MonitorType } from '../types'
 import type { MonitorFormData } from '../store/monitorStore'
 import { useMonitorStore } from '../store/monitorStore'
+import { useTranslation } from '../i18n'
 
-const PROTOCOL_OPTIONS: { value: MonitorType; label: string; description: string }[] = [
-  { value: 'PING',     label: 'ICMP Ping',   description: 'Verificar disponibilidad por ping' },
-  { value: 'HTTP',     label: 'HTTP',         description: 'Verificar código de respuesta HTTP' },
-  { value: 'HTTPS',    label: 'HTTPS',        description: 'Verificar código de respuesta HTTPS' },
-  { value: 'SSL',      label: 'Certificado SSL', description: 'Alerta si vence en X días' },
-  { value: 'TCP',      label: 'TCP Port',     description: 'Verificar si un puerto TCP está abierto' },
-  { value: 'TCP_PING', label: 'TCP Ping',     description: 'Latencia TCP a un host:puerto' },
-  { value: 'POSTGRESQL', label: 'PostgreSQL', description: 'postgres://user:pass@host:5432/db' },
-  { value: 'MYSQL', label: 'MySQL', description: 'user:pass@tcp(host:3306)/db' },
-  { value: 'REDIS', label: 'Redis', description: 'redis://user:pass@host:6379' },
-  { value: 'SNMP', label: 'SNMP', description: 'Monitoreo de OID por SNMP UDP' }
-]
+// PROTOCOL_OPTIONS moved inside component for dynamic i18n
 
 export type ModalMode =
   | { type: 'new_group' }
@@ -49,11 +39,25 @@ const EMPTY_FORM: MonitorFormData = {
 function needsPort(type: MonitorType) { return type === 'TCP' || type === 'TCP_PING' }
 
 export function MonitorModal({ mode, onClose }: Props) {
+  const { t, isEn } = useTranslation()
   const { addGroup, updateGroup, addMonitor, updateMonitor, allTags } = useMonitorStore()
   const [form, setForm] = useState<MonitorFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof MonitorFormData, string>>>({})
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null)
+
+  const protocolOptions: { value: MonitorType; label: string; description: string }[] = [
+    { value: 'PING',       label: 'ICMP Ping',       description: isEn ? 'Check reachability via ICMP ping' : 'Verificar disponibilidad por ping' },
+    { value: 'HTTP',       label: 'HTTP',            description: isEn ? 'Verify HTTP response status code' : 'Verificar código de respuesta HTTP' },
+    { value: 'HTTPS',      label: 'HTTPS',           description: isEn ? 'Verify HTTPS response status code' : 'Verificar código de respuesta HTTPS' },
+    { value: 'SSL',        label: isEn ? 'SSL Certificate' : 'Certificado SSL', description: isEn ? 'Alert if expires within X days' : 'Alerta si vence en X días' },
+    { value: 'TCP',        label: 'TCP Port',        description: isEn ? 'Check if a TCP port is open' : 'Verificar si un puerto TCP está abierto' },
+    { value: 'TCP_PING',   label: 'TCP Ping',        description: isEn ? 'TCP latency to host:port' : 'Latencia TCP a un host:puerto' },
+    { value: 'POSTGRESQL', label: 'PostgreSQL',      description: 'postgres://user:pass@host:5432/db' },
+    { value: 'MYSQL',      label: 'MySQL',           description: 'user:pass@tcp(host:3306)/db' },
+    { value: 'REDIS',      label: 'Redis',           description: 'redis://user:pass@host:6379' },
+    { value: 'SNMP',       label: 'SNMP',            description: isEn ? 'OID query via SNMP UDP' : 'Monitoreo de OID por SNMP UDP' }
+  ]
 
   // Pre-llenar el formulario en modo edición
   useEffect(() => {
@@ -91,8 +95,8 @@ export function MonitorModal({ mode, onClose }: Props) {
   const isGroup = mode.type === 'new_group' || mode.type === 'edit_group'
   const isEdit = mode.type === 'edit_group' || mode.type === 'edit_monitor'
   const title = isEdit
-    ? (isGroup ? 'Editar Grupo de Monitor' : 'Editar Endpoint')
-    : (isGroup ? 'Nuevo Grupo de Monitor' : 'Nuevo Endpoint')
+    ? (isGroup ? (isEn ? 'Edit Monitor Group' : 'Editar Grupo de Monitor') : (isEn ? 'Edit Endpoint' : 'Editar Endpoint'))
+    : (isGroup ? (isEn ? 'New Monitor Group' : 'Nuevo Grupo de Monitor') : (isEn ? 'New Endpoint' : 'Nuevo Endpoint'))
 
   const set = (key: keyof MonitorFormData, val: string | number) => {
     setForm(f => ({ ...f, [key]: val }))
@@ -101,17 +105,17 @@ export function MonitorModal({ mode, onClose }: Props) {
 
   function validate(): boolean {
     const e: typeof errors = {}
-    if (!form.name.trim()) e.name = 'El nombre es requerido'
-    if (!isGroup && !form.target.trim()) e.target = 'El destino es requerido'
-    if (!isGroup && needsPort(form.type) && !form.port) e.port = 'El puerto es requerido para este protocolo'
+    if (!form.name.trim()) e.name = isEn ? 'Name is required' : 'El nombre es requerido'
+    if (!isGroup && !form.target.trim()) e.target = isEn ? 'Target is required' : 'El destino es requerido'
+    if (!isGroup && needsPort(form.type) && !form.port) e.port = isEn ? 'Port is required for this protocol' : 'El puerto es requerido para este protocolo'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   async function handleTestConnection() {
     const e: typeof errors = {}
-    if (!form.target.trim()) e.target = 'El destino es requerido para probar la conexión'
-    if (needsPort(form.type) && !form.port) e.port = 'El puerto es requerido para este protocolo'
+    if (!form.target.trim()) e.target = isEn ? 'Target is required to test connection' : 'El destino es requerido para probar la conexión'
+    if (needsPort(form.type) && !form.port) e.port = isEn ? 'Port is required for this protocol' : 'El puerto es requerido para este protocolo'
     setErrors(e)
     if (Object.keys(e).length > 0) return
 
@@ -138,7 +142,7 @@ export function MonitorModal({ mode, onClose }: Props) {
         setTestResult(data)
       }
     } catch (err: any) {
-      setTestResult({ status: 'DOWN', latency_ms: 0, error_msg: err?.message || 'Error de red' })
+      setTestResult({ status: 'DOWN', latency_ms: 0, error_msg: err?.message || (isEn ? 'Network error' : 'Error de red') })
     } finally {
       setTesting(false)
     }
@@ -184,7 +188,7 @@ export function MonitorModal({ mode, onClose }: Props) {
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>{title}</h2>
             {mode.type === 'new_monitor' || mode.type === 'edit_monitor' ? (
               <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 3 }}>
-                Grupo: <strong>{(mode as { group: MonitorGroup }).group.name}</strong>
+                {isEn ? 'Group' : 'Grupo'}: <strong>{(mode as { group: MonitorGroup }).group.name}</strong>
               </p>
             ) : null}
           </div>
@@ -203,22 +207,22 @@ export function MonitorModal({ mode, onClose }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           {/* Nombre */}
-          <Field label="Nombre" error={errors.name}>
+          <Field label={t.common.name} error={errors.name}>
             <input
               value={form.name}
               onChange={e => set('name', e.target.value)}
-              placeholder={isGroup ? 'ej. Firewall Principal / Datacenter' : 'ej. Enlace ISP Primario'}
+              placeholder={isGroup ? (isEn ? 'e.g. Core Firewall / Datacenter' : 'ej. Firewall Principal / Datacenter') : (isEn ? 'e.g. Primary ISP Link' : 'ej. Enlace ISP Primario')}
               style={inputStyle(!!errors.name)}
             />
           </Field>
 
           {/* Descripción (solo grupos) */}
           {isGroup && (
-            <Field label="Descripción" optional>
+            <Field label={isEn ? 'Description' : 'Descripción'} optional>
               <input
                 value={form.description}
                 onChange={e => set('description', e.target.value)}
-                placeholder="Descripción breve del grupo"
+                placeholder={isEn ? 'Brief description of the group' : 'Descripción breve del grupo'}
                 style={inputStyle(false)}
               />
             </Field>
@@ -226,10 +230,10 @@ export function MonitorModal({ mode, onClose }: Props) {
 
           {/* Tags (solo grupos) */}
             {isGroup && (
-              <Field label="Etiquetas" optional hint="Selecciona las etiquetas (Dadas de alta en Ajustes)">
+              <Field label={isEn ? 'Tags' : 'Etiquetas'} optional hint={isEn ? 'Select tags (Created in Settings)' : 'Selecciona las etiquetas (Dadas de alta en Ajustes)'}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 0' }}>
                   {!allTags || allTags.length === 0 ? (
-                    <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>No hay etiquetas creadas en los Ajustes.</span>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{isEn ? 'No tags created in Settings.' : 'No hay etiquetas creadas en los Ajustes.'}</span>
                   ) : (
                     allTags.map(t => {
                       const selected = form.tags.split(', ').includes(t.name)
@@ -268,9 +272,9 @@ export function MonitorModal({ mode, onClose }: Props) {
 
           {/* Protocolo (solo endpoints) */}
           {!isGroup && (
-            <Field label="Protocolo de Monitoreo" error={errors.type}>
+            <Field label={isEn ? 'Monitoring Protocol' : 'Protocolo de Monitoreo'} error={errors.type}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {PROTOCOL_OPTIONS.map(opt => (
+                {protocolOptions.map(opt => (
                   <button
                     key={opt.value}
                     onClick={() => set('type', opt.value)}
@@ -294,14 +298,14 @@ export function MonitorModal({ mode, onClose }: Props) {
 
           {/* Destino (solo endpoints) */}
           {!isGroup && (
-            <Field label={['POSTGRESQL', 'MYSQL', 'REDIS'].includes(form.type) ? 'Connection URI' : (form.type === 'HTTP' || form.type === 'HTTPS' ? 'URL de destino' : 'IP / Hostname')} error={errors.target}>
+            <Field label={['POSTGRESQL', 'MYSQL', 'REDIS'].includes(form.type) ? 'Connection URI' : (form.type === 'HTTP' || form.type === 'HTTPS' ? (isEn ? 'Target URL' : 'URL de destino') : 'IP / Hostname')} error={errors.target}>
               <input
                 value={form.target}
                 onChange={e => set('target', e.target.value)}
                 placeholder={
                   form.type === 'HTTP' ? 'http://192.168.1.1/health'
-                  : form.type === 'HTTPS' ? 'https://portal.ejemplo.com'
-                  : '192.168.1.1 o router.ejemplo.local'
+                  : form.type === 'HTTPS' ? 'https://portal.example.com'
+                  : (isEn ? '192.168.1.1 or router.example.local' : '192.168.1.1 o router.ejemplo.local')
                 }
                 style={inputStyle(!!errors.target)}
               />
@@ -310,12 +314,12 @@ export function MonitorModal({ mode, onClose }: Props) {
 
           {/* Puerto (TCP/TCP_PING) */}
           {!isGroup && needsPort(form.type) && (
-            <Field label="Puerto TCP" error={errors.port}>
+            <Field label={isEn ? 'TCP Port' : 'Puerto TCP'} error={errors.port}>
               <input
                 type="number"
                 value={form.port}
                 onChange={e => set('port', e.target.value)}
-                placeholder="ej. 443, 80, 22, 3389"
+                placeholder={isEn ? 'e.g. 443, 80, 22, 3389' : 'ej. 443, 80, 22, 3389'}
                 min={1} max={65535}
                 style={inputStyle(!!errors.port)}
               />
@@ -326,25 +330,27 @@ export function MonitorModal({ mode, onClose }: Props) {
 
           {/* Campos de SSL */}
           {!isGroup && form.type === 'SSL' && (
-            <Field label="Días de anticipación para alertar">
+            <Field label={isEn ? 'Alert Advance Notice (Days)' : 'Días de anticipación para alertar'}>
               <select
                 value={form.ssl_expiration_days}
                 onChange={e => set('ssl_expiration_days', parseInt(e.target.value))}
                 style={inputStyle(false)}
               >
-                <option value={3}>3 días antes</option>
-                <option value={7}>7 días antes</option>
-                <option value={14}>14 días antes</option>
-                <option value={30}>30 días antes</option>
+                <option value={3}>{isEn ? '3 days before' : '3 días antes'}</option>
+                <option value={7}>{isEn ? '7 days before' : '7 días antes'}</option>
+                <option value={14}>{isEn ? '14 days before' : '14 días antes'}</option>
+                <option value={30}>{isEn ? '30 days before' : '30 días antes'}</option>
               </select>
-              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>UptimeCore marcará este endpoint como caído si el certificado expira en menos de esta cantidad de días.</p>
+              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>
+                {isEn ? 'UptimeCore will mark this endpoint DOWN if certificate expires in fewer days.' : 'UptimeCore marcará este endpoint como caído si el certificado expira en menos de esta cantidad de días.'}
+              </p>
             </Field>
           )}
 
           {/* Campos de SNMP */}
           {!isGroup && form.type === 'SNMP' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Comunidad SNMP">
+              <Field label={isEn ? 'SNMP Community' : 'Comunidad SNMP'}>
                 <input
                   type="text"
                   value={form.snmp_community || ''}
@@ -353,7 +359,7 @@ export function MonitorModal({ mode, onClose }: Props) {
                   style={inputStyle(false)}
                 />
               </Field>
-              <Field label="OID a consultar">
+              <Field label={isEn ? 'OID to query' : 'OID a consultar'}>
                 <input
                   type="text"
                   value={form.snmp_oid || ''}
@@ -362,12 +368,12 @@ export function MonitorModal({ mode, onClose }: Props) {
                   style={inputStyle(false)}
                 />
               </Field>
-              <Field label="Umbral de Alerta (Opcional)">
+              <Field label={isEn ? 'Alert Threshold (Optional)' : 'Umbral de Alerta (Opcional)'}>
                 <input
                   type="number"
                   value={form.value_threshold || ''}
                   onChange={e => set('value_threshold', parseInt(e.target.value) || 0)}
-                  placeholder="Ej. 90"
+                  placeholder={isEn ? 'e.g. 90' : 'Ej. 90'}
                   style={inputStyle(false)}
                 />
               </Field>
@@ -377,18 +383,18 @@ export function MonitorModal({ mode, onClose }: Props) {
           {/* Intervalo y reintentos */}
           {!isGroup && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Intervalo de chequeo">
+              <Field label={isEn ? 'Check Interval' : 'Intervalo de chequeo'}>
                 <select
                   value={form.interval_seconds}
                   onChange={e => set('interval_seconds', parseInt(e.target.value))}
                   style={inputStyle(false)}
                 >
                   {[10, 30, 60, 120, 300, 600, 900].map(v => (
-                    <option key={v} value={v}>{v < 60 ? `${v} seg` : `${v/60} min`}</option>
+                    <option key={v} value={v}>{v < 60 ? (isEn ? `${v} sec` : `${v} seg`) : `${v/60} min`}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Reintentos antes de alertar">
+              <Field label={isEn ? 'Retries before alerting' : 'Reintentos antes de alertar'}>
                 <input
                   type="number"
                   min={1} max={99}
@@ -426,9 +432,9 @@ export function MonitorModal({ mode, onClose }: Props) {
                       : testResult.status === 'DEGRADED' ? '#f59e0b'
                       : '#ef4444'
                   }}>
-                    {testResult.status === 'UP' ? 'Conexión exitosa (UP)'
-                      : testResult.status === 'DEGRADED' ? 'Conexión con advertencia (DEGRADED)'
-                      : 'Fallo de conexión (DOWN)'}
+                    {testResult.status === 'UP' ? (isEn ? 'Connection Successful (UP)' : 'Conexión exitosa (UP)')
+                      : testResult.status === 'DEGRADED' ? (isEn ? 'Connection with warning (DEGRADED)' : 'Conexión con advertencia (DEGRADED)')
+                      : (isEn ? 'Connection Failure (DOWN)' : 'Fallo de conexión (DOWN)')}
                   </span>
                 </div>
                 <span style={{
@@ -446,12 +452,12 @@ export function MonitorModal({ mode, onClose }: Props) {
               </div>
               {testResult.metric_value && (
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontFamily: "'JetBrains Mono', monospace" }}>
-                  📊 Valor obtenido: <strong>{testResult.metric_value}</strong>
+                  {isEn ? '📊 Value obtained: ' : '📊 Valor obtenido: '}<strong>{testResult.metric_value}</strong>
                 </div>
               )}
               {testResult.error_msg && (
                 <div style={{ fontSize: 12, color: testResult.status === 'DEGRADED' ? '#d97706' : '#ef4444', fontFamily: "'JetBrains Mono', monospace", wordBreak: 'break-all' }}>
-                  ⚠️ Detalle: {testResult.error_msg}
+                  {isEn ? '⚠️ Detail: ' : '⚠️ Detalle: '}{testResult.error_msg}
                 </div>
               )}
             </div>
@@ -478,7 +484,7 @@ export function MonitorModal({ mode, onClose }: Props) {
                 }}
               >
                 <Zap size={14} />
-                {testing ? 'Probando...' : 'Probar Conexión'}
+                {testing ? (isEn ? 'Testing...' : 'Probando...') : (isEn ? 'Test Connection' : 'Probar Conexión')}
               </button>
             )}
           </div>
@@ -488,14 +494,14 @@ export function MonitorModal({ mode, onClose }: Props) {
               background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
               fontSize: 14, fontWeight: 600,
             }}>
-              Cancelar
+              {t.common.cancel}
             </button>
             <button onClick={handleSubmit} style={{
               padding: '9px 24px', borderRadius: 8, border: 'none',
               background: 'var(--color-accent)', color: '#fff',
               fontSize: 14, fontWeight: 700,
             }}>
-              {isEdit ? 'Guardar cambios' : 'Crear'}
+              {isEdit ? (isEn ? 'Save Changes' : 'Guardar cambios') : (isEn ? 'Create' : 'Crear')}
             </button>
           </div>
         </div>
@@ -529,6 +535,7 @@ function Field({
   optional?: boolean
   hint?: string
 }) {
+  const { isEn } = useTranslation()
   return (
     <div>
       <label style={{
@@ -539,7 +546,7 @@ function Field({
         marginBottom: 6,
       }}>
         {label}
-        {optional && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 6 }}>(opcional)</span>}
+        {optional && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 6 }}>{isEn ? '(optional)' : '(opcional)'}</span>}
         {hint && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 6, fontSize: 11 }}>— {hint}</span>}
       </label>
       {children}
