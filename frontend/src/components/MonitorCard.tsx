@@ -184,13 +184,16 @@ export const MonitorCard = React.memo(function MonitorCard({
       ? 'MAINTENANCE'
       : status
 
+  const groupRef = React.useRef(group)
+  groupRef.current = group
+
   const handleToggleMonitor = React.useCallback((mid: number) => {
     setActiveMonitorId(id => id === mid ? null : mid)
   }, [setActiveMonitorId])
 
   const handleEditMonitor = React.useCallback((m: Monitor) => {
-    onOpenModal({ type: 'edit_monitor', group, monitor: m })
-  }, [onOpenModal, group])
+    onOpenModal({ type: 'edit_monitor', group: groupRef.current, monitor: m })
+  }, [onOpenModal])
 
   const handleDeleteMonitor = React.useCallback((mid: number) => {
     setConfirmDelete({ type: 'monitor', monitorId: mid })
@@ -566,6 +569,7 @@ const MonitorRow = React.memo(function MonitorRow({
 
   // Combine fetched history with live_history (SSE) for 'recent'
   const combinedHistory = React.useMemo(() => {
+    if (!isActive) return []
     const live = monitor.live_history || []
     if (histRange !== 'recent' && history.length > 0) return history
     if (history.length === 0) return live
@@ -573,7 +577,7 @@ const MonitorRow = React.memo(function MonitorRow({
     const lastFetchedTime = new Date(history[history.length - 1].time).getTime()
     const newLive = live.filter(h => new Date(h.time).getTime() > lastFetchedTime)
     return [...history, ...newLive]
-  }, [history, monitor.live_history, histRange])
+  }, [isActive, history, monitor.live_history, histRange])
 
   // ── Cálculo enriquecido de SLA, Disponibilidad, Tiempo Caído, Jitter y P95 ──
   const slaStats = React.useMemo(() => {
@@ -670,7 +674,7 @@ const MonitorRow = React.memo(function MonitorRow({
       p95Lat,
       jitterMs,
     }
-  }, [combinedHistory, histRange, monitor.interval_seconds])
+  }, [isActive, combinedHistory, histRange, monitor.interval_seconds])
 
   // Exportar Reporte SLA + Historial del sensor en CSV
   const exportMonitorSlaCsv = () => {

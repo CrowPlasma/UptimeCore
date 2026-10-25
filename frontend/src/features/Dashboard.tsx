@@ -6,7 +6,7 @@
  * - Filtro por tag en dropdown
  * - Estado de carga y error
  */
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity, FileSpreadsheet } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
@@ -291,9 +291,13 @@ export function Dashboard() {
   }
 
   // Persistencia y restauración de posición del scroll de la vista principal
+  const hasRestoredScroll = useRef(false)
+
   useEffect(() => {
     let scrollTimeout: ReturnType<typeof setTimeout> | null = null
     const handleScroll = () => {
+      // No sobrescribir la posición guardada mientras los grupos iniciales aún no se han pintado
+      if (!hasRestoredScroll.current || useMonitorStore.getState().groups.length === 0) return
       if (scrollTimeout) clearTimeout(scrollTimeout)
       scrollTimeout = setTimeout(() => {
         try {
@@ -308,9 +312,9 @@ export function Dashboard() {
     }
   }, [])
 
-  // Restaurar el scroll una vez que los grupos se hayan pintado en pantalla
+  // Restaurar el scroll una única vez cuando los grupos se pintan inicialmente en pantalla
   useEffect(() => {
-    if (groups.length > 0) {
+    if (groups.length > 0 && !hasRestoredScroll.current) {
       try {
         const saved = sessionStorage.getItem('uptimecore_scroll_pos')
         if (saved) {
@@ -318,10 +322,13 @@ export function Dashboard() {
           if (!isNaN(y) && y > 0 && Math.abs(window.scrollY - y) > 20) {
             requestAnimationFrame(() => {
               window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
+              hasRestoredScroll.current = true
             })
+            return
           }
         }
       } catch {}
+      hasRestoredScroll.current = true
     }
   }, [groups.length])
 
@@ -340,8 +347,8 @@ export function Dashboard() {
     let lastActivityAt = Date.now()
 
     // Watchdog: el backend envía un evento "ping" cada 10s y cientos de eventos de chequeo por minuto.
-    // Si no llega NADA en 35s, el stream está muerto (proxy colgado / backend reiniciado) y se recrea.
-    const WATCHDOG_MS = 35_000
+    // Si la pestaña está visible y no llega NADA en 45s, el stream está colgado y se recrea.
+    const WATCHDOG_MS = 45_000
 
     const flush = () => {
       if (pendingEvents.length > 0) {
@@ -380,7 +387,7 @@ export function Dashboard() {
 
       es.onopen = () => {
         markActivity()
-        // Tras una reconexión, resincroniza el estado completo para no perder cambios ocurridos durante el corte
+        // Tras una reconexión real, resincroniza el estado de forma silenciosa
         if (hasConnectedOnce) fetchGroups()
         hasConnectedOnce = true
       }
@@ -411,35 +418,40 @@ export function Dashboard() {
 
     connect()
 
-    // Watchdog de stream colgado (conexión abierta pero sin datos)
+    // Watchdog de stream colgado (solo actúa cuando la pestaña está visible para no cortar por throttling de fondo)
     const watchdog = setInterval(() => {
-      if (disposed) return
+      if (disposed || document.visibilityState === 'hidden') return
       if (Date.now() - lastActivityAt > WATCHDOG_MS) {
         setSseConnected(false)
         if (sse) { sse.close(); sse = null }
         scheduleReconnect()
       }
-    }, 5_000)
+    }, 10_000)
 
-    // Respaldo por HTTP: cada 15s con SSE activo, cada 5s si el tiempo real está caído
+    // Respaldo por HTTP: solo consulta cuando el SSE está desconectado (cada 10s).
+    // Si el SSE está conectado, el stream en tiempo real mantiene todo sincronizado sin refrescar la vista.
     const poll = () => {
       if (disposed) return
-      fetchGroups()
-      const next = useMonitorStore.getState().sseConnected ? 15_000 : 5_000
+      if (!useMonitorStore.getState().sseConnected) {
+        fetchGroups()
+      }
+      const next = useMonitorStore.getState().sseConnected ? 30_000 : 10_000
       pollTimer = setTimeout(poll, next)
     }
-    pollTimer = setTimeout(poll, 15_000)
+    pollTimer = setTimeout(poll, 30_000)
 
-    // Al volver a la pestaña o recuperar la red, reconecta de inmediato si hace falta
+    // Al volver a la pestaña o recuperar la red, solo reconecta si el stream SSE realmente se cerró
     const revive = () => {
       if (disposed) return
       if (document.visibilityState === 'hidden') return
-      if (!sse || sse.readyState === EventSource.CLOSED || Date.now() - lastActivityAt > WATCHDOG_MS) {
+      const isStreamDead = !sse || sse.readyState === EventSource.CLOSED || Date.now() - lastActivityAt > 120_000
+      if (isStreamDead) {
         reconnectAttempt = 0
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
         connect()
+      } else {
+        lastActivityAt = Date.now()
       }
-      fetchGroups()
     }
     document.addEventListener('visibilitychange', revive)
     window.addEventListener('online', revive)

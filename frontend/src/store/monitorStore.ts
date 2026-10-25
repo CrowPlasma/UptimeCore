@@ -220,7 +220,13 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
   fetchTags: async () => {
     try {
       const tags: Tag[] = await apiFetch('/tags')
-      set({ allTags: tags })
+      const prev = get().allTags
+      const same =
+        prev.length === tags.length &&
+        prev.every((t, i) => t.id === tags[i].id && t.name === tags[i].name && t.color === tags[i].color)
+      if (!same) {
+        set({ allTags: tags })
+      }
     } catch (err) {
       console.error(err)
     }
@@ -229,34 +235,61 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
   fetchGroups: async () => {
     try {
       // Only show the full-page loader on the very first load; background refreshes must be silent.
-      if (get().groups.length === 0) set({ loading: true, error: null })
-      else set({ error: null })
+      const prevGroups = get().groups
+      if (prevGroups.length === 0) set({ loading: true, error: null })
+      else if (get().error !== null) set({ error: null })
 
       const incoming: MonitorGroup[] = await apiFetch('/groups')
+      incoming.sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+        if (ta !== tb) return ta - tb
+        return a.id - b.id
+      })
 
       // Keep SSE points that are newer than what the server already returned,
-      // and preserve local state for monitors toggled within the last 3 seconds.
+      // preserve local state for monitors toggled within the last 3 seconds,
+      // and reuse existing object references (structural sharing) when nothing changed.
+      const prevGroupMap = new Map<number, MonitorGroup>()
       const local = new Map<number, Monitor>()
-      get().groups.forEach(g => g.monitors?.forEach(m => {
-        local.set(m.id, m)
-      }))
+      prevGroups.forEach(g => {
+        prevGroupMap.set(g.id, g)
+        g.monitors?.forEach(m => {
+          local.set(m.id, m)
+        })
+      })
 
       const groups: MonitorGroup[] = incoming.map(g => {
-        const monitors = (g.monitors || []).map(m => {
+        const prevGroup = prevGroupMap.get(g.id)
+        const sortedIncomingMonitors = [...(g.monitors || [])].sort((a, b) => {
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+          if (ta !== tb) return ta - tb
+          return a.id - b.id
+        })
+        const monitors = sortedIncomingMonitors.map(m => {
           const prev = local.get(m.id)
           const server = m.live_history || []
           const lastServer = server.length ? new Date(server[server.length - 1].time).getTime() : 0
           const extra = (prev?.live_history || []).filter(p => new Date(p.time).getTime() > lastServer)
-          const mergedHistory = [...server, ...extra].slice(-60)
+          const rawMerged = [...server, ...extra].slice(-60)
+
+          // Reuse previous live_history array reference if the points haven't changed
+          const prevHist = prev?.live_history || []
+          const sameHistory =
+            prev !== undefined &&
+            prevHist.length === rawMerged.length &&
+            (rawMerged.length === 0 ||
+              (prevHist[prevHist.length - 1].time === rawMerged[rawMerged.length - 1].time &&
+                prevHist[prevHist.length - 1].status === rawMerged[rawMerged.length - 1].status &&
+                prevHist[prevHist.length - 1].latency_ms === rawMerged[rawMerged.length - 1].latency_ms &&
+                prevHist[0].time === rawMerged[0].time))
+          const mergedHistory = sameHistory ? prevHist : rawMerged
 
           if (prev && Date.now() - (manualActionAt.get(m.id) || 0) < 3000) {
+            if (sameHistory) return prev
             return {
-              ...m,
-              is_active: prev.is_active,
-              is_maintenance: prev.is_maintenance,
-              current_status: prev.current_status,
-              current_latency_ms: prev.current_latency_ms,
-              current_msg: prev.current_msg,
+              ...prev,
               live_history: mergedHistory,
             }
           }
@@ -269,14 +302,67 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             )
           }
 
-          return { ...m, live_history: mergedHistory }
-        });
+          const nextMon: Monitor = { ...m, live_history: mergedHistory }
+          if (
+            prev &&
+            sameHistory &&
+            prev.name === nextMon.name &&
+            prev.type === nextMon.type &&
+            prev.target === nextMon.target &&
+            prev.port === nextMon.port &&
+            prev.interval_seconds === nextMon.interval_seconds &&
+            prev.timeout_seconds === nextMon.timeout_seconds &&
+            prev.retries === nextMon.retries &&
+            prev.is_active === nextMon.is_active &&
+            prev.is_maintenance === nextMon.is_maintenance &&
+            prev.current_status === nextMon.current_status &&
+            prev.current_latency_ms === nextMon.current_latency_ms &&
+            (prev.current_msg ?? '') === (nextMon.current_msg ?? '') &&
+            prev.current_cpu === nextMon.current_cpu &&
+            prev.current_ram === nextMon.current_ram &&
+            prev.current_disk === nextMon.current_disk &&
+            prev.current_value === nextMon.current_value
+          ) {
+            return prev
+          }
 
-        return { ...g, monitors, overall_status: computeGroupStatus(monitors) as any }
+          return nextMon
+        })
+
+        const overall_status = computeGroupStatus(monitors) as any
+        const prevTags = prevGroup?.tags || []
+        const nextTags = g.tags || []
+        const sameTags =
+          prevTags.length === nextTags.length &&
+          prevTags.every((t, i) => t.id === nextTags[i].id && t.name === nextTags[i].name && t.color === nextTags[i].color)
+        const sameMonitors =
+          prevGroup !== undefined &&
+          (prevGroup.monitors?.length ?? 0) === monitors.length &&
+          monitors.every((mon, i) => mon === prevGroup.monitors?.[i])
+
+        if (
+          prevGroup &&
+          sameMonitors &&
+          sameTags &&
+          prevGroup.name === g.name &&
+          prevGroup.description === g.description &&
+          prevGroup.overall_status === overall_status
+        ) {
+          return prevGroup
+        }
+
+        return { ...g, tags: sameTags && prevGroup ? prevGroup.tags : g.tags, monitors, overall_status }
       })
 
-      set({ groups, loading: false })
-        get().fetchTags()
+      const latestGroups = get().groups
+      const allSame =
+        latestGroups.length === groups.length &&
+        groups.every((grp, i) => grp === latestGroups[i])
+
+      if (!allSame || get().loading) {
+        set({ groups, loading: false })
+      }
+      get().fetchTags()
     } catch (err) {
       set({ loading: false, error: String(err) })
     }

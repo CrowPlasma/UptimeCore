@@ -228,6 +228,7 @@ export const LatencyChart = React.memo(function LatencyChart({ data, range: prop
             fill="url(#latencyGrad)"
             dot={false}
             connectNulls={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, strokeWidth: 0, fill: '#22c55e' }}
           />
         </AreaChart>

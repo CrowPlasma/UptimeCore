@@ -88,7 +88,7 @@ func (db *DB) DeleteTag(ctx context.Context, id int) error {
 
 // ListGroups returns all monitor groups with their associated monitors and tags.
 func (db *DB) ListGroups(ctx context.Context) ([]models.MonitorGroup, error) {
-	rows, err := db.pool.Query(ctx, `SELECT id, name, description, created_at FROM monitor_groups ORDER BY created_at`)
+	rows, err := db.pool.Query(ctx, `SELECT id, name, description, created_at FROM monitor_groups ORDER BY created_at ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
@@ -134,7 +134,7 @@ func (db *DB) ListGroups(ctx context.Context) ([]models.MonitorGroup, error) {
 	monIdx := map[int][2]int{} // monitorID -> [groupIndex, monitorIndex]
 	monRows, err := db.pool.Query(ctx, `
 		SELECT id, group_id, name, type, target, port, interval_seconds, timeout_seconds, retries, snmp_community, snmp_oid, ssl_expiration_days, push_token, cpu_threshold, ram_threshold, disk_threshold, value_threshold, is_active, is_maintenance, created_at, updated_at
-		FROM monitors ORDER BY created_at`)
+		FROM monitors ORDER BY created_at ASC, id ASC`)
 	if err == nil {
 		defer monRows.Close()
 		for monRows.Next() {
