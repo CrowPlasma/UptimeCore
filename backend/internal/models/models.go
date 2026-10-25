@@ -160,3 +160,11 @@ type SlaReportResponse struct {
 	Monitors  []SlaReportMonitor `json:"monitors"`
 	Incidents []IncidentEvent    `json:"incidents"`
 }
+
+// User represents a system user account with a role ("admin", "helpdesk", "viewer").
+type User struct {
+	ID        int       `json:"id"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}

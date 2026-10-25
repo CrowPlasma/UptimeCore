@@ -1,9 +1,74 @@
 package api
 
 import (
+	"encoding/json"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"ping-eye/internal/database"
+	"ping-eye/internal/models"
 )
+
+// AuthGuard returns middleware enforcing minimum role: "viewer", "helpdesk", or "admin".
+func AuthGuard(cache *database.Cache, db *database.DB, minRole string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		token := extractToken(c)
+		if token == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Authentication required"})
+		}
+
+		sessionData, err := cache.GetSession(c.Context(), token)
+		var user models.User
+		if err == nil && sessionData != "" {
+			_ = json.Unmarshal([]byte(sessionData), &user)
+		}
+
+		// Fallback: If Redis was flushed, query DB directly if token matches or user exists
+		if user.ID == 0 {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired or invalid"})
+		}
+
+		roleRank := map[string]int{
+			"viewer":   1,
+			"helpdesk": 2,
+			"admin":    3,
+		}
+
+		userRank := roleRank[strings.ToLower(user.Role)]
+		requiredRank := roleRank[strings.ToLower(minRole)]
+
+		if userRank < requiredRank {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Forbidden: insufficient permissions for role " + user.Role,
+			})
+		}
+
+		c.Locals("user", user)
+		return c.Next()
+	}
+}
+
+// SSHAuthGuard protects WebSSH WebSocket connections.
+func SSHAuthGuard(cache *database.Cache) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		token := extractToken(c)
+		if token == "" {
+			return c.Status(fiber.StatusUnauthorized).SendString("Authentication required")
+		}
+		sessionData, err := cache.GetSession(c.Context(), token)
+		if err != nil || sessionData == "" {
+			return c.Status(fiber.StatusUnauthorized).SendString("Invalid session")
+		}
+		var user models.User
+		_ = json.Unmarshal([]byte(sessionData), &user)
+		if user.Role != "admin" && user.Role != "helpdesk" {
+			return c.Status(fiber.StatusForbidden).SendString("Viewer role cannot access WebSSH terminal")
+		}
+		c.Locals("user", user)
+		return c.Next()
+	}
+}
 
 // SetupRoutes registers all API routes and middleware.
 func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
@@ -11,7 +76,7 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders: "Content-Type,Authorization",
+		AllowHeaders: "Content-Type,Authorization,X-Auth-Token",
 	}))
 
 	app.Get("/health", func(c *fiber.Ctx) error {
@@ -20,52 +85,64 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 
 	api := app.Group("/api")
 
+	// Public Auth routes
+	api.Post("/auth/login", h.Login)
+
 	// Server-Sent Events (Real-Time Push)
 	api.Get("/stream", hub.Handler)
 
-	
-	// Tags
-	api.Get("/tags", h.ListTags)
-	api.Post("/tags", h.CreateTag)
-	api.Put("/tags/:id", h.UpdateTag)
-	api.Delete("/tags/:id", h.DeleteTag)
-
-	
-	// Export / Import
-	api.Get("/export", h.ExportCSV)
-	api.Post("/import", h.ImportCSV)
-
-	// Monitor Groups
-	api.Get("/groups", h.ListGroups)
-	api.Post("/groups", h.CreateGroup)
-	api.Put("/groups/:id", h.UpdateGroup)
-	api.Put("/groups/:id/toggle", h.ToggleGroup)
-	api.Put("/groups/:id/maintenance", h.ToggleGroupMaintenance)
-	api.Delete("/groups/:id", h.DeleteGroup)
-
-	// Push Agent metrics
+	// Push Agent metrics (authenticated by monitor token)
 	api.Post("/push/:token", h.PushAgent)
 
-	// Monitor Endpoints
-	api.Post("/monitors", h.CreateMonitor)
-	api.Post("/monitors/test", h.TestMonitor)
-	api.Put("/monitors/:id", h.UpdateMonitor)
-	api.Put("/monitors/:id/toggle", h.ToggleMonitor)
-	api.Put("/monitors/:id/maintenance", h.ToggleMaintenance)
-	api.Delete("/monitors/:id", h.DeleteMonitor)
-	api.Get("/monitors/:id/history", h.GetHistory)
+	// --- Viewer or higher (Read-Only) ---
+	viewerGuard := AuthGuard(h.cache, h.db, "viewer")
+	api.Get("/auth/me", viewerGuard, h.Me)
+	api.Post("/auth/logout", h.Logout)
 
-	// Incident Log & Live Diagnostics
-	api.Get("/incidents", h.ListIncidents)
-	api.Get("/reports/sla", h.GetSlaReport)
-	api.Post("/diagnostics/run", h.RunDiagnostic)
+	api.Get("/tags", viewerGuard, h.ListTags)
+	api.Get("/export", viewerGuard, h.ExportCSV)
+	api.Get("/groups", viewerGuard, h.ListGroups)
+	api.Get("/monitors/:id/history", viewerGuard, h.GetHistory)
+	api.Get("/incidents", viewerGuard, h.ListIncidents)
+	api.Get("/reports/sla", viewerGuard, h.GetSlaReport)
+	api.Get("/settings", viewerGuard, h.GetSettings)
 
-	// Terminal Web SSH (WebSocket) dentro de la Consola de Diagnóstico
-	api.Get("/ssh/ws", SSHUpgradeGuard, SSHTerminalHandler())
+	// --- Helpdesk or Admin (Operational actions: toggle, maintenance, diagnostics, shell) ---
+	helpdeskGuard := AuthGuard(h.cache, h.db, "helpdesk")
+	api.Put("/groups/:id/toggle", helpdeskGuard, h.ToggleGroup)
+	api.Put("/groups/:id/maintenance", helpdeskGuard, h.ToggleGroupMaintenance)
+	api.Put("/monitors/:id/toggle", helpdeskGuard, h.ToggleMonitor)
+	api.Put("/monitors/:id/maintenance", helpdeskGuard, h.ToggleMaintenance)
+	api.Post("/monitors/test", helpdeskGuard, h.TestMonitor)
+	api.Post("/diagnostics/run", helpdeskGuard, h.RunDiagnostic)
+	api.Get("/ssh/ws", SSHAuthGuard(h.cache), SSHUpgradeGuard, SSHTerminalHandler())
 
-	api.Delete("/system/wipe", h.WipeAllData)
+	// --- Admin Only (Full control: create, edit, delete, users, retention, wipe) ---
+	adminGuard := AuthGuard(h.cache, h.db, "admin")
+	api.Post("/groups", adminGuard, h.CreateGroup)
+	api.Put("/groups/:id", adminGuard, h.UpdateGroup)
+	api.Delete("/groups/:id", adminGuard, h.DeleteGroup)
 
-	// Settings
-	api.Get("/settings", h.GetSettings)
-	api.Put("/settings", h.UpdateSettings)
+	api.Post("/monitors", adminGuard, h.CreateMonitor)
+	api.Put("/monitors/:id", adminGuard, h.UpdateMonitor)
+	api.Delete("/monitors/:id", adminGuard, h.DeleteMonitor)
+
+	api.Post("/tags", adminGuard, h.CreateTag)
+	api.Put("/tags/:id", adminGuard, h.UpdateTag)
+	api.Delete("/tags/:id", adminGuard, h.DeleteTag)
+
+	api.Post("/import", adminGuard, h.ImportCSV)
+	api.Put("/settings", adminGuard, h.UpdateSettings)
+	api.Delete("/system/wipe", adminGuard, h.WipeAllData)
+
+	// User Management (Admin only)
+	api.Get("/users", adminGuard, h.ListUsers)
+	api.Post("/users", adminGuard, h.CreateUser)
+	api.Put("/users/:id", adminGuard, h.UpdateUser)
+	api.Put("/users/:id/password", adminGuard, h.ResetUserPassword)
+	api.Delete("/users/:id", adminGuard, h.DeleteUser)
+
+	// History Retention (Admin only)
+	api.Get("/system/retention", adminGuard, h.GetRetentionStats)
+	api.Post("/system/retention/purge", adminGuard, h.PurgeRetentionHistory)
 }

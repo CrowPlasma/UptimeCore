@@ -14,6 +14,7 @@ import {
 import type { Monitor } from '../types'
 import { SshTerminalView } from './SshTerminalView'
 import { useTranslation } from '../i18n'
+import { useAuthStore } from '../store/authStore'
 
 export type DiagnosticToolMode = 'PAPING' | 'PING' | 'TRACEROUTE' | 'HTTP' | 'DNS' | 'SSH'
 
@@ -108,6 +109,11 @@ async function copyTextSafe(text: string): Promise<boolean> {
 }
 
 export function DiagnosticModal({ initialMonitor, initialGroupName, groupMonitors, onClose }: Props) {
+  const { canOperate } = useAuthStore()
+  if (!canOperate()) {
+    return null
+  }
+
   const { t, isEn } = useTranslation()
   const initialParsed = parseMonitorTargetAndPort(initialMonitor)
 

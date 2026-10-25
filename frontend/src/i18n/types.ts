@@ -298,4 +298,40 @@ export interface TranslationSchema {
     allSystemsOperational: string
     exitNoc: string
   }
+  auth: {
+    loginTitle: string
+    loginSubtitle: string
+    usernameLabel: string
+    passwordLabel: string
+    signInBtn: string
+    signingIn: string
+    logoutBtn: string
+    defaultCredsNotice: string
+    minPasswordError: string
+    userRequiredError: string
+    invalidCredsError: string
+    userRoleAdmin: string
+    userRoleHelpdesk: string
+    userRoleViewer: string
+    usersTitle: string
+    usersSubtitle: string
+    newUserBtn: string
+    usernameTh: string
+    roleTh: string
+    createdTh: string
+    actionsTh: string
+    editUserTitle: string
+    resetPassTitle: string
+    newPassLabel: string
+    confirmDeleteUser: string
+    cannotDeleteSelfOrAdmin: string
+    retentionTitle: string
+    retentionPolicyLabel: string
+    retentionDesc: string
+    totalRecordsLabel: string
+    oldestRecordLabel: string
+    purgeNowBtn: string
+    purging: string
+    purgeSuccess: string
+  }
 }

@@ -52,6 +52,9 @@ func (e *Engine) Start(ctx context.Context) {
 	// Start bulk DB writer
 	go e.batchWriter(ctx)
 
+	// Start automatic 90-day retention purger
+	go e.startRetentionCleaner(ctx)
+
 	monitors, err := e.db.ListAllActiveMonitors(ctx)
 	if err != nil {
 		log.Printf("⚠️  Engine: could not load monitors: %v", err)
@@ -480,5 +483,32 @@ func (e *Engine) StopAll() {
 	for id, cancel := range e.jobs {
 		cancel()
 		delete(e.jobs, id)
+	}
+}
+
+// startRetentionCleaner periodically purges telemetry points older than 90 days.
+func (e *Engine) startRetentionCleaner(ctx context.Context) {
+	// First run 30s after startup
+	select {
+	case <-time.After(30 * time.Second):
+		if purged, err := e.db.PurgeOldHistory(ctx, 90); err == nil && purged > 0 {
+			log.Printf("🧹 [Retention] Purged %d history points older than 90 days", purged)
+		}
+	case <-ctx.Done():
+		return
+	}
+
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if purged, err := e.db.PurgeOldHistory(ctx, 90); err == nil && purged > 0 {
+				log.Printf("🧹 [Retention] Purged %d history points older than 90 days", purged)
+			}
+		case <-ctx.Done():
+			return
+		}
 	}
 }

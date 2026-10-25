@@ -93,7 +93,24 @@ A zero-cloud, 100% on-premise terminal emulator built on **xterm.js** and Go Web
 
 ---
 
-#### 💾 6. Operations, Backup & UI
+#### 🔐 6. Role-Based Access Control (RBAC) & Authentication
+- **🛡️ 3-Tier Security Hierarchy**:
+  - `admin`: Full system control, user lifecycle management, entity branding, and monitor configuration.
+  - `helpdesk`: Operational control over live diagnostics, Web SSH terminal, maintenance modes, and monitor pauses. Prevented from editing or deleting infrastructure.
+  - `viewer`: Read-only NOC telemetry and SLA report generation. Diagnostic and execution tools are hidden and API-guarded with HTTP 403.
+- **🌊 Interactive 3D ASCII Ocean Login**: High-performance canvas ocean simulation reacting dynamically to cursor and touch movement with physical wave ripple mechanics.
+- **🔒 Enterprise Security**: User passwords hashed with `bcrypt`, strict 6-character validation, and server-side safeguards preventing self-lockout or deletion of the last remaining administrator.
+- **🖥️ 24/7 Unattended NOC Display Persistence**: Indefinite session token persistence in `localStorage` and Redis AOF ensures wallboard monitors never timeout.
+
+---
+
+#### 🧹 7. Rolling 90-Day Telemetry Retention & Analytics
+- **Automated Cyclic Downsampling**: Background cleaner goroutine purges time-series telemetry older than 90 days every 6 hours, maintaining optimal database performance.
+- **Live Retention Health**: Real-time record counts, oldest telemetry dates, and on-demand purge controls inside System Settings.
+
+---
+
+#### 💾 8. Operations, Backup & UI
 - **💾 CSV Backup & Restore**: Full export and import of all groups, monitors, and tags with schema validation and conflict resolution.
   <img width="1920" height="911" alt="image" src="https://github.com/user-attachments/assets/e8ef57c9-fdd3-4c16-9f3c-fc807155e6b5" />
 - **🌓 High-Contrast Dark & Light Themes**: Specially calibrated themes for 24/7 NOC wall monitors and daylight environments.
@@ -152,6 +169,11 @@ Open your browser at:
 http://<server-ip>:5173
 ```
 *(Or point your reverse proxy / NGINX / Traefik to port `5173` for frontend and `/api` to port `8080`).*
+
+Sign in with the seeded administrator account:
+- **Default Username**: `admin`
+- **Default Password**: `admin123`
+*(Remember to update or reset default credentials under **Settings > Security & Users** upon initial deployment).*
 
 ---
 
@@ -229,7 +251,24 @@ Emulador de terminal 100% local sobre **xterm.js** y túneles WebSocket seguros 
 
 ---
 
-#### 💾 6. Operaciones, Respaldo e Interfaz
+#### 🔐 6. Control de Acceso por Roles (RBAC) y Seguridad
+- **🛡️ 3 Niveles de Permisos Jerárquicos**:
+  - `admin`: Control absoluto del sistema, gestión de usuarios, branding corporativo y administración de monitores.
+  - `helpdesk`: Operación técnica con acceso a diagnósticos en vivo, terminal SSH, pausas y ventanas de mantenimiento.
+  - `viewer`: Modo observador de solo lectura para telemetría, tableros NOC y reportes ejecutivos SLA.
+- **🌊 Login con Olas Oceánicas ASCII en 3D**: Pantalla de autenticación interactiva animada mediante canvas con física de propagación de ondas (*ripples*) y estela al mover el cursor o tocar la pantalla.
+- **🔒 Seguridad Robusta**: Contraseñas cifradas con `bcrypt`, validación de 6 caracteres mínimos y protección en backend contra auto-eliminación o pérdida del último administrador.
+- **🖥️ Persistencia de Sesión para Salas NOC 24/7**: El token se almacena de forma indefinida en `localStorage` y Redis AOF para evitar que las pantallas de monitoreo se desautentiquen.
+
+---
+
+#### 🧹 7. Retención Cíclica de Historial a 90 Días
+- **Limpieza Automática en TimescaleDB**: Goroutine en segundo plano que purga de forma programada cada 6 horas las métricas con más de 90 días, garantizando máxima velocidad y optimización de disco.
+- **Métricas y Purga en Tiempo Real**: Panel de control en Ajustes con conteo de registros, fecha más antigua y botón de purga manual inmediata.
+
+---
+
+#### 💾 8. Operaciones, Respaldo e Interfaz
 - **💾 Respaldo y Migración en CSV**: Exportación e importación integral de grupos, monitores y etiquetas con reporte detallado de validación y resolución de conflictos.
   <img width="1920" height="911" alt="image" src="https://github.com/user-attachments/assets/90a923f4-2010-4ab3-90bf-ddf6b5683a8d" />
 - **🌓 Modo Oscuro y Claro**: Paletas de alto contraste diseñadas para salas NOC y trabajo diurno prolongado.
@@ -262,6 +301,10 @@ Ingresa en tu navegador web a:
 ```text
 http://<ip-del-servidor>:5173
 ```
+Inicia sesión con las credenciales de administrador generadas automáticamente:
+- **Usuario por defecto**: `admin`
+- **Contraseña por defecto**: `admin123`
+*(Recuerda cambiar o actualizar estas credenciales desde **Ajustes > Seguridad & Usuarios** una vez desplegado el sistema).*
 
 ---
 

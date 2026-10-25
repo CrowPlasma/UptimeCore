@@ -3,17 +3,20 @@
  * Navbar limpio: logo, branding de entidad corporativa (centro), telemetría en vivo, toggle de tema y ajustes.
  */
 import { useState, useEffect } from 'react'
-import { Sun, Moon, Settings } from 'lucide-react'
+import { Sun, Moon, Settings, LogOut, Shield } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { useMonitorStore } from '../store/monitorStore'
+import { useAuthStore } from '../store/authStore'
 import { useTranslation } from '../i18n'
 import { UptimeCoreLogo } from './UptimeCoreLogo'
 
 export function Navbar() {
   const { theme, toggle } = useTheme()
   const { lastEventAt, sseConnected } = useMonitorStore()
+  const { user, logout, isAdmin } = useAuthStore()
   const { t, language, toggleLanguage, isEn } = useTranslation()
   const [entity, setEntity] = useState<{ name: string; logo: string }>({ name: '', logo: '' })
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/settings')
@@ -176,21 +179,23 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Botón de Ajustes */}
-        <button
-          onClick={() => document.dispatchEvent(new CustomEvent('open-settings'))}
-          title={t.navbar.settings}
-          style={{
-            width: 36, height: 36, borderRadius: 9,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer',
-          }}
-        >
-          <Settings size={20} />
-        </button>
+        {/* Botón de Ajustes (Solo visible para rol admin) */}
+        {isAdmin() && (
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent('open-settings'))}
+            title={t.navbar.settings}
+            style={{
+              width: 36, height: 36, borderRadius: 9,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--color-text-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            <Settings size={20} />
+          </button>
+        )}
 
         {/* Toggle Dark / Light */}
         <button
@@ -208,15 +213,157 @@ export function Navbar() {
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
 
-        {/* Avatar placeholder */}
-        <div style={{
-          width: 34, height: 34, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 700, color: '#fff',
-          cursor: 'pointer',
-        }}>
-          A
+        {/* Avatar y Menú Desplegable de Usuario */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setUserMenuOpen(v => !v)}
+            title={user ? `${user.username} (${user.role})` : 'Usuario'}
+            style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: user?.role === 'admin'
+                ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                : user?.role === 'helpdesk'
+                ? 'linear-gradient(135deg, #0ea5e9, #2563eb)'
+                : 'linear-gradient(135deg, #64748b, #475569)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 700, color: '#fff',
+              cursor: 'pointer', border: 'none',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {user?.username ? user.username.charAt(0) : 'U'}
+          </button>
+
+          {userMenuOpen && (
+            <>
+              <div
+                onClick={() => setUserMenuOpen(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 110 }}
+              />
+              <div style={{
+                position: 'absolute',
+                top: '115%',
+                right: 0,
+                zIndex: 111,
+                background: 'var(--color-bg-card)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 12,
+                padding: '12px',
+                minWidth: 210,
+                boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}>
+                {/* Info de usuario y rol */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  paddingBottom: 10,
+                  borderBottom: '1px solid var(--color-border)',
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: user?.role === 'admin'
+                      ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                      : user?.role === 'helpdesk'
+                      ? 'linear-gradient(135deg, #0ea5e9, #2563eb)'
+                      : 'linear-gradient(135deg, #64748b, #475569)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12.5, fontWeight: 700, color: '#fff',
+                    textTransform: 'uppercase',
+                  }}>
+                    {user?.username ? user.username.charAt(0) : 'U'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <span style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: 'var(--color-text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {user?.username || 'Usuario'}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: user?.role === 'admin'
+                        ? '#818cf8'
+                        : user?.role === 'helpdesk'
+                        ? '#38bdf8'
+                        : '#94a3b8',
+                    }}>
+                      {user?.role === 'admin' ? 'Administrator' : user?.role === 'helpdesk' ? 'Helpdesk' : 'Viewer'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Acceso a Seguridad si es admin */}
+                {isAdmin() && (
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      document.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'security' } }))
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--color-text-secondary)',
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = 'var(--color-bg-primary)'}
+                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Shield size={14} color="var(--color-accent)" />
+                    <span>{isEn ? 'Security & Users' : 'Seguridad & Usuarios'}</span>
+                  </button>
+                )}
+
+                {/* Cerrar Sesión */}
+                <button
+                  onClick={async () => {
+                    setUserMenuOpen(false)
+                    await logout()
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    color: '#ef4444',
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+                  onMouseOut={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                >
+                  <LogOut size={14} />
+                  <span>{isEn ? 'Log out' : 'Cerrar Sesión'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </nav>

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 	"ping-eye/internal/models"
 )
 
@@ -1135,7 +1136,7 @@ func (db *DB) AutoMigrate(ctx context.Context) error {
 
 		`SELECT create_hypertable('monitor_history', 'time', if_not_exists => TRUE, migrate_data => TRUE);`,
 		`CREATE INDEX IF NOT EXISTS ix_monitor_history_monitor_id_time ON monitor_history (monitor_id, time DESC);`,
-		`SELECT add_retention_policy('monitor_history', INTERVAL '30 days', if_not_exists => TRUE);`,
+		`SELECT add_retention_policy('monitor_history', INTERVAL '90 days', if_not_exists => TRUE);`,
 	}
 
 	for _, q := range queries {
@@ -1145,9 +1146,136 @@ func (db *DB) AutoMigrate(ctx context.Context) error {
 			// Continue executing even if one fails
 		}
 	}
+
+	if seedErr := db.SeedDefaultAdmin(ctx); seedErr != nil {
+		log.Printf("⚠️ SeedDefaultAdmin error: %v", seedErr)
+	}
+
 	return nil
 }
 func (db *DB) WipeAllData(ctx context.Context) error {
 	_, err := db.pool.Exec(ctx, `TRUNCATE TABLE tags, monitor_groups, monitors, monitor_history CASCADE;`)
 	return err
+}
+
+// --- Users & RBAC ---
+
+func (db *DB) SeedDefaultAdmin(ctx context.Context) error {
+	var count int
+	err := db.pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		_, err = db.pool.Exec(ctx,
+			`INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)`,
+			"admin", string(hash), "admin",
+		)
+		if err == nil {
+			log.Println("🔑 [Security] Seeded default administrator user 'admin' (password: admin123)")
+		}
+		return err
+	}
+	return nil
+}
+
+func (db *DB) ListUsers(ctx context.Context) ([]models.User, error) {
+	rows, err := db.pool.Query(ctx, `SELECT id, username, role, created_at FROM users ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err == nil {
+			users = append(users, u)
+		}
+	}
+	if users == nil {
+		users = []models.User{}
+	}
+	return users, nil
+}
+
+func (db *DB) GetUserByUsername(ctx context.Context, username string) (models.User, string, error) {
+	var u models.User
+	var passwordHash string
+	err := db.pool.QueryRow(ctx,
+		`SELECT id, username, password_hash, role, created_at FROM users WHERE username = $1`,
+		username,
+	).Scan(&u.ID, &u.Username, &passwordHash, &u.Role, &u.CreatedAt)
+	return u, passwordHash, err
+}
+
+func (db *DB) GetUserByID(ctx context.Context, id int) (models.User, error) {
+	var u models.User
+	err := db.pool.QueryRow(ctx,
+		`SELECT id, username, role, created_at FROM users WHERE id = $1`,
+		id,
+	).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+	return u, err
+}
+
+func (db *DB) CreateUser(ctx context.Context, username, passwordHash, role string) (models.User, error) {
+	var u models.User
+	err := db.pool.QueryRow(ctx,
+		`INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at`,
+		username, passwordHash, role,
+	).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+	return u, err
+}
+
+func (db *DB) UpdateUser(ctx context.Context, id int, username, role string) error {
+	_, err := db.pool.Exec(ctx,
+		`UPDATE users SET username = $1, role = $2 WHERE id = $3`,
+		username, role, id,
+	)
+	return err
+}
+
+func (db *DB) UpdateUserPassword(ctx context.Context, id int, passwordHash string) error {
+	_, err := db.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1 WHERE id = $2`,
+		passwordHash, id,
+	)
+	return err
+}
+
+func (db *DB) DeleteUser(ctx context.Context, id int) error {
+	_, err := db.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
+}
+
+func (db *DB) CountAdmins(ctx context.Context) (int, error) {
+	var count int
+	err := db.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin'`).Scan(&count)
+	return count, err
+}
+
+// --- History Retention ---
+
+func (db *DB) PurgeOldHistory(ctx context.Context, days int) (int64, error) {
+	tag, err := db.pool.Exec(ctx,
+		`DELETE FROM monitor_history WHERE time < NOW() - ($1 || ' days')::INTERVAL`,
+		days,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func (db *DB) GetHistoryRetentionStats(ctx context.Context) (int64, *time.Time, error) {
+	var total int64
+	var oldest *time.Time
+	err := db.pool.QueryRow(ctx,
+		`SELECT count(*), min(time) FROM monitor_history`,
+	).Scan(&total, &oldest)
+	return total, oldest, err
 }

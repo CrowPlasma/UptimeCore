@@ -2,13 +2,17 @@
 package api
 
 import (
+	"crypto/rand"
 	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 	"ping-eye/internal/database"
 	"ping-eye/internal/models"
 	"ping-eye/internal/monitor"
@@ -1006,4 +1010,282 @@ func (h *Handlers) GetSlaReport(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(data)
+}
+
+// --- Authentication & Session Handlers ---
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+type UpdateUserRequest struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Password string `json:"password,omitempty"`
+}
+
+type ResetPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+// Login authenticates credentials and returns an active session token.
+func (h *Handlers) Login(c *fiber.Ctx) error {
+	var req LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" || req.Password == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Username and password are required"})
+	}
+
+	user, hash, err := h.db.GetUserByUsername(c.Context(), req.Username)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid username or password"})
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid username or password"})
+	}
+
+	// Generate 64-char crypto random token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate security token"})
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	sessionData, _ := json.Marshal(user)
+	if err := h.cache.SetSession(c.Context(), token, string(sessionData)); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to persist session in cache"})
+	}
+
+	return c.JSON(fiber.Map{
+		"token": token,
+		"user":  user,
+	})
+}
+
+// Me returns the profile of the currently logged in user.
+func (h *Handlers) Me(c *fiber.Ctx) error {
+	user, ok := c.Locals("user").(models.User)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	return c.JSON(fiber.Map{"user": user})
+}
+
+// Logout invalidates the active session token.
+func (h *Handlers) Logout(c *fiber.Ctx) error {
+	token := extractToken(c)
+	if token != "" {
+		_ = h.cache.DeleteSession(c.Context(), token)
+	}
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// --- User Management Handlers (Admin Only) ---
+
+// ListUsers returns all users in the system.
+func (h *Handlers) ListUsers(c *fiber.Ctx) error {
+	users, err := h.db.ListUsers(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(users)
+}
+
+// CreateUser creates a new user with minimum 6 character password.
+func (h *Handlers) CreateUser(c *fiber.Ctx) error {
+	var req CreateUserRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	req.Role = strings.ToLower(strings.TrimSpace(req.Role))
+
+	if req.Username == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Username is required"})
+	}
+	if len(req.Password) < 6 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters long"})
+	}
+	if req.Role != "admin" && req.Role != "helpdesk" && req.Role != "viewer" {
+		return c.Status(400).JSON(fiber.Map{"error": "Role must be 'admin', 'helpdesk', or 'viewer'"})
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	created, err := h.db.CreateUser(c.Context(), req.Username, string(hash), req.Role)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create user: %v", err)})
+	}
+
+	return c.Status(201).JSON(created)
+}
+
+// UpdateUser edits a user's username, role, and optionally password.
+func (h *Handlers) UpdateUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id <= 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	var req UpdateUserRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	req.Role = strings.ToLower(strings.TrimSpace(req.Role))
+
+	if req.Username == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Username cannot be empty"})
+	}
+	if req.Role != "admin" && req.Role != "helpdesk" && req.Role != "viewer" {
+		return c.Status(400).JSON(fiber.Map{"error": "Role must be 'admin', 'helpdesk', or 'viewer'"})
+	}
+
+	// Prevent removing the last admin
+	currentUser, err := h.db.GetUserByID(c.Context(), id)
+	if err == nil && currentUser.Role == "admin" && req.Role != "admin" {
+		adminCount, _ := h.db.CountAdmins(c.Context())
+		if adminCount <= 1 {
+			return c.Status(400).JSON(fiber.Map{"error": "Cannot change the role of the only administrator"})
+		}
+	}
+
+	if err := h.db.UpdateUser(c.Context(), id, req.Username, req.Role); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Update password if provided
+	if req.Password != "" {
+		if len(req.Password) < 6 {
+			return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters long"})
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+		}
+		if err := h.db.UpdateUserPassword(c.Context(), id, string(hash)); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+
+	updated, _ := h.db.GetUserByID(c.Context(), id)
+	return c.JSON(updated)
+}
+
+// ResetUserPassword updates a user's password.
+func (h *Handlers) ResetUserPassword(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id <= 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	var req ResetPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if len(req.Password) < 6 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters long"})
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	if err := h.db.UpdateUserPassword(c.Context(), id, string(hash)); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// DeleteUser deletes a user from the system.
+func (h *Handlers) DeleteUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id <= 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	if currentUser, ok := c.Locals("user").(models.User); ok && currentUser.ID == id {
+		return c.Status(400).JSON(fiber.Map{"error": "Cannot delete your own active account"})
+	}
+
+	target, err := h.db.GetUserByID(c.Context(), id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	if target.Role == "admin" {
+		count, _ := h.db.CountAdmins(c.Context())
+		if count <= 1 {
+			return c.Status(400).JSON(fiber.Map{"error": "Cannot delete the only administrator"})
+		}
+	}
+
+	if err := h.db.DeleteUser(c.Context(), id); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// --- History Retention Handlers ---
+
+// GetRetentionStats returns current retention metrics.
+func (h *Handlers) GetRetentionStats(c *fiber.Ctx) error {
+	total, oldest, err := h.db.GetHistoryRetentionStats(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	var oldestStr *string
+	if oldest != nil {
+		s := oldest.Format(time.RFC3339)
+		oldestStr = &s
+	}
+	return c.JSON(fiber.Map{
+		"retention_days": 90,
+		"total_records":  total,
+		"oldest_record":  oldestStr,
+	})
+}
+
+// PurgeRetentionHistory manually runs the 90-day retention cleanup.
+func (h *Handlers) PurgeRetentionHistory(c *fiber.Ctx) error {
+	purged, err := h.db.PurgeOldHistory(c.Context(), 90)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{
+		"success":      true,
+		"purged_count": purged,
+	})
+}
+
+func extractToken(c *fiber.Ctx) string {
+	auth := c.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if tok := c.Get("X-Auth-Token"); tok != "" {
+		return tok
+	}
+	return c.Query("token")
 }

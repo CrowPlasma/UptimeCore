@@ -16,6 +16,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.0] - 2026-10-25
+
+### 🔐 Role-Based Access Control (RBAC), Interactive ASCII Ocean & Retention Engine
+
+#### 👥 Role-Based Access Control (RBAC) & User Management
+- **Hierarchical 3-Tier Security Roles**:
+  - `admin`: Full administrative control across all monitors, groups, tags, alerts, user accounts, and system configuration.
+  - `helpdesk`: Operational control with access to live diagnostic tools (Paping, ICMP Ping, Traceroute, HTTP, DNS), Web SSH Shell, maintenance mode toggling, and monitor pause/resume. Prevented from mutating infrastructure schema or user records.
+  - `viewer`: Read-only NOC and dashboard observation. Live diagnostics console, terminal shell, maintenance toggles, and edit actions are hidden from UI and guarded with HTTP 403 on the backend.
+- **Enterprise User Management Suite**: Dedicated security tab in Settings allowing administrators to list, create, edit, and delete users, and reset credentials.
+- **Secure Password Policy & Encryption**: All credentials are encrypted with `bcrypt` (default cost). Enforced minimum 6-character length validation on UI and backend.
+- **Self-Lockout & Anti-Deletion Safeguards**: Strict server-side verification blocks deleting or demoting the only remaining administrator, and prevents deleting currently active sessions.
+- **User Profile & Quick Logout**: Top navbar avatar dropdown displaying active username, role badge, quick security settings link, and one-click session logout.
+- **Unattended Session Persistence**: Seamless session token persistence in `localStorage` and Redis AOF ensuring NOC wallboards run 24/7 uninterrupted without session timeouts.
+
+#### 🌊 Interactive 3D ASCII Ocean Login Canvas
+- **Physics-Based Canvas Simulation**: Full-screen mathematical multi-sinusoidal ocean simulation with ambient swell, cross chop, ripples, and dynamic character foam rendering (`CHURN_FOAM`, `CREST_FOAM`, `WATER_SLOPE`).
+- **Kinetic Cursor & Touch Interaction**: Real-time wave generation and expanding circular ripples upon cursor movement or touch drag with velocity and decay modeling.
+- **Modern Cyber Glassmorphism**: Floating frosted-glass authentication card (`backdrop-filter: blur(18px)`) over deep space `#070a14` and shimmering ASCII starry sky.
+
+#### 🧹 Automated 90-Day Telemetry Retention & Downsampling
+- **TimescaleDB Rolling Retention**: Automated background cleaner routine running every 6 hours enforcing a strict 90-day time-series retention window (`DELETE FROM monitor_history WHERE time < NOW() - INTERVAL '90 days'`).
+- **Telemetry Retention Analytics**: Live statistics panel in Settings showing total records, oldest timestamp, and on-demand "Purge Now" capability.
+
+#### 📐 Panoramic Settings Modal Redesign & UI Bug Fixes
+- **Spacious Dialog Dimensions**: Expanded Settings dialog from 800×600 to `min(1120px, 94vw)` and `min(780px, 90vh)` with elevated shadow elevation and ergonomic spacing.
+- **Collapsed Monitor Rows Telemetry Fix**: Resolved bug where collapsed sensor rows displayed empty gray slots; now immediately displays 36 real-time live telemetry pills (`live_history`) without requiring drawer expansion.
+- **Inline Endpoint Creation Guard**: Restricted the inline `+ Agregar endpoint` button to `admin` role.
+
 ## [v1.0.5] - 2026-10-21
 
 ### 🩹 Maintenance, Layout Ergonomics & System Info
@@ -157,6 +186,35 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.0] - 2026-10-25
+
+### 🔐 Control de Acceso por Roles (RBAC), Olas Oceánicas ASCII y Motor de Retención
+
+#### 👥 Control de Acceso Basado en Roles (RBAC) y Gestión de Usuarios
+- **Jerarquía de Seguridad en 3 Niveles**:
+  - `admin`: Control total del sistema, configuración global, grupos, sensores, webhooks, retención y administración de usuarios.
+  - `helpdesk`: Capacidad operativa con acceso completo a la suite de diagnóstico en vivo (Paping, Ping, Traceroute, HTTP, DNS), Terminal Web SSH, alternancia de modo mantenimiento y pausas de monitores. Sin permisos de modificación estructural ni borrado de infraestructura o usuarios.
+  - `viewer`: Modo observador de solo lectura para NOC y monitoreo general. Herramientas de diagnóstico, shell, pausas y edición quedan ocultas en la interfaz y bloqueadas con HTTP 403 en el backend.
+- **Panel Integral de Gestión de Usuarios**: Nueva sección "Seguridad & Usuarios" en Ajustes que permite listar, crear, editar, eliminar y restablecer contraseñas de operadores.
+- **Política de Claves y Cifrado Bcrypt**: Cifrado seguro de contraseñas mediante `bcrypt` y validación estricta de longitud mínima de 6 caracteres en frontend y backend.
+- **Protección contra Auto-Bloqueo y Eliminación del Último Admin**: Candados en base de datos y backend que impiden eliminar o degradar al único administrador del sistema, y prohíben la auto-eliminación de la sesión activa.
+- **Menú de Perfil y Cierre de Sesión en Navbar**: Menú desplegable con avatar, rol del usuario, acceso directo a seguridad y botón para cerrar sesión.
+- **Persistencia 24/7 para Salas NOC**: Almacenamiento seguro del token de sesión en `localStorage` y Redis AOF, garantizando que los dashboards y pantallas de pared funcionen ininterrumpidamente sin desconexiones por inactividad.
+
+#### 🌊 Pantalla de Login Interactiva con Olas ASCII en 3D
+- **Simulación Física en Canvas**: Renderizado multi-sinusoidal en tiempo real con oleaje ambiental, choque de corrientes, valles marinos y paletas jerárquicas de caracteres ASCII para la espuma.
+- **Interacción Cinética con el Cursor y Pantallas Táctiles**: Generación de ondas físicas y estelas expansivas (*ripples*) al deslizar el puntero o el dedo sobre la pantalla, con decaimiento físico de amplitud.
+- **Diseño Cyber Glassmorphism**: Tarjeta de autenticación flotante con desenfoque de cristal (`backdrop-filter: blur(18px)`) sobre un fondo inmersivo `#070a14` con cielo nocturno y estrellas titilantes.
+
+#### 🧹 Retención Automática de Historial a 90 Días
+- **Limpieza Cíclica en TimescaleDB**: Goroutine en segundo plano que purga automáticamente cada 6 horas las muestras con más de 90 días de antigüedad, optimizando el consumo de disco y la velocidad de consultas.
+- **Métricas y Purga Manual en Vivo**: Indicador del total de registros acumulados, fecha de la muestra más antigua y botón de purga forzada bajo demanda en Ajustes.
+
+#### 📐 Rediseño Panorámico de Ajustes y Correcciones de UI
+- **Dimensiones Ampliadas del Modal**: Expansión del diálogo de Ajustes de 800×600 a `min(1120px, 94vw)` × `min(780px, 90vh)` para una visualización cómoda y holgada.
+- **Corrección de Barras de Uptime en Filas Colapsadas**: Se solucionó el fallo visual donde las filas compactas mostraban bloques vacíos; ahora renderizan de inmediato sus 36 pings de telemetría en vivo (`live_history`).
+- **Blindaje del Botón "+ Agregar endpoint"**: Ocultamiento del botón de creación rápida de sensores para usuarios no administradores.
 
 ## [v1.0.5] - 2026-10-21
 

@@ -74,3 +74,13 @@ export interface HistoryPoint {
 /** Rangos de tiempo disponibles para la gráfica */
 export type TimeRange = 'recent' | '3h' | '6h' | '24h' | '1w' | '30d'
 
+
+
+export type UserRole = 'admin' | 'helpdesk' | 'viewer'
+
+export interface User {
+  id: number
+  username: string
+  role: UserRole
+  created_at?: string
+}

@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react'
 import { Save, Download, Upload, X, Bell, Shield, Server, CheckCircle2, Trash2, Mail, MessageSquare, Settings, AlertTriangle, Tag as TagIcon, Building2, Info, ExternalLink, Globe } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import { TagsSettings } from './TagsSettings'
+import { SecuritySettings } from './SecuritySettings'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useMonitorStore } from '../store/monitorStore'
 import { useTranslation } from '../i18n'
 import { UptimeCoreLogo } from './UptimeCoreLogo'
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({ onClose, initialTab }: { onClose: () => void; initialTab?: string }) {
   const { t, language, setLanguage, isEn } = useTranslation()
-  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'entity' | 'info' | 'security'>('notifications')
+  const [tab, setTab] = useState<'notifications' | 'general' | 'tags' | 'entity' | 'info' | 'security'>((initialTab as any) || 'notifications')
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -103,9 +104,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999
     }}>
       <div style={{
-        background: 'var(--color-bg-primary)', width: 800, height: 600,
+        background: 'var(--color-bg-primary)',
+        width: 'min(1120px, 94vw)',
+        height: 'min(780px, 90vh)',
         borderRadius: 16, border: '1px solid var(--color-border)',
-        boxShadow: '0 20px 40px rgba(0,0,0,0.3)', display: 'flex',
+        boxShadow: '0 24px 48px rgba(0,0,0,0.35)', display: 'flex',
         flexDirection: 'column', overflow: 'hidden'
       }}>
         <div style={{
@@ -127,7 +130,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
               letterSpacing: '0.02em',
             }}>
-              v1.0.7
+              v1.1.0
             </span>
           </div>
           <button onClick={onClose} style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex' }}>
@@ -144,13 +147,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <TabBtn active={tab==='tags'} icon={<TagIcon size={18}/>} label={t.settings.tabTags} onClick={()=>setTab('tags')} />
               <TabBtn active={tab==='entity'} icon={<Building2 size={18}/>} label={t.settings.tabEntity} onClick={()=>setTab('entity')} />
               <TabBtn active={tab==='info'} icon={<Info size={18}/>} label={t.settings.tabInfo} onClick={()=>setTab('info')} />
-              <TabBtn active={tab==='security'} icon={<Shield size={18}/>} label={t.settings.tabSecurity} onClick={()=>{}} disabled />
+              <TabBtn active={tab==='security'} icon={<Shield size={18}/>} label={t.settings.tabSecurity} onClick={()=>setTab('security')} />
             </div>
 
             {/* Versión al pie del sidebar */}
             <div style={{ padding: '8px 10px', borderTop: '1px solid var(--color-border)', textAlign: 'center' }}>
               <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
-                UptimeCore v1.0.7
+                UptimeCore v1.1.0
               </span>
             </div>
           </div>
@@ -640,7 +643,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                             border: '1px solid rgba(34, 197, 94, 0.3)',
                             fontFamily: "'JetBrains Mono', monospace",
                           }}>
-                            v1.0.7
+                            v1.1.0
                           </span>
                           <span style={{
                             fontSize: 10.5,
@@ -667,7 +670,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       gap: 12,
                     }}>
                       {[
-                        { label: isEn ? 'System Version' : 'Versión del Sistema', value: 'v1.0.7 (Release)' },
+                        { label: isEn ? 'System Version' : 'Versión del Sistema', value: 'v1.1.0 (Release)' },
                         { label: isEn ? 'License' : 'Licencia', value: 'GNU GPL v3.0 (Open Source)' },
                         { label: isEn ? 'Runtime Environment' : 'Entorno de Ejecución', value: 'Docker Containerized (Alpine Linux)' },
                         { label: isEn ? 'Backend Engine' : 'Motor de Backend', value: isEn ? 'Go 1.22+ / Fiber v2 (High Performance)' : 'Go 1.22+ / Fiber v2 (Alto Rendimiento)' },
@@ -759,6 +762,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                 )}
+
+                {tab === 'security' && (
+                  <SecuritySettings />
+                )}
               </>
             )}
           </div>
@@ -767,9 +774,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', cursor: 'pointer', fontWeight: 600 }}>
-            {tab === 'info' ? t.common.close : t.common.cancel}
+            {tab === 'info' || tab === 'security' ? t.common.close : t.common.cancel}
           </button>
-          {tab !== 'info' && tab !== 'tags' && (
+          {tab !== 'info' && tab !== 'tags' && tab !== 'security' && (
             <button onClick={handleSave} disabled={saving} style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Save size={16} /> {saving ? t.settings.saving : t.settings.saveChanges}
             </button>

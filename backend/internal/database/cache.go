@@ -123,3 +123,20 @@ func (c *Cache) SetEscalated(ctx context.Context, monitorID int, escalated bool)
 		c.client.Del(ctx, fmt.Sprintf("m:%d:escalated", monitorID))
 	}
 }
+
+// --- User Session Management (Persistent Sessions) ---
+
+// SetSession stores a user session JSON string without expiration.
+func (c *Cache) SetSession(ctx context.Context, token string, data string) error {
+	return c.client.Set(ctx, "session:"+token, data, 0).Err()
+}
+
+// GetSession retrieves the session data JSON string.
+func (c *Cache) GetSession(ctx context.Context, token string) (string, error) {
+	return c.client.Get(ctx, "session:"+token).Result()
+}
+
+// DeleteSession removes a user session token.
+func (c *Cache) DeleteSession(ctx context.Context, token string) error {
+	return c.client.Del(ctx, "session:"+token).Err()
+}

@@ -12,6 +12,7 @@ import type { MonitorGroup, Monitor, MonitorStatus } from '../types'
 import type { ModalMode } from './MonitorModal'
 import { DiagnosticModal } from './DiagnosticModal'
 import { useMonitorStore } from '../store/monitorStore'
+import { useAuthStore } from '../store/authStore'
 import { useTranslation } from '../i18n'
 
 export type NocViewType = 'cards' | 'mosaic'
@@ -73,6 +74,7 @@ export function NocWallboard({
   onClearFilter,
 }: Props) {
   const { isEn } = useTranslation()
+  const { isAdmin, canOperate } = useAuthStore()
   const toggleGroup = useMonitorStore(s => s.toggleGroup)
   const toggleGroupMaintenance = useMonitorStore(s => s.toggleGroupMaintenance)
   const toggleMonitor = useMonitorStore(s => s.toggleMonitor)
@@ -566,43 +568,49 @@ export function NocWallboard({
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button
-                  onClick={() => toggleGroupMaintenance(inspectedGroup.id)}
-                  title={isEn ? 'Toggle maintenance across entire group' : 'Alternar Mantenimiento en todo el grupo'}
-                  style={{
-                    padding: '6px 10px', borderRadius: 7, border: '1px solid #3b82f6',
-                    background: 'rgba(59,130,246,0.15)', color: '#60a5fa',
-                    fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  <Wrench size={12} /> {isEn ? 'Maint. Group' : 'Mant. Grupo'}
-                </button>
-                <button
-                  onClick={() => toggleGroup(inspectedGroup.id)}
-                  title={isEn ? 'Pause or resume entire group' : 'Pausar o Reanudar todo el grupo'}
-                  style={{
-                    padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)',
-                    background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
-                    fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  <Pause size={12} /> {isEn ? 'Pause Group' : 'Pausa Grupo'}
-                </button>
-                <button
-                  onClick={() => {
-                    const g = inspectedGroup
-                    closeInspector()
-                    onOpenModal({ type: 'edit_group', group: g })
-                  }}
-                  title={isEn ? 'Edit Group' : 'Editar Grupo'}
-                  style={{
-                    width: 30, height: 30, borderRadius: 7, border: '1px solid var(--color-border)',
-                    background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  }}
-                >
-                  <Pencil size={13} />
-                </button>
+                {canOperate() && (
+                  <>
+                    <button
+                      onClick={() => toggleGroupMaintenance(inspectedGroup.id)}
+                      title={isEn ? 'Toggle maintenance across entire group' : 'Alternar Mantenimiento en todo el grupo'}
+                      style={{
+                        padding: '6px 10px', borderRadius: 7, border: '1px solid #3b82f6',
+                        background: 'rgba(59,130,246,0.15)', color: '#60a5fa',
+                        fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                      }}
+                    >
+                      <Wrench size={12} /> {isEn ? 'Maint. Group' : 'Mant. Grupo'}
+                    </button>
+                    <button
+                      onClick={() => toggleGroup(inspectedGroup.id)}
+                      title={isEn ? 'Pause or resume entire group' : 'Pausar o Reanudar todo el grupo'}
+                      style={{
+                        padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)',
+                        background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
+                        fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                      }}
+                    >
+                      <Pause size={12} /> {isEn ? 'Pause Group' : 'Pausa Grupo'}
+                    </button>
+                  </>
+                )}
+                {isAdmin() && (
+                  <button
+                    onClick={() => {
+                      const g = inspectedGroup
+                      closeInspector()
+                      onOpenModal({ type: 'edit_group', group: g })
+                    }}
+                    title={isEn ? 'Edit Group' : 'Editar Grupo'}
+                    style={{
+                      width: 30, height: 30, borderRadius: 7, border: '1px solid var(--color-border)',
+                      background: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                    }}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
                 <button
                   onClick={closeInspector}
                   style={{
@@ -674,62 +682,68 @@ export function NocWallboard({
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 800, color: col, marginRight: 2 }}>
                           {isPaused ? (isEn ? 'PAUSED' : 'PAUSA') : isMaint ? (isEn ? 'MAINT.' : 'MANT.') : st === 'DOWN' ? (isEn ? 'DOWN' : 'CAÍDO') : `${m.current_latency_ms ?? 0}ms`}
                         </span>
-                        <button
-                          onClick={() => setDiagnosticTarget({ monitor: m, groupName: inspectedGroup.name })}
-                          title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
-                          style={{
-                            width: 28, height: 28, borderRadius: 6,
-                            border: '1px solid rgba(56, 189, 248, 0.4)',
-                            background: 'rgba(14, 165, 233, 0.14)',
-                            color: '#38bdf8',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          }}
-                        >
-                          <Terminal size={12} />
-                        </button>
-                        <button
-                          onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
-                          title={isMaint ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Toggle Maintenance' : 'Alternar Mantenimiento')}
-                          style={{
-                            width: 28, height: 28, borderRadius: 6,
-                            border: isMaint ? '1px solid #3b82f6' : '1px solid var(--color-border)',
-                            background: isMaint ? 'rgba(59,130,246,0.2)' : 'var(--color-bg-card)',
-                            color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          }}
-                        >
-                          <Wrench size={12} />
-                        </button>
-                        <button
-                          onClick={() => toggleMonitor(inspectedGroup.id, m.id)}
-                          title={isPaused ? (isEn ? 'Resume' : 'Reanudar') : (isEn ? 'Pause' : 'Pausar')}
-                          style={{
-                            width: 28, height: 28, borderRadius: 6,
-                            border: isPaused ? '1px solid #22c55e' : '1px solid var(--color-border)',
-                            background: isPaused ? 'rgba(34,197,94,0.2)' : 'var(--color-bg-card)',
-                            color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          }}
-                        >
-                          {isPaused ? <Play size={12} /> : <Pause size={12} />}
-                        </button>
-                        <button
-                          onClick={() => {
-                            const g = inspectedGroup
-                            closeInspector()
-                            onOpenModal({ type: 'edit_monitor', group: g, monitor: m })
-                          }}
-                          title={isEn ? 'Edit sensor configuration' : 'Editar configuración del sensor'}
-                          style={{
-                            width: 28, height: 28, borderRadius: 6,
-                            border: '1px solid var(--color-border)',
-                            background: 'var(--color-bg-card)',
-                            color: 'var(--color-text-secondary)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          }}
-                        >
-                          <Pencil size={12} />
-                        </button>
+                        {canOperate() && (
+                          <>
+                            <button
+                              onClick={() => setDiagnosticTarget({ monitor: m, groupName: inspectedGroup.name })}
+                              title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
+                              style={{
+                                width: 28, height: 28, borderRadius: 6,
+                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                                background: 'rgba(14, 165, 233, 0.14)',
+                                color: '#38bdf8',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                              }}
+                            >
+                              <Terminal size={12} />
+                            </button>
+                            <button
+                              onClick={() => toggleMaintenance(inspectedGroup.id, m.id)}
+                              title={isMaint ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Toggle Maintenance' : 'Alternar Mantenimiento')}
+                              style={{
+                                width: 28, height: 28, borderRadius: 6,
+                                border: isMaint ? '1px solid #3b82f6' : '1px solid var(--color-border)',
+                                background: isMaint ? 'rgba(59,130,246,0.2)' : 'var(--color-bg-card)',
+                                color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                              }}
+                            >
+                              <Wrench size={12} />
+                            </button>
+                            <button
+                              onClick={() => toggleMonitor(inspectedGroup.id, m.id)}
+                              title={isPaused ? (isEn ? 'Resume' : 'Reanudar') : (isEn ? 'Pause' : 'Pausar')}
+                              style={{
+                                width: 28, height: 28, borderRadius: 6,
+                                border: isPaused ? '1px solid #22c55e' : '1px solid var(--color-border)',
+                                background: isPaused ? 'rgba(34,197,94,0.2)' : 'var(--color-bg-card)',
+                                color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                              }}
+                            >
+                              {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                            </button>
+                          </>
+                        )}
+                        {isAdmin() && (
+                          <button
+                            onClick={() => {
+                              const g = inspectedGroup
+                              closeInspector()
+                              onOpenModal({ type: 'edit_monitor', group: g, monitor: m })
+                            }}
+                            title={isEn ? 'Edit sensor configuration' : 'Editar configuración del sensor'}
+                            style={{
+                              width: 28, height: 28, borderRadius: 6,
+                              border: '1px solid var(--color-border)',
+                              background: 'var(--color-bg-card)',
+                              color: 'var(--color-text-secondary)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            }}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -849,7 +863,7 @@ export function NocWallboard({
 
                   {/* Controles rápidos de grupo + badge */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {monitors.length > 0 && (
+                    {monitors.length > 0 && canOperate() && (
                       <>
                         <button
                           onClick={() => toggleGroupMaintenance(group.id)}
@@ -1006,45 +1020,49 @@ export function NocWallboard({
                                 : `${m.current_latency_ms ?? 0}ms`}
                             </span>
 
-                            <button
-                              onClick={() => setDiagnosticTarget({ monitor: m, groupName: group.name })}
-                              title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
-                              style={{
-                                width: 20, height: 20, borderRadius: 4, border: 'none',
-                                background: 'rgba(14, 165, 233, 0.16)',
-                                color: '#38bdf8',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Terminal size={10} />
-                            </button>
-                            <button
-                              onClick={() => toggleMaintenance(group.id, m.id)}
-                              title={m.is_maintenance ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Maintenance' : 'Mantenimiento')}
-                              style={{
-                                width: 20, height: 20, borderRadius: 4, border: 'none',
-                                background: isMaint ? 'rgba(59,130,246,0.25)' : 'transparent',
-                                color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Wrench size={10} />
-                            </button>
-                            <button
-                              onClick={() => toggleMonitor(group.id, m.id)}
-                              title={m.is_active ? (isEn ? 'Pause' : 'Pausar') : (isEn ? 'Resume' : 'Reanudar')}
-                              style={{
-                                width: 20, height: 20, borderRadius: 4, border: 'none',
-                                background: isPaused ? 'rgba(34,197,94,0.2)' : 'transparent',
-                                color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {m.is_active ? <Pause size={10} /> : <Play size={10} />}
-                            </button>
+                            {canOperate() && (
+                              <>
+                                <button
+                                  onClick={() => setDiagnosticTarget({ monitor: m, groupName: group.name })}
+                                  title={isEn ? 'Live Diagnostics (Paping / Ping / Traceroute)' : 'Diagnóstico en Vivo (Paping / Ping / Traceroute)'}
+                                  style={{
+                                    width: 20, height: 20, borderRadius: 4, border: 'none',
+                                    background: 'rgba(14, 165, 233, 0.16)',
+                                    color: '#38bdf8',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <Terminal size={10} />
+                                </button>
+                                <button
+                                  onClick={() => toggleMaintenance(group.id, m.id)}
+                                  title={m.is_maintenance ? (isEn ? 'Exit Maintenance' : 'Salir de Mantenimiento') : (isEn ? 'Maintenance' : 'Mantenimiento')}
+                                  style={{
+                                    width: 20, height: 20, borderRadius: 4, border: 'none',
+                                    background: isMaint ? 'rgba(59,130,246,0.25)' : 'transparent',
+                                    color: isMaint ? '#60a5fa' : 'var(--color-text-muted)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <Wrench size={10} />
+                                </button>
+                                <button
+                                  onClick={() => toggleMonitor(group.id, m.id)}
+                                  title={m.is_active ? (isEn ? 'Pause' : 'Pausar') : (isEn ? 'Resume' : 'Reanudar')}
+                                  style={{
+                                    width: 20, height: 20, borderRadius: 4, border: 'none',
+                                    background: isPaused ? 'rgba(34,197,94,0.2)' : 'transparent',
+                                    color: isPaused ? '#4ade80' : 'var(--color-text-muted)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {m.is_active ? <Pause size={10} /> : <Play size={10} />}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )
@@ -1057,7 +1075,7 @@ export function NocWallboard({
         </div>
       )}
 
-      {diagnosticTarget && (
+      {diagnosticTarget && canOperate() && (
         <DiagnosticModal
           initialMonitor={diagnosticTarget.monitor}
           initialGroupName={diagnosticTarget.groupName}

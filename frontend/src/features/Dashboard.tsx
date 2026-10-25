@@ -10,6 +10,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity, FileSpreadsheet } from 'lucide-react'
 import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
+import { useAuthStore } from '../store/authStore'
 import { MonitorCard } from '../components/MonitorCard'
 import { MonitorModal } from '../components/MonitorModal'
 import { IncidentLogModal } from '../components/IncidentLogModal'
@@ -246,6 +247,7 @@ const STATUS_ORDER: Record<string, number> = {
 
 export function Dashboard() {
   const { t, isEn, interpolate } = useTranslation()
+  const { isAdmin, canOperate } = useAuthStore()
   const groups = useMonitorStore(s => s.groups)
   const allTags = useMonitorStore(s => s.allTags)
   const loading = useMonitorStore(s => s.loading)
@@ -755,23 +757,25 @@ export function Dashboard() {
               )}
             </button>
 
-            {/* Diagnóstico */}
-            <button
-              onClick={() => setShowDiagnosticModal(true)}
-              title={isEn ? "Open Live Diagnostics Console (Paping, Ping, Traceroute, HTTP/SSL, DNS)" : "Abrir Consola de Diagnóstico en Vivo (Paping TCP, Ping ICMP, Traceroute, HTTP/SSL, DNS)"}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                height: 36, padding: '0 12px', borderRadius: 8,
-                border: '1px solid rgba(56, 189, 248, 0.35)',
-                background: 'rgba(14, 165, 233, 0.1)',
-                color: '#38bdf8',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Terminal size={14} />
-              {isEn ? 'Diagnostics' : 'Diagnóstico'}
-            </button>
+            {/* Diagnóstico (Helpdesk o Admin) */}
+            {canOperate() && (
+              <button
+                onClick={() => setShowDiagnosticModal(true)}
+                title={isEn ? "Open Live Diagnostics Console (Paping, Ping, Traceroute, HTTP/SSL, DNS)" : "Abrir Consola de Diagnóstico en Vivo (Paping TCP, Ping ICMP, Traceroute, HTTP/SSL, DNS)"}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  height: 36, padding: '0 12px', borderRadius: 8,
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  background: 'rgba(14, 165, 233, 0.1)',
+                  color: '#38bdf8',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Terminal size={14} />
+                {isEn ? 'Diagnostics' : 'Diagnóstico'}
+              </button>
+            )}
 
             {/* Reportes SLA */}
             <button
@@ -854,17 +858,19 @@ export function Dashboard() {
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </button>
 
-            {/* Nuevo Grupo */}
-            <button onClick={() => setModal({ type: 'new_group' })} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              height: 36, padding: '0 16px', borderRadius: 8, border: 'none',
-              background: 'var(--color-accent)', color: '#fff',
-              fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
-              transition: 'opacity 0.15s ease',
-            }}>
-              <PlusCircle size={15} /> {t.dashboard.newGroup}
-            </button>
+            {/* Nuevo Grupo (Solo Admin) */}
+            {isAdmin() && (
+              <button onClick={() => setModal({ type: 'new_group' })} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 36, padding: '0 16px', borderRadius: 8, border: 'none',
+                background: 'var(--color-accent)', color: '#fff',
+                fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                transition: 'opacity 0.15s ease',
+              }}>
+                <PlusCircle size={15} /> {t.dashboard.newGroup}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -962,8 +968,8 @@ export function Dashboard() {
       {/* ── Modal Bitácora de Eventos ──── */}
       {showIncidentLog && <IncidentLogModal onClose={() => setShowIncidentLog(false)} />}
 
-      {/* ── Modal Diagnóstico en Vivo ──── */}
-      {showDiagnosticModal && <DiagnosticModal onClose={() => setShowDiagnosticModal(false)} />}
+      {/* ── Modal Diagnóstico en Vivo (Solo Helpdesk / Admin) ──── */}
+      {showDiagnosticModal && canOperate() && <DiagnosticModal onClose={() => setShowDiagnosticModal(false)} />}
 
       {/* ── Modal Reportes Ejecutivos de SLA ──── */}
       {showSlaReportModal && (

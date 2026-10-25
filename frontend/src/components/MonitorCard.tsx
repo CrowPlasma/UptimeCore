@@ -18,6 +18,7 @@ import { StatusBadge } from './StatusBadge'
 import { UptimeBar } from './UptimeBar'
 import { LatencyChart } from './LatencyChart'
 import { useMonitorStore, aggregateGroupHistory } from '../store/monitorStore'
+import { useAuthStore } from '../store/authStore'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DiagnosticModal } from './DiagnosticModal'
 import { SlaReportModal } from './SlaReportModal'
@@ -75,6 +76,7 @@ export const MonitorCard = React.memo(function MonitorCard({
   group, onOpenModal, activeFilter = 'all', isExpanded: controlledExpanded, onToggleExpand,
 }: Props) {
   const { t, isEn } = useTranslation()
+  const { isAdmin, canOperate } = useAuthStore()
   const deleteGroup = useMonitorStore(s => s.deleteGroup)
   const deleteMonitor = useMonitorStore(s => s.deleteMonitor)
   const toggleGroup = useMonitorStore(s => s.toggleGroup)
@@ -352,7 +354,7 @@ export const MonitorCard = React.memo(function MonitorCard({
 
             {/* Slot 4: Acciones de Grupo Completo (214px holgado para los 6 botones) */}
             <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', width: '100%' }} onClick={e => e.stopPropagation()}>
-              {groupMetrics.total > 0 && (
+              {groupMetrics.total > 0 && canOperate() && (
                 <>
                   <Btn
                     icon={<Terminal size={13} strokeWidth={2.3} />}
@@ -383,9 +385,13 @@ export const MonitorCard = React.memo(function MonitorCard({
                   />
                 </>
               )}
-              <Btn icon={<Plus size={13} />}   title={isEn ? "Add endpoint" : "Agregar endpoint"}  onClick={() => { onOpenModal({ type: 'new_monitor', group }); if (!expanded) handleToggle(); }} />
-              <Btn icon={<Pencil size={13} />} title={isEn ? "Edit group" : "Editar grupo"}      onClick={() => onOpenModal({ type: 'edit_group', group })} />
-              <Btn icon={<Trash2 size={13} />} title={isEn ? "Delete group" : "Eliminar grupo"}    danger onClick={() => setConfirmDelete({ type: 'group' })} />
+              {isAdmin() && (
+                <>
+                  <Btn icon={<Plus size={13} />}   title={isEn ? "Add endpoint" : "Agregar endpoint"}  onClick={() => { onOpenModal({ type: 'new_monitor', group }); if (!expanded) handleToggle(); }} />
+                  <Btn icon={<Pencil size={13} />} title={isEn ? "Edit group" : "Editar grupo"}      onClick={() => onOpenModal({ type: 'edit_group', group })} />
+                  <Btn icon={<Trash2 size={13} />} title={isEn ? "Delete group" : "Eliminar grupo"}    danger onClick={() => setConfirmDelete({ type: 'group' })} />
+                </>
+              )}
             </div>
 
             {/* Slot 5: Chevron */}
@@ -430,24 +436,26 @@ export const MonitorCard = React.memo(function MonitorCard({
               ))
             )}
 
-            {/* Botón add endpoint inline */}
-            <div style={{ padding: '12px 24px', borderTop: '1px dashed var(--color-border)' }}>
-              <button
-                onClick={() => onOpenModal({ type: 'new_monitor', group })}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 12, fontWeight: 600, color: 'var(--color-accent)',
-                }}
-              >
-                <Plus size={13} /> {isEn ? 'Add endpoint' : 'Agregar endpoint'}
-              </button>
-            </div>
+            {/* Botón add endpoint inline (Solo Administradores) */}
+            {isAdmin() && (
+              <div style={{ padding: '12px 24px', borderTop: '1px dashed var(--color-border)' }}>
+                <button
+                  onClick={() => onOpenModal({ type: 'new_monitor', group })}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 12, fontWeight: 600, color: 'var(--color-accent)',
+                  }}
+                >
+                  <Plus size={13} /> {isEn ? 'Add endpoint' : 'Agregar endpoint'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Modal de Diagnóstico en Vivo */}
-      {diagnosticMonitor && (
+      {diagnosticMonitor && canOperate() && (
         <DiagnosticModal
           initialMonitor={diagnosticMonitor}
           initialGroupName={group.name}
@@ -524,6 +532,7 @@ const MonitorRow = React.memo(function MonitorRow({
 }) {
   const toggleMonitor = useMonitorStore(s => s.toggleMonitor)
   const toggleMaintenance = useMonitorStore(s => s.toggleMaintenance)
+  const { isAdmin, canOperate } = useAuthStore()
   const { t, isEn, locale } = useTranslation()
   const isPaused = monitor.is_active === false || monitor.current_status === 'PAUSED'
   const isMaint = !isPaused && (monitor.is_maintenance === true || monitor.current_status === 'MAINTENANCE')
@@ -569,8 +578,8 @@ const MonitorRow = React.memo(function MonitorRow({
 
   // Combine fetched history with live_history (SSE) for 'recent'
   const combinedHistory = React.useMemo(() => {
-    if (!isActive) return []
     const live = monitor.live_history || []
+    if (!isActive) return live
     if (histRange !== 'recent' && history.length > 0) return history
     if (history.length === 0) return live
     if (live.length === 0) return history
@@ -836,32 +845,40 @@ const MonitorRow = React.memo(function MonitorRow({
 
           {/* Slot 4: Acciones del sensor (214px con flex-end) */}
           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', width: '100%' }} onClick={e => e.stopPropagation()}>
-            <Btn
-              icon={<Terminal size={13} strokeWidth={2.3} />}
-              title={t.monitor.liveDiag}
-              onClick={() => onDiagnose(monitor)}
-              customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
-            />
-            <Btn 
-              icon={<Wrench size={12} strokeWidth={2.5} />} 
-              title={isMaint ? t.monitor.maintMonitorOff : t.monitor.maintMonitorOn} 
-              onClick={() => toggleMaintenance(groupId, monitor.id)} 
-              customColor={isMaint 
-                ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
-                : undefined
-              }
-            />
-            <Btn 
-              icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
-              title={!isPaused ? t.monitor.pauseMonitor : t.monitor.resumeMonitor} 
-              onClick={() => toggleMonitor(groupId, monitor.id)} 
-              customColor={isPaused 
-                ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
-                : undefined
-              }
-            />
-            <Btn icon={<Pencil size={12} />} title={t.common.edit} onClick={() => onEdit(monitor)} />
-            <Btn icon={<Trash2 size={12} />} title={t.common.delete} danger onClick={() => onDelete(monitor.id)} />
+            {canOperate() && (
+              <>
+                <Btn
+                  icon={<Terminal size={13} strokeWidth={2.3} />}
+                  title={t.monitor.liveDiag}
+                  onClick={() => onDiagnose(monitor)}
+                  customColor={{ bg: 'rgba(14, 165, 233, 0.14)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8' }}
+                />
+                <Btn 
+                  icon={<Wrench size={12} strokeWidth={2.5} />} 
+                  title={isMaint ? t.monitor.maintMonitorOff : t.monitor.maintMonitorOn} 
+                  onClick={() => toggleMaintenance(groupId, monitor.id)} 
+                  customColor={isMaint 
+                    ? { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#60a5fa' }
+                    : undefined
+                  }
+                />
+                <Btn 
+                  icon={!isPaused ? <Pause size={13} strokeWidth={2.5} /> : <Play size={13} strokeWidth={2.5} />} 
+                  title={!isPaused ? t.monitor.pauseMonitor : t.monitor.resumeMonitor} 
+                  onClick={() => toggleMonitor(groupId, monitor.id)} 
+                  customColor={isPaused 
+                    ? { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', text: '#34d399' }
+                    : undefined
+                  }
+                />
+              </>
+            )}
+            {isAdmin() && (
+              <>
+                <Btn icon={<Pencil size={12} />} title={t.common.edit} onClick={() => onEdit(monitor)} />
+                <Btn icon={<Trash2 size={12} />} title={t.common.delete} danger onClick={() => onDelete(monitor.id)} />
+              </>
+            )}
           </div>
 
           {/* Slot 5: Chevron */}
@@ -940,24 +957,26 @@ const MonitorRow = React.memo(function MonitorRow({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                onClick={() => onDiagnose(monitor)}
-                style={{
-                  padding: '5px 11px',
-                  borderRadius: 7,
-                  fontSize: 11.5,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(14, 165, 233, 0.14)',
-                  color: '#38bdf8',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                }}
-              >
-                <Terminal size={13} /> {isEn ? 'Live Diagnostics (Paping / Trace)' : 'Diagnóstico en Vivo (Paping / Traza)'}
-              </button>
+              {canOperate() && (
+                <button
+                  onClick={() => onDiagnose(monitor)}
+                  style={{
+                    padding: '5px 11px',
+                    borderRadius: 7,
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'rgba(14, 165, 233, 0.14)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                  }}
+                >
+                  <Terminal size={13} /> {isEn ? 'Live Diagnostics (Paping / Trace)' : 'Diagnóstico en Vivo (Paping / Traza)'}
+                </button>
+              )}
 
               <button
                 onClick={() => onSlaReport(monitor, histRange)}
