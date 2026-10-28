@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.1] - 2026-10-27
+
+### 🩹 Fixes & WebSocket Handshake Authentication
+
+#### 🔑 WebSSH WebSocket Authentication Fix
+- **Handshake Session Token Query**: Injected active session tokens via `?token=` parameter into the WebSSH WebSocket connection URL (`/api/ssh/ws`). Resolves `401 Unauthorized` handshakes introduced with RBAC enforcement in v1.1.0 and allows seamless connection for `admin` and `helpdesk` operators.
+
 ## [v1.1.0] - 2026-10-25
 
 ### 🔐 Role-Based Access Control (RBAC), Interactive ASCII Ocean & Retention Engine
@@ -186,6 +193,13 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.1] - 2026-10-27
+
+### 🩹 Correcciones y Autenticación en Handshake WebSocket
+
+#### 🔑 Corrección de Autenticación en Terminal WebSSH
+- **Token de Sesión en Handshake WebSocket**: Se integró el envío del token de sesión activo mediante el parámetro `?token=` en la URL de conexión WebSocket (`/api/ssh/ws`). Corrige el rechazo `401 Unauthorized` originado tras la implementación de RBAC en la versión v1.1.0, restableciendo la conexión fluida e instantánea para usuarios `admin` y `helpdesk`.
 
 ## [v1.1.0] - 2026-10-25
 

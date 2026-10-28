@@ -73,7 +73,7 @@ export const en: TranslationSchema = {
     emptyTitle: 'No monitor groups configured',
     emptySubtitle: 'Create your first group to start monitoring your infrastructure.',
     addFirstGroup: '+ Add First Group',
-    footerStats: 'UptimeCore v1.1.0 · Showing {count} of {total} groups · {monitors} endpoints · Real-time streaming updates (SSE)',
+    footerStats: 'UptimeCore v1.1.1 · Showing {count} of {total} groups · {monitors} endpoints · Real-time streaming updates (SSE)',
   },
   monitor: {
     noEndpoints: 'No endpoints configured.',

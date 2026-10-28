@@ -14,6 +14,7 @@ import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import type { Monitor } from '../types'
 import { useTranslation } from '../i18n'
+import { useAuthStore } from '../store/authStore'
 
 interface TabSession {
   id: string
@@ -463,7 +464,8 @@ export function SshTerminalView({ initialMonitor, initialGroupName: _initialGrou
     term.writeln(`\r\n\x1b[33m➜ ${isEn ? 'Connecting to' : 'Conectando a'} ${tab.user}@${tab.host}:${tab.port}...\x1b[0m`)
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/ssh/ws`
+    const token = useAuthStore.getState().token || localStorage.getItem('uptimecore_token') || ''
+    const wsUrl = `${protocol}//${window.location.host}/api/ssh/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`
 
     let ws: WebSocket
     try {
