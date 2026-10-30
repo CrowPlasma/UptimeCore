@@ -644,10 +644,12 @@ func (h *Handlers) ExportCSV(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Error fetching data")
 	}
 
-	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Type", "text/csv; charset=utf-8")
 	c.Set("Content-Disposition", `attachment; filename="uptimecore_backup.csv"`)
 
-	writer := csv.NewWriter(c.Response().BodyWriter())
+	bodyWriter := c.Response().BodyWriter()
+	_, _ = bodyWriter.Write([]byte("\xef\xbb\xbf")) // BOM UTF-8 for Microsoft Excel compatibility
+	writer := csv.NewWriter(bodyWriter)
 	defer writer.Flush()
 
 	// Header

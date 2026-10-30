@@ -32,6 +32,53 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
   }, [])
 
   
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportCSV = async () => {
+    try {
+      setExporting(true)
+      const res = await fetch('/api/export')
+      if (!res.ok) {
+        let errMsg = isEn ? 'Could not export backup' : 'No se pudo exportar el respaldo'
+        try {
+          const data = await res.json()
+          if (data.error) errMsg = data.error
+        } catch {}
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: isEn ? 'Export Failed' : 'Error al exportar',
+          message: errMsg,
+        })
+        return
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const dateStr = new Date().toISOString().slice(0, 10)
+      a.download = `uptimecore_backup_${dateStr}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: isEn ? 'Backup Downloaded' : 'Respaldo Descargado',
+        message: isEn ? 'Configuration exported successfully.' : 'Configuración exportada con éxito.',
+      })
+    } catch (err: any) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: isEn ? 'Export Failed' : 'Error al exportar',
+        message: err?.message || (isEn ? 'Network error downloading backup' : 'Error de red al descargar el respaldo'),
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleWipeData = async () => {
     setIsWiping(true)
     try {
@@ -130,7 +177,7 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
               fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
               letterSpacing: '0.02em',
             }}>
-              v1.1.1
+              v1.1.2
             </span>
           </div>
           <button onClick={onClose} style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex' }}>
@@ -153,7 +200,7 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
             {/* Versión al pie del sidebar */}
             <div style={{ padding: '8px 10px', borderTop: '1px solid var(--color-border)', textAlign: 'center' }}>
               <span style={{ fontSize: 10.5, color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
-                UptimeCore v1.1.1
+                UptimeCore v1.1.2
               </span>
             </div>
           </div>
@@ -371,11 +418,26 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
                           {isEn ? "Export all your groups, tags and monitors to a CSV file. You can use this file to migrate your configuration to another UptimeCore server by importing it back." : "Exporta todos tus grupos, etiquetas y monitores a un archivo CSV. Puedes usar este archivo para migrar tu configuración a otro servidor de UptimeCore importándolo de nuevo."}
                         </p>
                         <div style={{ display: 'flex', gap: 12 }}>
-                          <a href="/api/export" target="_blank" style={{ textDecoration: 'none' }}>
-                            <button style={{ background: 'var(--color-accent)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <Download size={16} /> {isEn ? "Export CSV" : "Exportar CSV"}
-                            </button>
-                          </a>
+                          <button
+                            type="button"
+                            onClick={handleExportCSV}
+                            disabled={exporting}
+                            style={{
+                              background: 'var(--color-accent)',
+                              color: '#fff',
+                              border: 'none',
+                              padding: '8px 16px',
+                              borderRadius: 8,
+                              fontWeight: 600,
+                              cursor: exporting ? 'not-allowed' : 'pointer',
+                              opacity: exporting ? 0.7 : 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            <Download size={16} /> {exporting ? (isEn ? 'Exporting...' : 'Exportando...') : (isEn ? 'Export CSV' : 'Exportar CSV')}
+                          </button>
                           
                           <label style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border)', padding: '8px 16px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                             <Upload size={16} /> {isEn ? "Import CSV" : "Importar CSV"}
@@ -643,7 +705,7 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
                             border: '1px solid rgba(34, 197, 94, 0.3)',
                             fontFamily: "'JetBrains Mono', monospace",
                           }}>
-                            v1.1.1
+                            v1.1.2
                           </span>
                           <span style={{
                             fontSize: 10.5,
@@ -670,7 +732,7 @@ export function SettingsModal({ onClose, initialTab }: { onClose: () => void; in
                       gap: 12,
                     }}>
                       {[
-                        { label: isEn ? 'System Version' : 'Versión del Sistema', value: 'v1.1.1 (Release)' },
+                        { label: isEn ? 'System Version' : 'Versión del Sistema', value: 'v1.1.2 (Release)' },
                         { label: isEn ? 'License' : 'Licencia', value: 'GNU GPL v3.0 (Open Source)' },
                         { label: isEn ? 'Runtime Environment' : 'Entorno de Ejecución', value: 'Docker Containerized (Alpine Linux)' },
                         { label: isEn ? 'Backend Engine' : 'Motor de Backend', value: isEn ? 'Go 1.22+ / Fiber v2 (High Performance)' : 'Go 1.22+ / Fiber v2 (Alto Rendimiento)' },

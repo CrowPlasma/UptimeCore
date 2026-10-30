@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.2] - 2026-10-30
+
+### 🩹 Fixes & Authenticated Backup Downloads
+
+#### 💾 Authenticated CSV Backup Download & UTF-8 Encoding
+- **Authenticated Export Request**: Refactored the "Export CSV" backup button in System Settings to trigger an authenticated `fetch` with the global Bearer token interceptor and client-side Blob download, instead of opening an unauthenticated raw link that triggered `{"error":"Authentication required"}` (401).
+- **Excel UTF-8 BOM Compatibility**: Added standard UTF-8 Byte Order Mark (`\xef\xbb\xbf`) and `charset=utf-8` to `/api/export` responses so exported files open accents and special characters cleanly in Microsoft Excel.
+
 ## [v1.1.1] - 2026-10-27
 
 ### 🩹 Fixes & WebSocket Handshake Authentication
@@ -193,6 +201,14 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.2] - 2026-10-30
+
+### 🩹 Correcciones y Descarga Autenticada de Respaldos
+
+#### 💾 Descarga Autenticada de Respaldo CSV y Codificación UTF-8
+- **Exportación Segura con Token de Sesión**: Se rediseñó el botón "Exportar CSV" en Ajustes del Sistema para realizar una petición autenticada `fetch` inyectando automáticamente el token Bearer y generando la descarga directa en el navegador mediante Blob, resolviendo el error `{"error":"Authentication required"}` (401) que ocurría al abrir una pestaña sin cabeceras de autorización.
+- **Compatibilidad con Microsoft Excel (BOM UTF-8)**: Se incorporó la marca de orden de bytes UTF-8 (`\xef\xbb\xbf`) y `charset=utf-8` en la respuesta de `/api/export` para garantizar que acentos, caracteres especiales y descripciones en español se visualicen correctamente en Excel.
 
 ## [v1.1.1] - 2026-10-27
 
