@@ -8,7 +8,7 @@
  */
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, Filter, PlusCircle, RefreshCw, Server, Tag, ClipboardList, Monitor as MonitorIcon, Volume2, VolumeX, ArrowUpNarrowWide, Maximize2, Terminal, ChevronsUpDown, ChevronsDownUp, Activity, FileSpreadsheet } from 'lucide-react'
-import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench } from 'lucide-react'
+import { CheckCircle, XCircle, AlertTriangle, Pause, Wrench, X } from 'lucide-react'
 import { useMonitorStore } from '../store/monitorStore'
 import { useAuthStore } from '../store/authStore'
 import { MonitorCard } from '../components/MonitorCard'
@@ -430,19 +430,16 @@ export function Dashboard() {
       }
     }, 10_000)
 
-    // Respaldo por HTTP: solo consulta cuando el SSE está desconectado (cada 10s).
-    // Si el SSE está conectado, el stream en tiempo real mantiene todo sincronizado sin refrescar la vista.
+    // Respaldo por HTTP: cada 15s con SSE activo o 5s si está caído, asegurando sincronización de contadores
     const poll = () => {
       if (disposed) return
-      if (!useMonitorStore.getState().sseConnected) {
-        fetchGroups()
-      }
-      const next = useMonitorStore.getState().sseConnected ? 30_000 : 10_000
+      fetchGroups()
+      const next = useMonitorStore.getState().sseConnected ? 15_000 : 5_000
       pollTimer = setTimeout(poll, next)
     }
-    pollTimer = setTimeout(poll, 30_000)
+    pollTimer = setTimeout(poll, 15_000)
 
-    // Al volver a la pestaña o recuperar la red, solo reconecta si el stream SSE realmente se cerró
+    // Al volver a la pestaña o recuperar la red, reconecta de inmediato si hace falta y resincroniza estado
     const revive = () => {
       if (disposed) return
       if (document.visibilityState === 'hidden') return
@@ -454,6 +451,7 @@ export function Dashboard() {
       } else {
         lastActivityAt = Date.now()
       }
+      fetchGroups()
     }
     document.addEventListener('visibilitychange', revive)
     window.addEventListener('online', revive)
@@ -642,20 +640,53 @@ export function Dashboard() {
           gap: 12,
           flexWrap: 'wrap',
         }}>
-          {/* Bloque Izquierdo: Buscador */}
-          <div style={{ flex: '1 1 240px', maxWidth: 360 }}>
+          {/* Bloque Izquierdo: Buscador con botón para borrar (X) */}
+          <div style={{ flex: '1 1 240px', maxWidth: 360, position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input
               type="text"
               placeholder={`🔍  ${t.dashboard.searchPlaceholder}`}
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
-                width: '100%', height: 36, padding: '0 12px', borderRadius: 8,
+                width: '100%', height: 36, padding: search ? '0 32px 0 12px' : '0 12px', borderRadius: 8,
                 border: '1px solid var(--color-border)', background: 'var(--color-bg-card)',
                 color: 'var(--color-text-primary)', fontSize: 12.5, outline: 'none', fontFamily: 'inherit',
-                transition: 'border-color 0.15s ease',
+                transition: 'border-color 0.15s ease, padding 0.15s ease',
               }}
             />
+            {search.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                title={isEn ? "Clear search" : "Borrar búsqueda"}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  padding: 4,
+                  cursor: 'pointer',
+                  color: 'var(--color-text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                  transition: 'color 0.15s ease, background 0.15s ease',
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.color = 'var(--color-text-primary)'
+                  e.currentTarget.style.background = 'var(--color-border)'
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.color = 'var(--color-text-muted)'
+                  e.currentTarget.style.background = 'none'
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           {/* Bloque Derecho: Filtros, Herramientas Operativas, Sync y Nuevo Grupo */}

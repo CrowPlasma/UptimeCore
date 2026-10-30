@@ -391,18 +391,13 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             const newStatus = (ev.status ?? ev.Status ?? m.current_status) as string
             const sinceManual = Date.now() - (manualActionAt.get(m.id) || 0)
 
-            // Guard 1: If monitor is currently PAUSED locally, ignore stale periodic check results (UP/DOWN/DEGRADED)
-            // that were already buffered before the user clicked Pause.
-            if ((!m.is_active || m.current_status === 'PAUSED') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED')) {
-              if (sinceManual < 2500 || ev.is_active !== true) {
+            // Guard 1 & 2: If the user manually toggled this monitor in the last 2.5 seconds,
+            // ignore stale periodic check results (UP/DOWN/DEGRADED) buffered in-flight before the click.
+            if (sinceManual < 2500) {
+              if ((!m.is_active || m.current_status === 'PAUSED') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED') && ev.is_active !== true) {
                 return m
               }
-            }
-
-            // Guard 2: If monitor is currently in MAINTENANCE locally, ignore stale periodic check results (UP/DOWN/DEGRADED)
-            // that were buffered before the user clicked Maintenance.
-            if ((m.is_maintenance || m.current_status === 'MAINTENANCE') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED')) {
-              if (sinceManual < 2500 || ev.is_maintenance !== false) {
+              if ((m.is_maintenance || m.current_status === 'MAINTENANCE') && (newStatus === 'UP' || newStatus === 'DOWN' || newStatus === 'DEGRADED') && ev.is_maintenance !== false) {
                 return m
               }
             }
@@ -443,10 +438,10 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
 
             const nextIsActive = ev.is_active !== undefined
               ? ev.is_active
-              : (newStatus === 'PAUSED' ? false : true)
+              : (newStatus === 'PAUSED' ? false : (m.is_active ?? true))
             const nextIsMaint = ev.is_maintenance !== undefined
               ? ev.is_maintenance
-              : (newStatus === 'MAINTENANCE' ? true : false)
+              : (newStatus === 'MAINTENANCE' ? true : (m.is_maintenance ?? false))
 
             return { 
               ...m, 

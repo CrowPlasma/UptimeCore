@@ -270,6 +270,12 @@ func (e *Engine) ProcessResult(ctx context.Context, m models.Monitor, result mod
 	if ctx.Err() != nil {
 		return
 	}
+	if result.IsActive == nil {
+		result.IsActive = &m.IsActive
+	}
+	if result.IsMaintenance == nil {
+		result.IsMaintenance = &m.IsMaintenance
+	}
 	// Threshold check for generic MetricValue (e.g. from SNMP)
 	if m.ValueThreshold != nil && *m.ValueThreshold > 0 && result.MetricValue != nil {
 		if *result.MetricValue >= float64(*m.ValueThreshold) {
