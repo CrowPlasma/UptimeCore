@@ -5,9 +5,16 @@
 **Enterprise Network Monitoring, Real-Time Observability & Diagnostic Platform**  
 *Plataforma Empresarial de Monitoreo de Redes, Observabilidad y Diagnóstico en Tiempo Real*
 
+<br />
+
+# 🌐 Sitio web oficial: [https://uptimecore.io](https://uptimecore.io)
+
+<br />
+
 [English](#-english) • [Español](#-español)
 
 [![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)](https://github.com/CrowPlasma/UptimeCore)
+[![Website](https://img.shields.io/badge/Website-uptimecore.io-4F46E5?style=for-the-badge&logo=googlechrome&logoColor=white)](https://uptimecore.io)
 [![Go](https://img.shields.io/badge/Backend-Go_Fiber-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
 [![React](https://img.shields.io/badge/Frontend-React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![TimescaleDB](https://img.shields.io/badge/Database-TimescaleDB-FDB515?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.timescale.com/)
