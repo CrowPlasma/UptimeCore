@@ -88,13 +88,26 @@ A zero-cloud, 100% on-premise terminal emulator built on **xterm.js** and Go Web
 
 ---
 
-#### 🔔 5. Intelligent Alerting & Notifications
+#### 🔔 5. Intelligent Alerting, Floating Toast Stack & Notifications
 - **📱 Telegram Bot Dispatcher**: Rich HTML formatting with status indicators, downtime duration, latency details, and multi-chat support.
 - **📧 Customizable SMTP / Email**: 
   - Dynamic subject templates (`Perdida de Telemetria: {group} - {monitor}`).
   - Customizable sender display name (`From:`) with RFC 2047 UTF-8 support.
   - Compatible with Google Workspace / Gmail App Passwords and corporate relay servers with STARTTLS.
   <img width="1920" height="911" alt="image" src="https://github.com/user-attachments/assets/bea4140e-d468-41f5-8358-15d0f062e481" />
+- **🎛️ Floating Real-Time Incident Stack with Transparent Scroll**:
+  - Auto-scrolling toast alerts in the bottom-right corner bounded by a maximum vertical height with an ultra-thin transparent scrollbar.
+  - Cards strictly retain 100% full height, original padding (`14px 16px`), error messages, and close buttons (`flexShrink: 0`).
+  - Auto-scrolls smoothly to newest incidents as they occur without obstructing dashboard charts.
+- **🗜️ Floating Minimized Pill & Dynamic Operational Metrics**:
+  - One-click minimize button collapses the stack into an ergonomic, pulsating floating pill badge.
+  - Live metric reporting shows exact outage counts (`🔴 X down`).
+  - Live decrement on recovery: when an endpoint recovers, the down count decrements instantly with an ephemeral badge (`+1 ok`), auto-closing when all incidents resolve.
+  - Decoupled background auto-close engine: green recovery toasts countdown and remove automatically after 8 seconds in the background without pausing while minimized.
+- **💾 Persistent Incidents Across Page Reloads (`localStorage`)**:
+  - Active incidents persist across browser `F5` refreshes, ensuring NOC operators never lose tracking or visibility during tab reloads.
+  - User-driven "Clear all" permanently clears alerts without ghost alert resurgence.
+- **🔊 Multi-Tone Audio Alerts**: Distinct audible chimes for down and recovery transitions with persistent mute controls.
 - **🛡️ Anti-Flapping & Hysteresis**: Configurable retry thresholds and latency degradation bounds prevent notification storms during intermittent packet loss.
 - **🚨 Tier 2 Escalation**: Automatically alerts emergency contacts and secondary communication channels if an outage exceeds the configured grace window (e.g., 30 minutes).
 
@@ -246,13 +259,25 @@ Emulador de terminal 100% local sobre **xterm.js** y túneles WebSocket seguros 
 
 ---
 
-#### 🔔 5. Sistema Inteligente de Notificaciones
+#### 🔔 5. Sistema Inteligente de Notificaciones y Panel Flotante de Alertas
 - **📱 Bot de Telegram**: Alertas en HTML enriquecido con emojis de estado, duración de caída, latencias y soporte para múltiples Chat IDs.
 - **📧 Correo Electrónico (SMTP / Gmail)**:
   - Asuntos dinámicos personalizables con variables (`Perdida de Telemetria: {group} - {monitor}`).
   - Remitente configurable (`From:`) con codificación RFC 2047 UTF-8.
   - Compatible con contraseñas de aplicación de Google Workspace / Gmail y servidores corporativos con STARTTLS.
   <img width="1920" height="911" alt="image" src="https://github.com/user-attachments/assets/b1abb757-eec4-41f5-b6ab-1d6d35f0d8ee" />
+- **🎛️ Pila Flotante de Alertas en Tiempo Real con Scroll Transparente**:
+  - Notificaciones flotantes en la esquina inferior derecha con límite de altura vertical y scrollbar transparente ultra delgado que nunca estorba la vista del fondo.
+  - Geometría fija garantizada (`flexShrink: 0`): cada tarjeta conserva el 100% de su tamaño original, espaciado (`14px 16px`), mensaje del endpoint e iconos sin aplastamiento.
+  - Desplazamiento automático suave hacia la incidencia más reciente a medida que ocurren nuevas caídas.
+- **🗜️ Píldora Flotante Minimizada con Métricas Operativas en Vivo**:
+  - Botón de minimizar en un clic hacia una píldora compacta con animación de pulso de alerta.
+  - Indicador real de caídos (`🔴 X caídos`), decrementándose de inmediato cuando un endpoint se recupera con insignia temporal (`+1 recup.`).
+  - Temporizador de auto-cierre en segundo plano: las tarjetas verdes de recuperación expiran y se retiran solas a los 8 segundos sin pausarse al estar minimizado.
+- **💾 Persistencia de Alertas en Recarga (`localStorage`)**:
+  - Los incidentes activos se guardan en el navegador para que no se pierda el seguimiento o visibilidad al recargar la pestaña (`F5`).
+  - La acción de "Limpiar todas" se respeta estrictamente sin regenerar alertas fantasma o repetidas.
+- **🔊 Alertas Sonoras y Silenciamiento**: Señales de audio diferenciadas para caídas y recuperaciones con memoria de silencio persistente.
 - **🛡️ Histéresis y Anti-Flapping**: Tolerancia de reintentos configurables para evitar spam de alertas por microcortes transitorios.
 - **🚨 Escalamiento a Nivel 2**: Notificación automática a contactos secundarios y canales de emergencia si la caída supera el umbral configurado (ej. 30 minutos).
 

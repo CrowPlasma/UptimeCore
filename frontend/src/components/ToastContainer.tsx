@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, CheckCircle, AlertOctagon, Info, AlertTriangle } from 'lucide-react'
+import { X, CheckCircle, AlertOctagon, Info, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import type { Toast } from '../store/toastStore'
 import { useTranslation } from '../i18n'
@@ -8,32 +8,22 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
   const { isEn } = useTranslation()
   const [hovered, setHovered] = useState(false)
   const duration = t.durationMs ?? 8000
-  const remainingRef = useRef<number>(duration)
-  const lastStartRef = useRef<number>(Date.now())
+  const elapsed = Math.max(0, Date.now() - t.createdAt)
+  const remainingTime = Math.max(500, duration - elapsed)
 
-  // Reset remaining time if the same toast ID is re-triggered with a newer createdAt
-  useEffect(() => {
-    remainingRef.current = duration
-    lastStartRef.current = Date.now()
-  }, [t.createdAt, duration])
-
-  useEffect(() => {
-    if (!t.autoClose) return
-
-    if (hovered) {
-      // Pause countdown and save remaining time (minimum 3.5s after mouse leaves so it never vanishes abruptly)
-      const elapsed = Date.now() - lastStartRef.current
-      remainingRef.current = Math.max(3500, remainingRef.current - elapsed)
-      return
+  const handleMouseEnter = () => {
+    setHovered(true)
+    if (t.autoClose) {
+      useToastStore.getState().pauseAutoClose(t.id)
     }
+  }
 
-    lastStartRef.current = Date.now()
-    const timer = setTimeout(() => {
-      onRemove(t.id)
-    }, remainingRef.current)
-
-    return () => clearTimeout(timer)
-  }, [t.autoClose, t.id, t.createdAt, hovered, onRemove])
+  const handleMouseLeave = () => {
+    setHovered(false)
+    if (t.autoClose) {
+      useToastStore.getState().resumeAutoClose(t.id)
+    }
+  }
 
   const accentColor =
     t.type === 'error' ? '#ef4444'
@@ -49,12 +39,15 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       style={{
         position: 'relative',
         overflow: 'hidden',
         width: 360,
+        minHeight: 'fit-content',
+        flexShrink: 0,
+        boxSizing: 'border-box',
         padding: '14px 16px 16px 16px',
         borderRadius: 12,
         background: 'var(--color-bg-card)',
@@ -134,7 +127,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
               background: accentColor,
               width: '100%',
               transformOrigin: 'left',
-              animation: `toastCountdown ${duration}ms linear forwards`,
+              animation: `toastCountdown ${remainingTime}ms linear forwards`,
               animationPlayState: hovered ? 'paused' : 'running',
             }}
           />
@@ -147,39 +140,289 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
 export function ToastContainer() {
   const { isEn } = useTranslation()
   const { toasts, removeToast } = useToastStore()
+  const [isMinimized, setIsMinimized] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const prevCountRef = useRef(toasts.length)
+
+  // Auto-scroll hacia la alerta más reciente y restaurar si se vació
+  useEffect(() => {
+    if (toasts.length === 0) {
+      setIsMinimized(false)
+      prevCountRef.current = 0
+      return
+    }
+
+    if (toasts.length > prevCountRef.current && !isMinimized) {
+      // Desplazar suavemente hacia el final donde entra la alerta nueva
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        })
+      }
+    }
+    prevCountRef.current = toasts.length
+  }, [toasts.length, isMinimized])
 
   if (toasts.length === 0) return null
 
-  return (
-    <div style={{
-      position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      {toasts.map(t => (
-        <ToastItem key={t.id} t={t} onRemove={removeToast} />
-      ))}
+  // Contadores por tipo de alerta para la píldora compacta
+  const errorCount = toasts.filter(t => t.type === 'error').length
+  const warningCount = toasts.filter(t => t.type === 'warning').length
+  const successCount = toasts.filter(t => t.type === 'success').length
+  const hasErrors = errorCount > 0
+  const hasWarnings = warningCount > 0
+  const primaryColor = hasErrors ? '#ef4444' : hasWarnings ? '#f59e0b' : '#22c55e'
 
-      {toasts.length > 1 && (
+  // Modo Minimizado: Píldora compacta flotante que no estorba
+  if (isMinimized) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          animation: 'slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+      >
         <button
-          onClick={() => useToastStore.setState({ toasts: [] })}
+          onClick={() => setIsMinimized(false)}
+          title={isEn ? 'Expand notification alerts' : 'Expandir alertas de notificación'}
           style={{
-            alignSelf: 'flex-end',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '8px 14px',
+            borderRadius: 99,
+            background: 'var(--color-bg-card)',
+            border: `1.5px solid ${primaryColor}`,
+            color: 'var(--color-text-primary)',
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: 'pointer',
+            boxShadow: `0 8px 20px -2px rgba(0, 0, 0, 0.3), 0 0 0 2px ${primaryColor}22`,
+            transition: 'all 0.15s ease',
+            backdropFilter: 'blur(8px)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+          onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
+        >
+          <span style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            {hasErrors ? (
+              <AlertOctagon size={16} color="#ef4444" className="pulse-alert" />
+            ) : hasWarnings ? (
+              <AlertTriangle size={16} color="#f59e0b" />
+            ) : (
+              <CheckCircle size={16} color="#22c55e" />
+            )}
+          </span>
+
+          <span>
+            {hasErrors
+              ? `${errorCount} ${errorCount === 1 ? (isEn ? 'down' : 'caído') : (isEn ? 'down' : 'caídos')}`
+              : hasWarnings
+              ? `${warningCount} ${warningCount === 1 ? (isEn ? 'degraded' : 'degradado') : (isEn ? 'degraded' : 'degradados')}`
+              : `${successCount} ${successCount === 1 ? (isEn ? 'recovered' : 'recuperado') : (isEn ? 'recovered' : 'recuperados')}`}
+          </span>
+
+          {hasErrors && successCount > 0 && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2px 7px',
+              borderRadius: 99,
+              background: '#22c55e22',
+              color: '#22c55e',
+              fontSize: 11,
+              fontWeight: 800,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              +{successCount} {isEn ? 'ok' : 'recup.'}
+            </span>
+          )}
+
+          <ChevronUp size={15} color="var(--color-text-secondary)" />
+        </button>
+
+        <button
+          onClick={() => useToastStore.getState().clearAll()}
+          title={isEn ? 'Clear all notifications' : 'Limpiar todas las alertas'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 34,
+            height: 34,
+            borderRadius: 99,
             background: 'var(--color-bg-card)',
             border: '1px solid var(--color-border)',
-            color: 'var(--color-text-primary)',
-            padding: '6px 12px',
-            borderRadius: 8,
-            fontSize: 12.5,
+            color: 'var(--color-text-secondary)',
             cursor: 'pointer',
-            fontWeight: 700,
-            boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = '#ef4444'
+            e.currentTarget.style.borderColor = '#ef444466'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'var(--color-text-secondary)'
+            e.currentTarget.style.borderColor = 'var(--color-border)'
           }}
         >
-          🧹 {isEn ? 'Clear all' : 'Limpiar todas'} ({toasts.length})
+          🧹
         </button>
-      )}
+
+        <style>{`
+          @keyframes alertPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.18); opacity: 0.8; }
+          }
+          .pulse-alert {
+            animation: alertPulse 1.8s ease-in-out infinite;
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // Modo Desplegado: Lista con tope de altura, scroll transparente y barra inferior de control
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 24,
+        right: 24,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 8,
+        pointerEvents: 'none',
+      }}
+    >
+      {/* Contenedor transparente con scroll y límite de altura vertical */}
+      <div
+        ref={scrollContainerRef}
+        className="toast-scroll-container"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          maxHeight: 'min(520px, calc(100vh - 120px))',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '6px 10px 6px 6px',
+          background: 'transparent',
+          pointerEvents: 'auto',
+          width: 384,
+          boxSizing: 'border-box',
+        }}
+      >
+        {toasts.map(t => (
+          <ToastItem key={t.id} t={t} onRemove={removeToast} />
+        ))}
+      </div>
+
+      {/* Barra de control inferior unificada */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          pointerEvents: 'auto',
+        }}
+      >
+        {/* Botón para Minimizar */}
+        <button
+          onClick={() => setIsMinimized(true)}
+          title={isEn ? 'Minimize notifications' : 'Minimizar alertas'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            background: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-text-secondary)',
+            padding: '5px 11px',
+            borderRadius: 8,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontWeight: 700,
+            boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'var(--color-text-primary)'
+            e.currentTarget.style.borderColor = 'var(--color-accent)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'var(--color-text-secondary)'
+            e.currentTarget.style.borderColor = 'var(--color-border)'
+          }}
+        >
+          <ChevronDown size={14} />
+          {isEn ? 'Minimize' : 'Minimizar'} ({hasErrors ? `${errorCount} ${isEn ? 'down' : 'caídos'}` : `${toasts.length}`})
+        </button>
+
+        {/* Botón Limpiar Todas */}
+        {toasts.length > 1 && (
+          <button
+            onClick={() => useToastStore.getState().clearAll()}
+            title={isEn ? 'Dismiss all notifications' : 'Eliminar todas las notificaciones'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-primary)',
+              padding: '5px 12px',
+              borderRadius: 8,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontWeight: 700,
+              boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#ef4444'
+              e.currentTarget.style.borderColor = '#ef444466'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--color-text-primary)'
+              e.currentTarget.style.borderColor = 'var(--color-border)'
+            }}
+          >
+            🧹 {isEn ? 'Clear all' : 'Limpiar todas'}
+          </button>
+        )}
+      </div>
 
       <style>{`
+        /* Scrollbar ultra delgado y discreto para el contenedor de alertas */
+        .toast-scroll-container::-webkit-scrollbar {
+          width: 5px;
+        }
+        .toast-scroll-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .toast-scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.4);
+          border-radius: 99px;
+        }
+        .toast-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(148, 163, 184, 0.7);
+        }
+        .toast-scroll-container {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+        }
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
@@ -187,6 +430,13 @@ export function ToastContainer() {
         @keyframes toastCountdown {
           from { transform: scaleX(1); }
           to { transform: scaleX(0); }
+        }
+        @keyframes alertPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.18); opacity: 0.8; }
+        }
+        .pulse-alert {
+          animation: alertPulse 1.8s ease-in-out infinite;
         }
       `}</style>
     </div>

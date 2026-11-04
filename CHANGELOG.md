@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.3] - 2026-11-04
+
+### 🩹 Fixes & Floating Alert Stack Ergonomics
+
+#### 🎛️ Scrollable Alert Stack, Real-Time Persistence & Background Timers
+- **Height-Constrained Transparent Scroll Stack**: Added max-height bounding with a slim transparent scrollbar for active notification cards, preventing vertical screen takeover while preserving background visibility.
+- **Strict Full-Height Card Geometry (`flexShrink: 0`)**: Fixed Flexbox compression that squished cards into thin unreadable strips during multiple simultaneous incident alerts; cards strictly retain 100% full height, padding, status text, and close controls.
+- **Floating Minimized Pill & Dynamic Counters**: Added one-click minimization to a floating pill badge showing live operational metrics (`🔴 X down`). Decrements instantly on recovery and displays an ephemeral badge (`+1 ok`), auto-hiding when all outages resolve.
+- **Decoupled Background Auto-Close Engine**: Moved green recovery toast countdown timers from React lifecycle (`ToastItem`) to `toastStore` state. Recovery cards cleanly auto-close in the background after 8 seconds without pausing or getting stuck when the container is minimized.
+- **Real-Time Persistence Across Page Reloads**: Saved active outage alerts to `localStorage` so operators never lose visibility or incident tracking on `F5` browser refreshes. Clicks on "Clear all" permanently clear state without ghost alert resurgence.
+
 ## [v1.1.2] - 2026-10-30
 
 ### 🩹 Fixes & Authenticated Backup Downloads
@@ -201,6 +212,17 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.3] - 2026-11-04
+
+### 🩹 Correcciones y Ergonomía del Panel Flotante de Alertas
+
+#### 🎛️ Pila de Alertas con Scroll, Persistencia en Vivo y Temporizadores de Segundo Plano
+- **Contenedor Flotante con Scroll Transparente**: Se implementó un límite de altura vertical con scrollbar ultra delgado y transparente para la pila de notificaciones, evitando que crezca indefinidamente hacia arriba y manteniendo visible el fondo del dashboard.
+- **Geometría Fija de Tarjetas (`flexShrink: 0`)**: Se corrigió el aplastamiento vertical ocasionado por Flexbox al acumularse múltiples tarjetas; cada alerta mantiene ahora el 100% de su tamaño original, espaciado, texto de error e iconos legibles.
+- **Píldora Flotante Minimizada con Métricas en Vivo**: Se añadió botón para minimizar a una píldora compacta que muestra la cantidad real de endpoints caídos (`🔴 X caídos`), actualizándose en tiempo real ante recuperaciones con indicador temporal (`+1 recup.`) y ocultándose automáticamente al restablecerse todo.
+- **Temporizador de Auto-Cierre en Segundo Plano**: Se independizó la cuenta regresiva de 8s de las tarjetas verdes de recuperación hacia el store global (`toastStore`), asegurando que expiren en segundo plano aun con la barra minimizada, sin quedarse "pausadas" ni requerir abrir la vista.
+- **Persistencia en Recarga (`localStorage`)**: Las alertas activas se conservan ante recargas con `F5` o cierres de pestaña para no perder el seguimiento operativo de caídas activas. La acción de "Limpiar todas" se respeta fielmente sin regenerar alertas fantasma.
 
 ## [v1.1.2] - 2026-10-30
 

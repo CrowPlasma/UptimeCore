@@ -160,10 +160,11 @@ function notifyStatusTransition(
   errorMsg: string,
 ) {
   const toastId = `monitor-alert-${m.id}`
+  const toastStore = useToastStore.getState()
 
   // Limpia alertas activas si el monitor pasa a pausa o mantenimiento
   if (newStatus === 'PAUSED' || newStatus === 'MAINTENANCE') {
-    useToastStore.getState().removeToast(toastId)
+    toastStore.removeToast(toastId)
     return
   }
 
@@ -176,7 +177,7 @@ function notifyStatusTransition(
 
   if (newStatus === 'DOWN') {
     playDownAlert()
-    useToastStore.getState().addToast({
+    toastStore.addToast({
       id: toastId,
       type: 'error',
       title: isEn ? 'Monitor Down!' : '¡Monitor Caído!',
@@ -186,8 +187,8 @@ function notifyStatusTransition(
     })
   } else if (newStatus === 'UP' && (oldStatus === 'DOWN' || oldStatus === 'DEGRADED')) {
     playRecoveredAlert()
-    useToastStore.getState().removeToast(toastId)
-    useToastStore.getState().addToast({
+    toastStore.removeToast(toastId)
+    toastStore.addToast({
       id: `monitor-recovered-${m.id}`,
       type: 'success',
       title: isEn ? 'Monitor Recovered' : 'Monitor Recuperado',
@@ -196,7 +197,7 @@ function notifyStatusTransition(
         : `El endpoint "${m.name}" del grupo "${groupName}" vuelve a estar operativo (${latencyMs} ms).`,
     })
   } else if (newStatus === 'DEGRADED') {
-    useToastStore.getState().addToast({
+    toastStore.addToast({
       id: toastId,
       type: 'warning',
       title: isEn ? 'Degraded Performance' : 'Rendimiento Degradado',
@@ -363,6 +364,21 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         set({ groups, loading: false })
       }
       get().fetchTags()
+
+      // Si algún monitor con alerta activa ya se recuperó (UP) o pasó a pausa/mantenimiento,
+      // retirar su alerta residual de la lista
+      const toastStore = useToastStore.getState()
+      groups.forEach(g => {
+        g.monitors?.forEach(m => {
+          const isOperativeDown = (m.current_status === 'DOWN' || m.current_status === 'DEGRADED') && m.is_active !== false && !m.is_maintenance
+          if (!isOperativeDown) {
+            const toastId = `monitor-alert-${m.id}`
+            if (toastStore.toasts.some(t => t.id === toastId)) {
+              toastStore.removeToast(toastId)
+            }
+          }
+        })
+      })
     } catch (err) {
       set({ loading: false, error: String(err) })
     }
