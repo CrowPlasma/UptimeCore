@@ -1261,6 +1261,15 @@ func (db *DB) CountAdmins(ctx context.Context) (int, error) {
 // --- History Retention ---
 
 func (db *DB) PurgeOldHistory(ctx context.Context, days int) (int64, error) {
+	if days <= 0 {
+		var total int64
+		_ = db.pool.QueryRow(ctx, `SELECT count(*) FROM monitor_history`).Scan(&total)
+		_, err := db.pool.Exec(ctx, `TRUNCATE TABLE monitor_history`)
+		if err != nil {
+			return 0, err
+		}
+		return total, nil
+	}
 	tag, err := db.pool.Exec(ctx,
 		`DELETE FROM monitor_history WHERE time < NOW() - ($1 || ' days')::INTERVAL`,
 		days,

@@ -22,6 +22,8 @@ export function SecuritySettings() {
   const [retention, setRetention] = useState<RetentionStats | null>(null)
   const [retentionLoading, setRetentionLoading] = useState(true)
   const [purging, setPurging] = useState(false)
+  const [showPurgeModal, setShowPurgeModal] = useState(false)
+  const [purgeDays, setPurgeDays] = useState<number>(30)
 
   // Modales
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -220,23 +222,58 @@ export function SecuritySettings() {
     }
   }
 
-  const handlePurgeHistory = async () => {
+  const handleOpenPurgeModal = () => {
+    const oldestMs = retention?.oldest_record ? new Date(retention.oldest_record).getTime() : Date.now()
+    const ageDays = Math.floor((Date.now() - oldestMs) / (1000 * 60 * 60 * 24))
+    if (ageDays < 30) {
+      setPurgeDays(7)
+    } else {
+      setPurgeDays(30)
+    }
+    setShowPurgeModal(true)
+  }
+
+  const handleExecutePurge = async () => {
     setPurging(true)
     try {
-      const res = await fetch('/api/system/retention/purge', { method: 'POST' })
+      const res = await fetch('/api/system/retention/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: purgeDays })
+      })
       const data = await res.json()
       if (res.ok) {
         useToastStore.getState().addToast({
           type: 'success',
-          title: isEn ? 'History Purged' : 'Historial Optimizado',
-          message: isEn
-            ? `Purged ${data.purged_count} records older than 90 days.`
-            : `Se depuraron ${data.purged_count} registros con más de 90 días.`
+          title: purgeDays === 0
+            ? (isEn ? 'History Reset' : 'Historial Reseteado')
+            : (isEn ? 'History Purged' : 'Historial Optimizado'),
+          message: purgeDays === 0
+            ? (isEn
+                ? `Successfully cleared all ${Number(data.purged_count).toLocaleString()} history records.`
+                : `Se vaciaron exitosamente todos los ${Number(data.purged_count).toLocaleString()} registros de telemetría.`)
+            : (isEn
+                ? `Purged ${Number(data.purged_count).toLocaleString()} records older than ${purgeDays} days.`
+                : `Se depuraron exitosamente ${Number(data.purged_count).toLocaleString()} registros con más de ${purgeDays} días.`)
         })
-        loadRetention()
+        setShowPurgeModal(false)
+        await loadRetention()
+      } else {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: isEn ? 'Purge Error' : 'Error al depurar',
+          message: data.error || (isEn ? 'Could not purge history.' : 'No se pudo depurar el historial.')
+        })
       }
-    } catch {}
-    setPurging(false)
+    } catch (err: any) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: isEn ? 'Purge Error' : 'Error al depurar',
+        message: err.message || (isEn ? 'Could not purge history.' : 'No se pudo depurar el historial.')
+      })
+    } finally {
+      setPurging(false)
+    }
   }
 
   const getRoleBadge = (role: string) => {
@@ -501,7 +538,7 @@ export function SecuritySettings() {
                 : 'El limpiador automático en segundo plano se ejecuta cada 6 horas para purgar muestras que superen los 90 días.'}
             </span>
             <button
-              onClick={handlePurgeHistory}
+              onClick={handleOpenPurgeModal}
               disabled={purging}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -823,6 +860,192 @@ export function SecuritySettings() {
                 style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}
               >
                 {t.common.delete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: OPTIMIZAR / DEPURAR / RESETEAR HISTORIAL ── */}
+      {showPurgeModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+        }}>
+          <div style={{
+            background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+            borderRadius: 14, width: '100%', maxWidth: 500, padding: 24,
+            boxShadow: '0 20px 48px rgba(0,0,0,0.35)',
+            animation: 'slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  background: 'rgba(99, 102, 241, 0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--color-accent)'
+                }}>
+                  <Database size={18} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                    {isEn ? 'Optimize & Purge Telemetry History' : 'Optimizar y Depurar Historial'}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                    {isEn ? 'Manage PostgreSQL time-series storage & retention' : 'Gestiona el almacenamiento de series temporales'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !purging && setShowPurgeModal(false)}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--color-text-secondary)', padding: 4, display: 'flex'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Estadísticas Actuales */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+              padding: '12px 14px', borderRadius: 10,
+              background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)',
+              marginBottom: 16,
+            }}>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  {isEn ? 'Total Records' : 'Registros Totales'}
+                </span>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+                  {retention?.total_records?.toLocaleString() ?? '0'}
+                </div>
+              </div>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  {isEn ? 'Oldest Sample' : 'Muestra Más Antigua'}
+                </span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-secondary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
+                  {retention?.oldest_record ? new Date(retention.oldest_record).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* Aviso informativo de edad del historial */}
+            {(() => {
+              const oldestMs = retention?.oldest_record ? new Date(retention.oldest_record).getTime() : Date.now()
+              const ageDays = Math.floor((Date.now() - oldestMs) / (1000 * 60 * 60 * 24))
+              if (ageDays < 90 && (retention?.total_records ?? 0) > 0) {
+                return (
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 8,
+                    background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)',
+                    fontSize: 12, color: '#f59e0b', marginBottom: 16, lineHeight: 1.4
+                  }}>
+                    {isEn
+                      ? `ℹ️ Your oldest sample is ~${ageDays} days old. The standard 90-day automatic rule will not delete any rows yet. Choose a smaller retention window below or reset to purge older metrics immediately.`
+                      : `ℹ️ Tu historial acumulado tiene ~${ageDays} días de antigüedad. La regla estándar de 90 días no tiene registros que borrar aún. Elige una ventana inferior o resetear abajo para depurar ahora.`}
+                  </div>
+                )
+              }
+              return null
+            })()}
+
+            {/* Selector de Rango de Depuración */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 8 }}>
+                {isEn ? 'Select cleanup action:' : 'Selecciona la acción de depuración:'}
+              </label>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { days: 30, label: isEn ? 'Keep last 30 days (Purge samples > 30d)' : 'Conservar últimos 30 días (Depurar > 30 días)', desc: isEn ? 'Standard monthly retention' : 'Retención mensual estándar' },
+                  { days: 15, label: isEn ? 'Keep last 15 days (Purge samples > 15d)' : 'Conservar últimos 15 días (Depurar > 15 días)', desc: isEn ? 'Bi-weekly retention' : 'Retención quincenal' },
+                  { days: 7, label: isEn ? 'Keep last 7 days (Purge samples > 7d)' : 'Conservar últimos 7 días (Depurar > 7 días)', desc: isEn ? 'Weekly retention, frees significant disk space' : 'Semanal, libera gran cantidad de espacio' },
+                  { days: 90, label: isEn ? 'Keep last 90 days (Standard 90d policy)' : 'Conservar últimos 90 días (Política estándar 90d)', desc: isEn ? 'Official default retention rule' : 'Regla de retención oficial por defecto' },
+                  { days: 0, label: isEn ? '⚠️ Reset / Wipe all history (0 days)' : '⚠️ Vaciar y resetear todo el historial (0 días)', desc: isEn ? 'Empties monitor_history table entirely (groups & monitors remain intact)' : 'Vacía monitor_history por completo (conserva grupos y monitores intactos)' },
+                ].map(opt => {
+                  const selected = purgeDays === opt.days
+                  const isReset = opt.days === 0
+                  return (
+                    <div
+                      key={opt.days}
+                      onClick={() => !purging && setPurgeDays(opt.days)}
+                      style={{
+                        padding: '10px 14px', borderRadius: 9,
+                        border: selected
+                          ? `1.5px solid ${isReset ? '#ef4444' : 'var(--color-accent)'}`
+                          : '1px solid var(--color-border)',
+                        background: selected
+                          ? (isReset ? 'rgba(239, 68, 68, 0.08)' : 'rgba(99, 102, 241, 0.08)')
+                          : 'var(--color-bg-primary)',
+                        cursor: purging ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        checked={selected}
+                        onChange={() => setPurgeDays(opt.days)}
+                        disabled={purging}
+                        style={{ accentColor: isReset ? '#ef4444' : 'var(--color-accent)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: 12.5, fontWeight: selected ? 800 : 600,
+                          color: selected ? (isReset ? '#ef4444' : 'var(--color-accent)') : 'var(--color-text-primary)'
+                        }}>
+                          {opt.label}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          {opt.desc}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowPurgeModal(false)}
+                disabled={purging}
+                style={{
+                  padding: '8px 16px', borderRadius: 8,
+                  border: '1px solid var(--color-border)', background: 'transparent',
+                  color: 'var(--color-text-secondary)', fontSize: 13, fontWeight: 600,
+                  cursor: purging ? 'default' : 'pointer',
+                }}
+              >
+                {isEn ? 'Cancel' : 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                onClick={handleExecutePurge}
+                disabled={purging}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 18px', borderRadius: 8,
+                  border: 'none',
+                  background: purgeDays === 0 ? '#ef4444' : 'var(--color-accent)',
+                  color: '#fff', fontSize: 13, fontWeight: 700,
+                  cursor: purging ? 'default' : 'pointer',
+                  boxShadow: purgeDays === 0 ? '0 4px 12px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(99, 102, 241, 0.3)',
+                }}
+              >
+                <RefreshCw size={14} style={{ animation: purging ? 'spin 1s linear infinite' : 'none' }} />
+                {purging
+                  ? (isEn ? 'Purging records...' : 'Depurando registros...')
+                  : purgeDays === 0
+                  ? (isEn ? 'Reset All History (0d)' : 'Vaciar y Resetear Todo')
+                  : (isEn ? `Purge (> ${purgeDays}d)` : `Depurar (> ${purgeDays}d)`)}
               </button>
             </div>
           </div>

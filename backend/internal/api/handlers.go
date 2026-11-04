@@ -1269,15 +1269,29 @@ func (h *Handlers) GetRetentionStats(c *fiber.Ctx) error {
 	})
 }
 
-// PurgeRetentionHistory manually runs the 90-day retention cleanup.
+// PurgeRetentionHistory manually runs the retention cleanup for a specified threshold of days (or resets history if days <= 0).
 func (h *Handlers) PurgeRetentionHistory(c *fiber.Ctx) error {
-	purged, err := h.db.PurgeOldHistory(c.Context(), 90)
+	days := 90
+	if dStr := c.Query("days"); dStr != "" {
+		if parsed, err := strconv.Atoi(dStr); err == nil && parsed >= 0 {
+			days = parsed
+		}
+	}
+	var req struct {
+		Days *int `json:"days"`
+	}
+	if err := c.BodyParser(&req); err == nil && req.Days != nil && *req.Days >= 0 {
+		days = *req.Days
+	}
+
+	purged, err := h.db.PurgeOldHistory(c.Context(), days)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{
 		"success":      true,
 		"purged_count": purged,
+		"days":         days,
 	})
 }
 

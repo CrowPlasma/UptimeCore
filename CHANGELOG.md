@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.4] - 2026-11-04
+
+### 🩹 Fixes & Telemetry History Purge / Reset Controls
+
+#### 🗄️ Configurable Retention Purge & Instant History Truncation
+- **Customizable Retention Thresholds**: Refactored the backend `/api/system/retention/purge` endpoint to accept an optional `days` parameter (`days: 7`, `days: 15`, `days: 30`, `days: 90`), allowing operators to purge older metrics even on young database installations.
+- **Zero-Downtime Telemetry Truncation (`days: 0`)**: Added support for instant `TRUNCATE TABLE monitor_history` when `days <= 0` is requested, resetting the metrics counter to 0 and reclaiming database disk space in milliseconds without deleting or affecting groups, monitors, tags, or user accounts.
+- **Interactive Retention Modal Dialog**: Replaced the direct purge trigger with a comprehensive modal dialog in Security Settings that displays database age, sample counts, and lets administrators select whether to purge by age or perform a full telemetry reset.
+
 ## [v1.1.3] - 2026-11-04
 
 ### 🩹 Fixes & Floating Alert Stack Ergonomics
@@ -212,6 +221,15 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.4] - 2026-11-04
+
+### 🩹 Correcciones y Control de Purga / Reseteo de Historial de Telemetría
+
+#### 🗄️ Depuración Configurable de Retención y Reseteo Instantáneo
+- **Umbrales Dinámicos de Depuración**: Se refactorizó el endpoint `/api/system/retention/purge` en Go para aceptar un parámetro dinámico `days` (`7`, `15`, `30`, `90` días), permitiendo depurar muestras antiguas en bases de datos jóvenes sin requerir esperar a los 90 días.
+- **Reseteo Seguro de Telemetría (`days: 0`)**: Se integró soporte para `TRUNCATE TABLE monitor_history` cuando se solicita vaciar el historial (`days <= 0`), restableciendo el contador a 0 y recuperando espacio en disco de forma instantánea sin tocar grupos, monitores, etiquetas ni usuarios.
+- **Ventana Modal Interactiva de Depuración**: Se incorporó un modal en Ajustes de Seguridad que detalla la edad del historial, el volumen de muestras y permite elegir entre depurar por rangos (7d, 15d, 30d, 90d) o vaciar todo el historial.
 
 ## [v1.1.3] - 2026-11-04
 
