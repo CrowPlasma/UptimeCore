@@ -287,33 +287,48 @@ export function SecuritySettings() {
   const getRoleBadge = (role: string) => {
     if (role === 'admin') {
       return (
-        <span style={{
-          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-          background: 'rgba(99, 102, 241, 0.18)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.35)',
-          textTransform: 'uppercase', letterSpacing: '0.04em'
-        }}>
-          {isEn ? 'Admin (Full)' : 'Admin (Total)'}
+        <span
+          title={isEn ? 'Admin: Full system access and configuration' : 'Administrador: Acceso total y configuración del sistema'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+            background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.35)',
+            textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap'
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#818cf8', flexShrink: 0 }} />
+          Admin
         </span>
       )
     }
     if (role === 'helpdesk') {
       return (
-        <span style={{
-          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-          background: 'rgba(14, 165, 233, 0.18)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.35)',
-          textTransform: 'uppercase', letterSpacing: '0.04em'
-        }}>
-          {isEn ? 'Helpdesk (Ops & Shell)' : 'Helpdesk (Ops & Shell)'}
+        <span
+          title={isEn ? 'Helpdesk: Operations, pauses, diagnostics & WebSSH' : 'Helpdesk: Operaciones, pausas de monitores y consola WebSSH'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+            background: 'rgba(14, 165, 233, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.35)',
+            textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap'
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }} />
+          Helpdesk
         </span>
       )
     }
     return (
-      <span style={{
-        fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-        background: 'rgba(100, 116, 139, 0.18)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)',
-        textTransform: 'uppercase', letterSpacing: '0.04em'
-      }}>
-        {isEn ? 'Viewer (Read-only)' : 'Viewer (Lectura)'}
+      <span
+        title={isEn ? 'Viewer: Read-only access to monitoring data' : 'Viewer: Acceso de solo lectura a métricas y monitoreo'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+          background: 'rgba(100, 116, 139, 0.15)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)',
+          textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap'
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#94a3b8', flexShrink: 0 }} />
+        Viewer
       </span>
     )
   }
@@ -356,24 +371,24 @@ export function SecuritySettings() {
         {/* Tabla de Usuarios */}
         <div style={{
           border: '1px solid var(--color-border)', borderRadius: 12,
-          overflow: 'hidden', background: 'var(--color-bg-card)'
+          overflowX: 'auto', background: 'var(--color-bg-card)'
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--color-bg-primary)', borderBottom: '1px solid var(--color-border)' }}>
-                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                   {t.auth.usernameTh}
                 </th>
-                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                   {isEn ? 'Email (Recovery)' : 'Correo (Recuperación)'}
                 </th>
-                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', width: 140, whiteSpace: 'nowrap' }}>
                   {t.auth.roleTh}
                 </th>
-                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', width: 130, whiteSpace: 'nowrap' }}>
                   {t.auth.createdTh}
                 </th>
-                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', textAlign: 'right' }}>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em', textAlign: 'right', width: 180, whiteSpace: 'nowrap' }}>
                   {t.auth.actionsTh}
                 </th>
               </tr>
@@ -396,7 +411,7 @@ export function SecuritySettings() {
                   const isCurrent = currentUser?.id === u.id
                   return (
                     <tr key={u.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{
                             width: 28, height: 28, borderRadius: '50%',
@@ -420,7 +435,7 @@ export function SecuritySettings() {
                           </span>
                         </div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                         {u.email ? (
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -436,13 +451,13 @@ export function SecuritySettings() {
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                         {getRoleBadge(u.role)}
                       </td>
-                      <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>
                         {u.created_at ? new Date(u.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                       </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                           {/* Editar Usuario */}
                           <button
