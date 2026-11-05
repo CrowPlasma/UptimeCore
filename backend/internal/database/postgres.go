@@ -1051,10 +1051,12 @@ func (db *DB) AutoMigrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS users (
 			id SERIAL PRIMARY KEY,
 			username VARCHAR(50) UNIQUE NOT NULL,
+			email VARCHAR(255) DEFAULT '',
 			password_hash VARCHAR(255) NOT NULL,
 			role VARCHAR(20) DEFAULT 'viewer',
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		);`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT '';`,
 
 		`CREATE TABLE IF NOT EXISTS tags (
 			id SERIAL PRIMARY KEY,
@@ -1184,7 +1186,7 @@ func (db *DB) SeedDefaultAdmin(ctx context.Context) error {
 }
 
 func (db *DB) ListUsers(ctx context.Context) ([]models.User, error) {
-	rows, err := db.pool.Query(ctx, `SELECT id, username, role, created_at FROM users ORDER BY id ASC`)
+	rows, err := db.pool.Query(ctx, `SELECT id, username, COALESCE(email, ''), role, created_at FROM users ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -1193,7 +1195,7 @@ func (db *DB) ListUsers(ctx context.Context) ([]models.User, error) {
 	var users []models.User
 	for rows.Next() {
 		var u models.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err == nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Role, &u.CreatedAt); err == nil {
 			users = append(users, u)
 		}
 	}
@@ -1207,34 +1209,34 @@ func (db *DB) GetUserByUsername(ctx context.Context, username string) (models.Us
 	var u models.User
 	var passwordHash string
 	err := db.pool.QueryRow(ctx,
-		`SELECT id, username, password_hash, role, created_at FROM users WHERE username = $1`,
+		`SELECT id, username, COALESCE(email, ''), password_hash, role, created_at FROM users WHERE username = $1`,
 		username,
-	).Scan(&u.ID, &u.Username, &passwordHash, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Email, &passwordHash, &u.Role, &u.CreatedAt)
 	return u, passwordHash, err
 }
 
 func (db *DB) GetUserByID(ctx context.Context, id int) (models.User, error) {
 	var u models.User
 	err := db.pool.QueryRow(ctx,
-		`SELECT id, username, role, created_at FROM users WHERE id = $1`,
+		`SELECT id, username, COALESCE(email, ''), role, created_at FROM users WHERE id = $1`,
 		id,
-	).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Email, &u.Role, &u.CreatedAt)
 	return u, err
 }
 
-func (db *DB) CreateUser(ctx context.Context, username, passwordHash, role string) (models.User, error) {
+func (db *DB) CreateUser(ctx context.Context, username, email, passwordHash, role string) (models.User, error) {
 	var u models.User
 	err := db.pool.QueryRow(ctx,
-		`INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at`,
-		username, passwordHash, role,
-	).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+		`INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, COALESCE(email, ''), role, created_at`,
+		username, email, passwordHash, role,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.Role, &u.CreatedAt)
 	return u, err
 }
 
-func (db *DB) UpdateUser(ctx context.Context, id int, username, role string) error {
+func (db *DB) UpdateUser(ctx context.Context, id int, username, email, role string) error {
 	_, err := db.pool.Exec(ctx,
-		`UPDATE users SET username = $1, role = $2 WHERE id = $3`,
-		username, role, id,
+		`UPDATE users SET username = $1, email = $2, role = $3 WHERE id = $4`,
+		username, email, role, id,
 	)
 	return err
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Users, UserPlus, Key, Eye, EyeOff, RefreshCw, Trash2, Pencil,
-  Database, AlertCircle, CheckCircle2
+  Database, AlertCircle, CheckCircle2, Mail
 } from 'lucide-react'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
@@ -28,6 +28,7 @@ export function SecuritySettings() {
   // Modales
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newUsername, setNewUsername] = useState('')
+  const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newRole, setNewRole] = useState<UserRole>('viewer')
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -35,6 +36,7 @@ export function SecuritySettings() {
 
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [editUsername, setEditUsername] = useState('')
+  const [editEmail, setEditEmail] = useState('')
   const [editRole, setEditRole] = useState<UserRole>('viewer')
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -93,6 +95,7 @@ export function SecuritySettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: newUsername.trim(),
+          email: newEmail.trim(),
           password: newPassword,
           role: newRole,
         }),
@@ -112,6 +115,7 @@ export function SecuritySettings() {
       })
       setShowCreateModal(false)
       setNewUsername('')
+      setNewEmail('')
       setNewPassword('')
       setNewRole('viewer')
       loadUsers()
@@ -136,6 +140,7 @@ export function SecuritySettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: editUsername.trim(),
+          email: editEmail.trim(),
           role: editRole,
         }),
       })
@@ -150,6 +155,9 @@ export function SecuritySettings() {
         title: isEn ? 'User Updated' : 'Usuario Actualizado',
         message: isEn ? 'User details updated.' : 'Los datos del usuario fueron actualizados.'
       })
+      if (currentUser?.id === editingUser.id) {
+        useAuthStore.getState().checkAuth()
+      }
       setEditingUser(null)
       loadUsers()
     } catch (err: any) {
@@ -327,6 +335,7 @@ export function SecuritySettings() {
           <button
             onClick={() => {
               setNewUsername('')
+              setNewEmail('')
               setNewPassword('')
               setNewRole('viewer')
               setCreateError(null)
@@ -356,6 +365,9 @@ export function SecuritySettings() {
                   {t.auth.usernameTh}
                 </th>
                 <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
+                  {isEn ? 'Email (Recovery)' : 'Correo (Recuperación)'}
+                </th>
+                <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
                   {t.auth.roleTh}
                 </th>
                 <th style={{ padding: '10px 16px', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.04em' }}>
@@ -369,13 +381,13 @@ export function SecuritySettings() {
             <tbody>
               {usersLoading ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                     {isEn ? 'Loading users...' : 'Cargando usuarios...'}
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                     {isEn ? 'No users found.' : 'No se encontraron usuarios.'}
                   </td>
                 </tr>
@@ -409,6 +421,22 @@ export function SecuritySettings() {
                         </div>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
+                        {u.email ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            fontSize: 12, color: 'var(--color-text-secondary)',
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            <Mail size={12} color="var(--color-accent)" />
+                            {u.email}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                            {isEn ? '— Not set' : '— Sin correo'}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
                         {getRoleBadge(u.role)}
                       </td>
                       <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>
@@ -421,6 +449,7 @@ export function SecuritySettings() {
                             onClick={() => {
                               setEditingUser(u)
                               setEditUsername(u.username)
+                              setEditEmail(u.email || '')
                               setEditRole(u.role as UserRole)
                               setEditError(null)
                             }}
@@ -602,6 +631,28 @@ export function SecuritySettings() {
 
               <div>
                 <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 5 }}>
+                  {isEn ? 'Recovery Email (Optional)' : 'Correo de Recuperación (Opcional)'}
+                </label>
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={e => setNewEmail(e.target.value)}
+                  placeholder={isEn ? "e.g. user@company.com" : "Ej: usuario@empresa.com"}
+                  style={{
+                    width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                    border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
+                  }}
+                />
+                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  {isEn
+                    ? 'Required if this user needs self-service password recovery via email.'
+                    : 'Requerido si el usuario desea recuperar su contraseña por correo electrónico.'}
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 5 }}>
                   {t.auth.roleTh}
                 </label>
                 <select
@@ -707,6 +758,28 @@ export function SecuritySettings() {
                     color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
                   }}
                 />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 5 }}>
+                  {isEn ? 'Recovery Email (Optional)' : 'Correo de Recuperación (Opcional)'}
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  placeholder={isEn ? "e.g. user@company.com" : "Ej: usuario@empresa.com"}
+                  style={{
+                    width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
+                    border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
+                  }}
+                />
+                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  {isEn
+                    ? 'Leave empty to disable email password recovery for this user.'
+                    : 'Déjalo vacío si no deseas habilitar recuperación por correo para este usuario.'}
+                </span>
               </div>
 
               <div>

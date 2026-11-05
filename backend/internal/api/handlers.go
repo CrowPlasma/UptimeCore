@@ -1023,18 +1023,42 @@ type LoginRequest struct {
 
 type CreateUserRequest struct {
 	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 	Role     string `json:"role"`
 }
 
 type UpdateUserRequest struct {
 	Username string `json:"username"`
+	Email    string `json:"email"`
 	Role     string `json:"role"`
 	Password string `json:"password,omitempty"`
 }
 
 type ResetPasswordRequest struct {
 	Password string `json:"password"`
+}
+
+type ForgotPasswordRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}
+
+type ChangeOwnPasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func generateTempPassword(length int) (string, error) {
+	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	for i, b := range bytes {
+		bytes[i] = charset[int(b)%len(charset)]
+	}
+	return string(bytes), nil
 }
 
 // Login authenticates credentials and returns an active session token.
@@ -1094,6 +1118,112 @@ func (h *Handlers) Logout(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true})
 }
 
+// ForgotPassword validates a username + registered email pair, generates a temporary password, and sends it via SMTP.
+func (h *Handlers) ForgotPassword(c *fiber.Ctx) error {
+	var req ForgotPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Solicitud inválida"})
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(req.Email)
+
+	if req.Username == "" || req.Email == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "El usuario y el correo electrónico son obligatorios"})
+	}
+	if !strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".") {
+		return c.Status(400).JSON(fiber.Map{"error": "Ingresa un correo electrónico válido"})
+	}
+
+	// Verify SMTP is configured in the platform
+	if !h.engine.IsSmtpConfigured(c.Context()) {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "El servicio de correo SMTP no está configurado en el sistema. Contacta al administrador.",
+			"code":  "SMTP_NOT_CONFIGURED",
+		})
+	}
+
+	user, _, err := h.db.GetUserByUsername(c.Context(), req.Username)
+	userEmail := strings.TrimSpace(user.Email)
+
+	// Verify user exists, has an email configured, and matches case-insensitively
+	if err != nil || userEmail == "" || !strings.EqualFold(userEmail, req.Email) {
+		// Small delay to prevent timing enumeration attacks
+		time.Sleep(350 * time.Millisecond)
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Si el usuario y el correo electrónico coinciden con una cuenta registrada, se ha enviado una contraseña temporal a tu bandeja de entrada.",
+		})
+	}
+
+	// Generate a 10-character alphanumeric temporary password
+	tempPass, err := generateTempPassword(10)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Error al generar la contraseña temporal"})
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPass), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Error al cifrar la contraseña temporal"})
+	}
+
+	// Send the email first so if SMTP delivery fails, the user's current password is not overwritten
+	if mailErr := h.engine.SendPasswordResetEmail(c.Context(), userEmail, user.Username, tempPass, c.IP()); mailErr != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": fmt.Sprintf("No se pudo enviar el correo de recuperación: %v", mailErr),
+		})
+	}
+
+	if err := h.db.UpdateUserPassword(c.Context(), user.ID, string(hash)); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Error al actualizar la contraseña en la base de datos"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Si el usuario y el correo electrónico coinciden con una cuenta registrada, se ha enviado una contraseña temporal a tu bandeja de entrada.",
+	})
+}
+
+// ChangeOwnPassword allows any authenticated user to change their own password.
+func (h *Handlers) ChangeOwnPassword(c *fiber.Ctx) error {
+	currentUser, ok := c.Locals("user").(models.User)
+	if !ok || currentUser.ID <= 0 {
+		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	var req ChangeOwnPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.CurrentPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Current password is required"})
+	}
+	if len(req.NewPassword) < 6 {
+		return c.Status(400).JSON(fiber.Map{"error": "New password must be at least 6 characters long"})
+	}
+
+	_, currentHash, err := h.db.GetUserByUsername(c.Context(), currentUser.Username)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.CurrentPassword)) != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "La contraseña actual es incorrecta / Current password is incorrect"})
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	if err := h.db.UpdateUserPassword(c.Context(), currentUser.ID, string(newHash)); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
 // --- User Management Handlers (Admin Only) ---
 
 // ListUsers returns all users in the system.
@@ -1105,7 +1235,7 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	return c.JSON(users)
 }
 
-// CreateUser creates a new user with minimum 6 character password.
+// CreateUser creates a new user with minimum 6 character password and optional email.
 func (h *Handlers) CreateUser(c *fiber.Ctx) error {
 	var req CreateUserRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1113,10 +1243,14 @@ func (h *Handlers) CreateUser(c *fiber.Ctx) error {
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Role = strings.ToLower(strings.TrimSpace(req.Role))
 
 	if req.Username == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Username is required"})
+	}
+	if req.Email != "" && (!strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".")) {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid email address format"})
 	}
 	if len(req.Password) < 6 {
 		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters long"})
@@ -1130,7 +1264,7 @@ func (h *Handlers) CreateUser(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
 	}
 
-	created, err := h.db.CreateUser(c.Context(), req.Username, string(hash), req.Role)
+	created, err := h.db.CreateUser(c.Context(), req.Username, req.Email, string(hash), req.Role)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create user: %v", err)})
 	}
@@ -1138,7 +1272,7 @@ func (h *Handlers) CreateUser(c *fiber.Ctx) error {
 	return c.Status(201).JSON(created)
 }
 
-// UpdateUser edits a user's username, role, and optionally password.
+// UpdateUser edits a user's username, email, role, and optionally password.
 func (h *Handlers) UpdateUser(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil || id <= 0 {
@@ -1151,10 +1285,14 @@ func (h *Handlers) UpdateUser(c *fiber.Ctx) error {
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Role = strings.ToLower(strings.TrimSpace(req.Role))
 
 	if req.Username == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Username cannot be empty"})
+	}
+	if req.Email != "" && (!strings.Contains(req.Email, "@") || !strings.Contains(req.Email, ".")) {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid email address format"})
 	}
 	if req.Role != "admin" && req.Role != "helpdesk" && req.Role != "viewer" {
 		return c.Status(400).JSON(fiber.Map{"error": "Role must be 'admin', 'helpdesk', or 'viewer'"})
@@ -1169,7 +1307,7 @@ func (h *Handlers) UpdateUser(c *fiber.Ctx) error {
 		}
 	}
 
-	if err := h.db.UpdateUser(c.Context(), id, req.Username, req.Role); err != nil {
+	if err := h.db.UpdateUser(c.Context(), id, req.Username, req.Email, req.Role); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 

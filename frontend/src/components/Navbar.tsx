@@ -2,11 +2,12 @@
  * components/Navbar.tsx (v2)
  * Navbar limpio: logo, branding de entidad corporativa (centro), telemetría en vivo, toggle de tema y ajustes.
  */
-import { useState, useEffect } from 'react'
-import { Sun, Moon, Settings, LogOut, Shield } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Sun, Moon, Settings, LogOut, Shield, KeyRound, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { useMonitorStore } from '../store/monitorStore'
 import { useAuthStore } from '../store/authStore'
+import { useToastStore } from '../store/toastStore'
 import { useTranslation } from '../i18n'
 import { UptimeCoreLogo } from './UptimeCoreLogo'
 
@@ -17,6 +18,57 @@ export function Navbar() {
   const { t, language, toggleLanguage, isEn } = useTranslation()
   const [entity, setEntity] = useState<{ name: string; logo: string }>({ name: '', logo: '' })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+
+  // Modal de cambiar propia contraseña
+  const [showChangePassModal, setShowChangePassModal] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [showCurrentPass, setShowCurrentPass] = useState(false)
+  const [showNewPass, setShowNewPass] = useState(false)
+  const [passLoading, setPassLoading] = useState(false)
+  const [passError, setPassError] = useState<string | null>(null)
+
+  const handleChangeOwnPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPassError(null)
+    if (!currentPassword) {
+      setPassError(isEn ? 'Please enter your current password.' : 'Ingresa tu contraseña actual.')
+      return
+    }
+    if (newPassword.length < 6) {
+      setPassError(isEn ? 'New password must be at least 6 characters.' : 'La nueva contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+    setPassLoading(true)
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPassError(data.error || (isEn ? 'Could not update password.' : 'No se pudo actualizar la contraseña.'))
+        setPassLoading(false)
+        return
+      }
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: isEn ? 'Password Updated' : 'Contraseña Actualizada',
+        message: isEn ? 'Your account password was changed successfully.' : 'Tu contraseña ha sido actualizada exitosamente.',
+      })
+      setShowChangePassModal(false)
+      setCurrentPassword('')
+      setNewPassword('')
+    } catch (err: any) {
+      setPassError(err.message || 'Error')
+    } finally {
+      setPassLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/settings')
@@ -304,6 +356,37 @@ export function Navbar() {
                   </div>
                 </div>
 
+                {/* Cambiar propia contraseña (Todos los roles) */}
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false)
+                    setCurrentPassword('')
+                    setNewPassword('')
+                    setPassError(null)
+                    setShowChangePassModal(true)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--color-text-secondary)',
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = 'var(--color-bg-primary)'}
+                  onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <KeyRound size={14} color="var(--color-accent)" />
+                  <span>{isEn ? 'Change Password' : 'Cambiar Contraseña'}</span>
+                </button>
+
                 {/* Acceso a Seguridad si es admin */}
                 {isAdmin() && (
                   <button
@@ -366,6 +449,114 @@ export function Navbar() {
           )}
         </div>
       </div>
+
+      {/* Modal de Cambio de Contraseña Personal */}
+      {showChangePassModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+        }}>
+          <div style={{
+            background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+            borderRadius: 14, width: '100%', maxWidth: 400, padding: 24,
+            boxShadow: '0 20px 48px rgba(0,0,0,0.35)'
+          }}>
+            <h4 style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <KeyRound size={17} color="var(--color-accent)" />
+              {isEn ? 'Change My Password' : 'Cambiar Mi Contraseña'}
+            </h4>
+            <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
+              {isEn
+                ? `Update credentials for account "${user?.username}"`
+                : `Actualiza la clave de tu cuenta "${user?.username}"`}
+            </p>
+
+            {passError && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#ef4444', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 14
+              }}>
+                <AlertCircle size={15} style={{ flexShrink: 0 }} /> <span>{passError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangeOwnPassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 5 }}>
+                  {isEn ? 'Current (or Temporary) Password' : 'Contraseña Actual (o Temporal)'}
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showCurrentPass ? 'text' : 'password'}
+                    autoFocus
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    placeholder={isEn ? 'Current password' : 'Tu contraseña actual'}
+                    style={{
+                      width: '100%', height: 38, padding: '0 36px 0 12px', borderRadius: 8,
+                      border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)',
+                      color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(v => !v)}
+                    style={{ position: 'absolute', right: 8, background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}
+                  >
+                    {showCurrentPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 5 }}>
+                  {isEn ? 'New Password (min 6 chars)' : 'Nueva Contraseña (mín. 6 caracteres)'}
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showNewPass ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder={isEn ? 'Minimum 6 characters' : 'Mínimo 6 caracteres'}
+                    style={{
+                      width: '100%', height: 38, padding: '0 36px 0 12px', borderRadius: 8,
+                      border: '1px solid var(--color-border)', background: 'var(--color-bg-primary)',
+                      color: 'var(--color-text-primary)', fontSize: 13, outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(v => !v)}
+                    style={{ position: 'absolute', right: 8, background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}
+                  >
+                    {showNewPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassModal(false)}
+                  disabled={passLoading}
+                  style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={passLoading}
+                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--color-accent)', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, opacity: passLoading ? 0.7 : 1 }}
+                >
+                  {passLoading ? (isEn ? 'Saving...' : 'Guardando...') : t.common.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }

@@ -87,6 +87,7 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 
 	// Public Auth routes
 	api.Post("/auth/login", h.Login)
+	api.Post("/auth/forgot-password", h.ForgotPassword)
 
 	// Server-Sent Events (Real-Time Push)
 	api.Get("/stream", hub.Handler)
@@ -97,6 +98,7 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	// --- Viewer or higher (Read-Only) ---
 	viewerGuard := AuthGuard(h.cache, h.db, "viewer")
 	api.Get("/auth/me", viewerGuard, h.Me)
+	api.Put("/auth/password", viewerGuard, h.ChangeOwnPassword)
 	api.Post("/auth/logout", h.Logout)
 
 	api.Get("/tags", viewerGuard, h.ListTags)

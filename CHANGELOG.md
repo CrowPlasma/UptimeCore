@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.5] - 2026-11-04
+
+### 🩹 Fixes & Self-Service Email Password Recovery Suite
+
+#### 🔐 Automated Password Recovery via SMTP & Optional User Email
+- **Self-Service Password Reset Flow**: Added an integrated "Forgot password?" recovery workflow on the login screen. Users provide their registered username and email to request a cryptographically generated 10-character alphanumeric temporary password sent via SMTP.
+- **Optional Email Address in User Records**: Added an `email` column (`VARCHAR(255)`) to the `users` table with auto-migration. Administrators can assign and manage optional recovery emails for existing or new accounts in Security Settings.
+- **Pre-Flight Delivery Verification**: Password reset emails are dispatched synchronously via the configured notification SMTP transport before updating the database; if SMTP transport fails, user credentials remain strictly intact without accidental lockouts.
+- **Enumeration Protection & Timing Defenses**: Added timing normalization delays and neutral feedback responses to mitigate username or email discovery attempts on the public endpoint.
+- **In-App Password Customization**: Added an authenticated "Change Password" modal accessible from the top navbar user avatar menu for all roles (`admin`, `helpdesk`, `viewer`), allowing operators to seamlessly replace temporary passwords with personal credentials.
+
 ## [v1.1.4] - 2026-11-04
 
 ### 🩹 Fixes & Telemetry History Purge / Reset Controls
@@ -221,6 +232,17 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.5] - 2026-11-04
+
+### 🩹 Correcciones y Suite de Recuperación de Contraseña por Correo
+
+#### 🔐 Restablecimiento de Contraseña Vía SMTP y Correo Opcional de Usuario
+- **Flujo de Autoservicio «¿Olvidaste tu contraseña?»**: Se implementó una interfaz de recuperación de acceso en la pantalla de inicio de sesión que solicita el nombre de usuario y su correo verificado para generar una contraseña temporal aleatoria de 10 caracteres alfanuméricos enviada vía SMTP.
+- **Campo Opcional de Correo en Cuentas de Usuario**: Se integró la columna `email` (`VARCHAR(255)`) en la tabla `users` con migración automática. Los administradores pueden asociar y modificar correos de recuperación tanto al dar de alta como al editar cuentas en Ajustes de Seguridad.
+- **Verificación Previa de Entrega SMTP**: El correo de restablecimiento se envía de forma síncrona a través del canal SMTP configurado antes de persistir el hash `bcrypt` en base de datos; si la conexión SMTP falla, las credenciales previas del usuario se mantienen intactas evitando bloqueos accidentales.
+- **Protección Anti-Enumeración y Tiempos Neutrales**: Se agregaron respuestas unificadas y retardos seguros para mitigar ataques de adivinación de usuarios o correos en la API pública.
+- **Modal de Cambio de Contraseña en la Barra Superior**: Se añadió la opción «Cambiar Contraseña» en el menú del avatar de usuario en la barra superior disponible para todos los roles (`admin`, `helpdesk`, `viewer`), facilitando el cambio inmediato de la clave temporal por una personalizada.
 
 ## [v1.1.4] - 2026-11-04
 

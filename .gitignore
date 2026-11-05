@@ -21,6 +21,8 @@ backend/bin/
 backend/tmp/
 backend/uptimecore-backend.exe
 backend/uptimecore-backend
+backend/server
+backend/server.exe
 
 # Python / Scratch Scripts
 *.py

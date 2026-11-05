@@ -518,3 +518,16 @@ func (e *Engine) startRetentionCleaner(ctx context.Context) {
 		}
 	}
 }
+
+
+// IsSmtpConfigured checks whether SMTP credentials are currently configured in the system.
+func (e *Engine) IsSmtpConfigured(ctx context.Context) bool {
+	e.ReloadNotifierConfig(ctx)
+	return e.notifier.IsSmtpConfigured()
+}
+
+// SendPasswordResetEmail refreshes settings and sends a password recovery email via the notifier.
+func (e *Engine) SendPasswordResetEmail(ctx context.Context, toEmail, username, tempPassword, requestIP string) error {
+	e.ReloadNotifierConfig(ctx)
+	return e.notifier.SendPasswordResetEmail(toEmail, username, tempPassword, requestIP)
+}

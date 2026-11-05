@@ -5,6 +5,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) DEFAULT '',
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'viewer',
     created_at TIMESTAMPTZ DEFAULT NOW()

@@ -421,3 +421,134 @@ func (d *Dispatcher) sendEmailTo(subject, body, customTo string) {
 	}
 	client.Quit()
 }
+
+
+// IsSmtpConfigured returns true if SMTP credentials are configured in settings or environment variables.
+func (d *Dispatcher) IsSmtpConfigured() bool {
+	smtpUser := d.GetSetting("smtp_user", "SMTP_USER")
+	smtpPass := d.GetSetting("smtp_pass", "SMTP_PASS")
+	if smtpUser == "" {
+		smtpUser = d.cfg.SmtpUser
+		smtpPass = d.cfg.SmtpPass
+	}
+	return strings.TrimSpace(smtpUser) != "" && strings.TrimSpace(smtpPass) != ""
+}
+
+// SendPasswordResetEmail sends a password recovery email synchronously and returns an error if delivery fails.
+func (d *Dispatcher) SendPasswordResetEmail(toEmail, username, tempPassword, requestIP string) error {
+	smtpUser := d.GetSetting("smtp_user", "SMTP_USER")
+	smtpPass := d.GetSetting("smtp_pass", "SMTP_PASS")
+	if smtpUser == "" {
+		smtpUser = d.cfg.SmtpUser
+		smtpPass = d.cfg.SmtpPass
+	}
+	if strings.TrimSpace(smtpUser) == "" || strings.TrimSpace(smtpPass) == "" {
+		return fmt.Errorf("el servidor SMTP no está configurado en el sistema")
+	}
+
+	smtpHost := d.GetSetting("smtp_host", "SMTP_HOST")
+	if smtpHost == "" {
+		smtpHost = d.cfg.SmtpHost
+	}
+	if smtpHost == "" {
+		smtpHost = "smtp.gmail.com"
+	}
+	smtpPort := d.GetSetting("smtp_port", "SMTP_PORT")
+	if smtpPort == "" {
+		smtpPort = d.cfg.SmtpPort
+	}
+	if smtpPort == "" {
+		smtpPort = "587"
+	}
+
+	fromName := d.GetSetting("smtp_from_name", "SMTP_FROM_NAME")
+	if fromName == "" {
+		fromName = "UptimeCore Seguridad"
+	}
+
+	entityName := d.GetSetting("entity_name", "")
+	platformLabel := "UptimeCore"
+	if entityName != "" {
+		platformLabel = fmt.Sprintf("UptimeCore (%s)", entityName)
+	}
+
+	subject := fmt.Sprintf("[Seguridad] Restablecimiento de contraseña - %s", platformLabel)
+
+	var sb strings.Builder
+	sb.WriteString("🔐 RECUPERACIÓN DE ACCESO - UPTIMECORE\n")
+	sb.WriteString(strings.Repeat("=", 48) + "\n\n")
+	sb.WriteString(fmt.Sprintf("Hola %s,\n\n", username))
+	sb.WriteString(fmt.Sprintf("Se ha procesado una solicitud de restablecimiento de contraseña para tu cuenta en %s.\n\n", platformLabel))
+	sb.WriteString("CREDENCIALES TEMPORALES DE ACCESO:\n")
+	sb.WriteString(strings.Repeat("-", 36) + "\n")
+	sb.WriteString(fmt.Sprintf("• Usuario:              %s\n", username))
+	sb.WriteString(fmt.Sprintf("• Correo verificado:    %s\n", toEmail))
+	sb.WriteString(fmt.Sprintf("• Contraseña temporal:  %s\n", tempPassword))
+	sb.WriteString(fmt.Sprintf("• Fecha y hora:         %s\n", time.Now().Format("2006-01-02 15:04:05 MST")))
+	if requestIP != "" {
+		sb.WriteString(fmt.Sprintf("• IP solicitante:       %s\n", requestIP))
+	}
+	sb.WriteString(strings.Repeat("-", 36) + "\n\n")
+	sb.WriteString("INSTRUCCIONES DE SEGURIDAD:\n")
+	sb.WriteString("1. Inicia sesión en la consola de UptimeCore utilizando tu usuario y la contraseña temporal indicada arriba.\n")
+	sb.WriteString("2. Una vez dentro, haz clic en tu avatar (esquina superior derecha) -> \"Cambiar Contraseña\" para definir tu propia clave personal.\n\n")
+	sb.WriteString(strings.Repeat("-", 48) + "\n")
+	sb.WriteString("Mensaje generado automáticamente por el módulo de seguridad de UptimeCore.")
+
+	encodedSubject := mime.QEncoding.Encode("utf-8", subject)
+	encodedFromName := mime.QEncoding.Encode("utf-8", fromName)
+
+	var msgBuffer bytes.Buffer
+	msgBuffer.WriteString(fmt.Sprintf("From: %s <%s>\r\n", encodedFromName, smtpUser))
+	msgBuffer.WriteString(fmt.Sprintf("To: %s\r\n", toEmail))
+	msgBuffer.WriteString(fmt.Sprintf("Subject: %s\r\n", encodedSubject))
+	msgBuffer.WriteString("MIME-Version: 1.0\r\n")
+	msgBuffer.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	msgBuffer.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	msgBuffer.WriteString("\r\n")
+	msgBuffer.WriteString(sb.String())
+	msgBuffer.WriteString("\r\n")
+
+	msg := msgBuffer.Bytes()
+	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
+
+	conn, err := net.DialTimeout("tcp4", addr, 15*time.Second)
+	if err != nil {
+		log.Printf("⚠️  Error dialing SMTP for password reset: %v", err)
+		return fmt.Errorf("no se pudo conectar al servidor SMTP (%s): %v", addr, err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
+
+	client, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return err
+	}
+	if err = client.Hello("uptimecore"); err != nil {
+		return err
+	}
+	if err = client.StartTLS(&tls.Config{ServerName: smtpHost}); err == nil {
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("error de autenticación SMTP: %v", err)
+		}
+	}
+	if err = client.Mail(smtpUser); err != nil {
+		return err
+	}
+	if err = client.Rcpt(toEmail); err != nil {
+		return err
+	}
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err = w.Write(msg); err != nil {
+		return err
+	}
+	if err = w.Close(); err != nil {
+		return err
+	}
+	_ = client.Quit()
+	return nil
+}

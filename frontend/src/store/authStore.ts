@@ -16,7 +16,12 @@ if (typeof window !== 'undefined' && !(window as any).__uptimecore_fetch_interce
       newInit = { ...newInit, headers }
     }
     const res = await originalFetch(input, newInit)
-    if (res.status === 401 && !String(input).includes('/api/auth/login')) {
+    if (
+      res.status === 401 &&
+      !String(input).includes('/api/auth/login') &&
+      !String(input).includes('/api/auth/forgot-password') &&
+      !String(input).includes('/api/auth/password')
+    ) {
       // If unauthorized, clear token and notify
       localStorage.removeItem('uptimecore_auth_token')
       localStorage.removeItem('uptimecore_auth_user')
