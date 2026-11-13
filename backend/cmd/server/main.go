@@ -37,10 +37,20 @@ func main() {
 	engine.Start(context.Background())
 
 	// Set up Fiber HTTP server
+	// ReadBufferSize/WriteBufferSize raised to 64 KB (default is 4 KB in fasthttp)
+	// to prevent HTTP 431 "Request Header Fields Too Large" when browsers send
+	// large domain/corporate SSO cookies alongside standard headers.
 	app := fiber.New(fiber.Config{
-		AppName: "UptimeCore Monitor",
+		AppName:         "UptimeCore Monitor",
+		ReadBufferSize:  64 * 1024,
+		WriteBufferSize: 64 * 1024,
+		BodyLimit:       50 * 1024 * 1024,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+			code := fiber.StatusInternalServerError
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+			}
+			return c.Status(code).JSON(fiber.Map{"error": err.Error()})
 		},
 	})
 

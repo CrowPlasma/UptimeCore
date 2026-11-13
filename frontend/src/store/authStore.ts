@@ -6,8 +6,17 @@ if (typeof window !== 'undefined' && !(window as any).__uptimecore_fetch_interce
   (window as any).__uptimecore_fetch_intercepted__ = true
   const originalFetch = window.fetch
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const token = localStorage.getItem('uptimecore_auth_token')
-    let newInit = init || {}
+    const rawToken = localStorage.getItem('uptimecore_auth_token')
+    const token = rawToken && rawToken.length <= 256 ? rawToken.trim() : null
+    if (rawToken && !token) {
+      localStorage.removeItem('uptimecore_auth_token')
+    }
+    let newInit: RequestInit = { ...(init || {}) }
+    const urlStr = String(input)
+    if (urlStr.startsWith('/api')) {
+      // Prevent browser from attaching large domain/corporate SSO cookies to API requests
+      newInit.credentials = 'omit'
+    }
     if (token) {
       const headers = new Headers(newInit.headers || {})
       if (!headers.has('Authorization')) {
@@ -18,9 +27,9 @@ if (typeof window !== 'undefined' && !(window as any).__uptimecore_fetch_interce
     const res = await originalFetch(input, newInit)
     if (
       res.status === 401 &&
-      !String(input).includes('/api/auth/login') &&
-      !String(input).includes('/api/auth/forgot-password') &&
-      !String(input).includes('/api/auth/password')
+      !urlStr.includes('/api/auth/login') &&
+      !urlStr.includes('/api/auth/forgot-password') &&
+      !urlStr.includes('/api/auth/password')
     ) {
       // If unauthorized, clear token and notify
       localStorage.removeItem('uptimecore_auth_token')
@@ -105,13 +114,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const data = await res.json()
         localStorage.setItem('uptimecore_auth_user', JSON.stringify(data.user))
         set({ user: data.user, token, loading: false })
-      } else {
+      } else if (res.status === 401) {
         localStorage.removeItem('uptimecore_auth_token')
         localStorage.removeItem('uptimecore_auth_user')
         set({ user: null, token: null, loading: false })
+      } else {
+        // Non-401 error (e.g. 502/503/431): preserve active session from localStorage
+        set({ loading: false })
       }
     } catch {
       // In case of transient network hiccup, retain cached user from localStorage so session never breaks
+      set({ loading: false })
     }
   },
 

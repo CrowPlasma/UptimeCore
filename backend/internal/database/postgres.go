@@ -1057,6 +1057,11 @@ func (db *DB) AutoMigrate(ctx context.Context) error {
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		);`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT '';`,
+		`CREATE TABLE IF NOT EXISTS user_sessions (
+			token VARCHAR(128) PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);`,
 
 		`CREATE TABLE IF NOT EXISTS tags (
 			id SERIAL PRIMARY KEY,
@@ -1258,6 +1263,31 @@ func (db *DB) CountAdmins(ctx context.Context) (int, error) {
 	var count int
 	err := db.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin'`).Scan(&count)
 	return count, err
+}
+
+func (db *DB) SaveSession(ctx context.Context, token string, userID int) error {
+	_, err := db.pool.Exec(ctx,
+		`INSERT INTO user_sessions (token, user_id) VALUES ($1, $2) ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id`,
+		token, userID,
+	)
+	return err
+}
+
+func (db *DB) GetUserBySessionToken(ctx context.Context, token string) (models.User, error) {
+	var u models.User
+	err := db.pool.QueryRow(ctx,
+		`SELECT u.id, u.username, COALESCE(u.email, ''), u.role, u.created_at
+		 FROM user_sessions s
+		 JOIN users u ON u.id = s.user_id
+		 WHERE s.token = $1`,
+		token,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.Role, &u.CreatedAt)
+	return u, err
+}
+
+func (db *DB) DeleteSession(ctx context.Context, token string) error {
+	_, err := db.pool.Exec(ctx, `DELETE FROM user_sessions WHERE token = $1`, token)
+	return err
 }
 
 // --- History Retention ---

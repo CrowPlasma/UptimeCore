@@ -40,6 +40,12 @@ export default defineConfig({
         ws: true,
         timeout: 0,
         proxyTimeout: 0,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // Strip browser domain cookies — UptimeCore authenticates exclusively via Bearer token
+            proxyReq.removeHeader('cookie')
+          })
+        },
       },
     },
   },

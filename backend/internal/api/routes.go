@@ -24,7 +24,16 @@ func AuthGuard(cache *database.Cache, db *database.DB, minRole string) fiber.Han
 			_ = json.Unmarshal([]byte(sessionData), &user)
 		}
 
-		// Fallback: If Redis was flushed, query DB directly if token matches or user exists
+		// Fallback: If Redis was flushed or restarted, query DB directly by session token
+		if user.ID == 0 {
+			if dbUser, dbErr := db.GetUserBySessionToken(c.Context(), token); dbErr == nil && dbUser.ID > 0 {
+				user = dbUser
+				if b, mErr := json.Marshal(user); mErr == nil {
+					_ = cache.SetSession(c.Context(), token, string(b))
+				}
+			}
+		}
+
 		if user.ID == 0 {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired or invalid"})
 		}
@@ -50,18 +59,28 @@ func AuthGuard(cache *database.Cache, db *database.DB, minRole string) fiber.Han
 }
 
 // SSHAuthGuard protects WebSSH WebSocket connections.
-func SSHAuthGuard(cache *database.Cache) fiber.Handler {
+func SSHAuthGuard(cache *database.Cache, db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := extractToken(c)
 		if token == "" {
 			return c.Status(fiber.StatusUnauthorized).SendString("Authentication required")
 		}
+		var user models.User
 		sessionData, err := cache.GetSession(c.Context(), token)
-		if err != nil || sessionData == "" {
+		if err == nil && sessionData != "" {
+			_ = json.Unmarshal([]byte(sessionData), &user)
+		}
+		if user.ID == 0 {
+			if dbUser, dbErr := db.GetUserBySessionToken(c.Context(), token); dbErr == nil && dbUser.ID > 0 {
+				user = dbUser
+				if b, mErr := json.Marshal(user); mErr == nil {
+					_ = cache.SetSession(c.Context(), token, string(b))
+				}
+			}
+		}
+		if user.ID == 0 {
 			return c.Status(fiber.StatusUnauthorized).SendString("Invalid session")
 		}
-		var user models.User
-		_ = json.Unmarshal([]byte(sessionData), &user)
 		if user.Role != "admin" && user.Role != "helpdesk" {
 			return c.Status(fiber.StatusForbidden).SendString("Viewer role cannot access WebSSH terminal")
 		}
@@ -117,7 +136,7 @@ func SetupRoutes(app *fiber.App, h *Handlers, hub *SSEHub) {
 	api.Put("/monitors/:id/maintenance", helpdeskGuard, h.ToggleMaintenance)
 	api.Post("/monitors/test", helpdeskGuard, h.TestMonitor)
 	api.Post("/diagnostics/run", helpdeskGuard, h.RunDiagnostic)
-	api.Get("/ssh/ws", SSHAuthGuard(h.cache), SSHUpgradeGuard, SSHTerminalHandler())
+	api.Get("/ssh/ws", SSHAuthGuard(h.cache, h.db), SSHUpgradeGuard, SSHTerminalHandler())
 
 	// --- Admin Only (Full control: create, edit, delete, users, retention, wipe) ---
 	adminGuard := AuthGuard(h.cache, h.db, "admin")

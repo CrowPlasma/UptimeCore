@@ -1090,8 +1090,10 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	token := hex.EncodeToString(tokenBytes)
 
 	sessionData, _ := json.Marshal(user)
-	if err := h.cache.SetSession(c.Context(), token, string(sessionData)); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to persist session in cache"})
+	cacheErr := h.cache.SetSession(c.Context(), token, string(sessionData))
+	dbErr := h.db.SaveSession(c.Context(), token, user.ID)
+	if cacheErr != nil && dbErr != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to persist session"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -1114,6 +1116,7 @@ func (h *Handlers) Logout(c *fiber.Ctx) error {
 	token := extractToken(c)
 	if token != "" {
 		_ = h.cache.DeleteSession(c.Context(), token)
+		_ = h.db.DeleteSession(c.Context(), token)
 	}
 	return c.JSON(fiber.Map{"success": true})
 }

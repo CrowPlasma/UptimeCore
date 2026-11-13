@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.6] - 2026-11-13
+
+### 🩹 Fixes & HTTP Header Buffer / Persistent Session Hardening
+
+#### 🛡️ HTTP 431 Prevention & Dual-Store Session Persistence
+- **Expanded Fiber HTTP Read/Write Buffers (`64 KB`)**: Raised `ReadBufferSize` and `WriteBufferSize` in the Go Fiber backend from `fasthttp`'s default `4 KB` to `64 KB`, eliminating `Request Header Fields Too Large` (HTTP 431) rejections when client browsers carry accumulated domain or corporate SSO cookies.
+- **API Cookie Isolation (`credentials: 'omit'`)**: Configured the global frontend `fetch` interceptor to omit browser domain cookies on `/api` calls and added a Vite proxy `proxyReq` filter to strip `cookie` headers before forwarding requests to the backend.
+- **Node.js / Vite Header Buffer Expansion**: Set `NODE_OPTIONS="--max-http-header-size=65536"` in `frontend/Dockerfile.dev` so the development proxy server accepts large browser header blocks without failing.
+- **PostgreSQL Session Fallback (`user_sessions`)**: Added a persistent `user_sessions` table in PostgreSQL alongside Redis caching. If Redis restarts or evicts keys, `AuthGuard` and `SSHAuthGuard` seamlessly recover the session from PostgreSQL and re-hydrate Redis without logging out active operators.
+- **Resilient Session Verification (`checkAuth`)**: Updated `authStore.checkAuth()` to only clear local session tokens on explicit `401 Unauthorized` responses, preventing transient `5xx` or header errors from kicking users out of active sessions.
+
 ## [v1.1.5] - 2026-11-04
 
 ### 🩹 Fixes & Self-Service Email Password Recovery Suite
@@ -232,6 +243,17 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.6] - 2026-11-13
+
+### 🩹 Correcciones, Prevención de Error HTTP 431 y Persistencia de Sesiones
+
+#### 🛡️ Ampliación de Cabeceras HTTP y Respaldo de Sesiones en PostgreSQL
+- **Ampliación de Buffer HTTP en Go Fiber (`64 KB`)**: Se incrementaron `ReadBufferSize` y `WriteBufferSize` de `4 KB` (límite por defecto de `fasthttp`) a `64 KB` en el servidor backend, corrigiendo de raíz el bloqueo `Request Header Fields Too Large` (HTTP 431) al iniciar sesión o recuperar contraseña cuando el navegador envía cookies extensas del dominio o de SSO corporativo.
+- **Aislamiento de Cookies en Peticiones API (`credentials: 'omit'`)**: Se configuró el interceptor global `fetch` del frontend para omitir el envío de cookies del navegador hacia `/api` y se añadió limpieza automática de la cabecera `cookie` en el proxy de Vite (`vite.config.ts`).
+- **Ampliación de Cabeceras en Contenedor Frontend**: Se configuró `NODE_OPTIONS="--max-http-header-size=65536"` en `frontend/Dockerfile.dev` para soportar cabeceras de hasta `64 KB` en el servidor Node/Vite.
+- **Persistencia Dual de Sesiones (Redis + PostgreSQL)**: Se incorporó la tabla `user_sessions` en PostgreSQL como respaldo automático de Redis. Si el contenedor de Redis se reinicia o purga memoria, `AuthGuard` y `SSHAuthGuard` recuperan la sesión desde PostgreSQL y rehidratan el caché de forma transparente sin expulsar al usuario.
+- **Protección ante Cierres de Sesión Inesperados (`checkAuth`)**: Se ajustó `authStore.checkAuth()` para invalidar la sesión local únicamente cuando el backend responde explícitamente `401 Unauthorized`, evitando que errores transitorios de red o de cabeceras cierren la sesión activa.
 
 ## [v1.1.5] - 2026-11-04
 
