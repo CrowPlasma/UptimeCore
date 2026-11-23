@@ -844,7 +844,7 @@ export function SlaReportModal({
           >
             {/* Alcance (Scope) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.scopeLabel}:</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.scopeLabel}</span>
               <select
                 value={scopeType}
                 onChange={e => {
@@ -869,9 +869,9 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value="all">🌐 {t.sla.scopeAll} ({allMonitors.length} {isEn ? 'Monitors' : 'Monitores'})</option>
-                <option value="group">🏢 {t.sla.scopeGroup} ({effectiveGroups.length} {isEn ? 'Groups' : 'Grupos'})</option>
-                <option value="monitor">📍 {t.sla.scopeMonitor}</option>
+                <option value="all">{t.sla.scopeAll} ({allMonitors.length} {isEn ? 'Monitors' : 'Monitores'})</option>
+                <option value="group">{t.sla.scopeGroup} ({effectiveGroups.length} {isEn ? 'Groups' : 'Grupos'})</option>
+                <option value="monitor">{t.sla.scopeMonitor}</option>
               </select>
             </div>
 
@@ -931,7 +931,7 @@ export function SlaReportModal({
 
             {/* Periodo de Tiempo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.periodLabel}:</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-secondary)' }}>{t.sla.periodLabel}</span>
               <select
                 value={selectedRange}
                 onChange={e => setSelectedRange(e.target.value)}
@@ -947,14 +947,14 @@ export function SlaReportModal({
                   outline: 'none',
                 }}
               >
-                <option value="30d">📆 {t.sla.range30d}</option>
-                <option value="7d">⚡ {t.sla.range7d}</option>
-                <option value="24h">⏱️ {t.sla.range24h}</option>
-                <option value="month">📅 {t.sla.rangeMonth}</option>
-                <option value="last_month">⏮️ {t.sla.rangeLastMonth}</option>
-                <option value="today">☀️ {t.sla.rangeToday}</option>
-                <option value="yesterday">🌙 {t.sla.rangeYesterday}</option>
-                <option value="custom">🛠️ {t.sla.rangeCustom}</option>
+                <option value="30d">{t.sla.range30d}</option>
+                <option value="7d">{t.sla.range7d}</option>
+                <option value="24h">{t.sla.range24h}</option>
+                <option value="month">{t.sla.rangeMonth}</option>
+                <option value="last_month">{t.sla.rangeLastMonth}</option>
+                <option value="today">{t.sla.rangeToday}</option>
+                <option value="yesterday">{t.sla.rangeYesterday}</option>
+                <option value="custom">{t.sla.rangeCustom}</option>
               </select>
             </div>
 
@@ -1123,16 +1123,16 @@ export function SlaReportModal({
 
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                    {t.sla.scopeLabel}: <span style={{ color: 'var(--color-accent)' }}>{scopeLabel}</span>
+                    {t.sla.scopeLabel} <span style={{ color: 'var(--color-accent)' }}>{scopeLabel}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    {t.sla.periodLabel}:{' '}
+                    {t.sla.periodLabel}{' '}
                     <strong style={{ color: 'var(--color-text-secondary)' }}>
                       {reportData.overall.evaluated_period}
                     </strong>
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--color-text-muted)' }}>
-                    {t.sla.issuedLabel}: {new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {t.sla.issuedLabel} {new Date().toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' })}
                   </div>
                 </div>
               </div>
@@ -1384,29 +1384,29 @@ export function SlaReportModal({
                     }}
                   >
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsName}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsName}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.monitor_name}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsGroup}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsGroup}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.group_name || (isEn ? 'No Group' : 'Sin Grupo')}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsTarget}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsTarget}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>{singleMonitor.target}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsType}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsType}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.type}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsSamples}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsSamples}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>
                         {singleMonitor.total_samples.toLocaleString()} {isEn ? 'probes' : 'pruebas'} ({singleMonitor.up_samples.toLocaleString()} OK / {singleMonitor.down_samples.toLocaleString()} {isEn ? 'Failures' : 'Fallas'})
                       </strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsPeakLatency}:</span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t.sla.specsPeakLatency}</span>{' '}
                       <strong style={{ color: 'var(--color-text-primary)' }}>{singleMonitor.max_latency_ms} ms</strong>
                     </div>
                   </div>
@@ -1450,7 +1450,7 @@ export function SlaReportModal({
                     </div>
 
                     <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                      {t.sla.targetGoal}: <strong>≥{slaTarget.toFixed(2)}%</strong>
+                      {t.sla.targetGoal} <strong>≥{slaTarget.toFixed(2)}%</strong>
                     </span>
                   </div>
 

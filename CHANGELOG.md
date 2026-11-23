@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.7] - 2026-11-23
+
+### 🩹 Fixes & SLA Report UI Polish
+
+#### 📊 SLA Report Dropdowns & Labels Cleanup
+- **Eliminated Duplicate Icons in SLA Selectors**: Removed redundant hardcoded emoji prefixes in the Scope (`All`, `By Group`, `By Monitor`) and Period (`30d`, `7d`, `24h`, `Current Month`, `Previous Month`, `Today`, `Yesterday`, `Custom`) dropdowns inside `SlaReportModal.tsx`, since the i18n strings already include their leading icons.
+- **Eliminated Duplicate Colons (`::`) in SLA Report Labels**: Removed redundant trailing colons on `Scope`, `Period`, `Issued`, `Target Goal`, and audited link specification labels whose i18n definitions already terminate with `:`.
+
 ## [v1.1.6] - 2026-11-13
 
 ### 🩹 Fixes & HTTP Header Buffer / Persistent Session Hardening
@@ -243,6 +251,14 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.7] - 2026-11-23
+
+### 🩹 Correcciones y Pulido de Interfaz en Reportes SLA
+
+#### 📊 Limpieza de Selectores y Etiquetas en Reportes SLA
+- **Eliminación de Iconos Duplicados en Desplegables SLA**: Se retiraron los emojis redundantes prefijados en `SlaReportModal.tsx` para los selectores de Alcance (`Toda la Infraestructura`, `Por Grupo`, `Por Monitor Individual`) y Periodo (`30 días`, `7 días`, `24 horas`, `Mes en Curso`, `Mes Anterior`, `Hoy`, `Ayer`, `Personalizado`), ya que las traducciones i18n ya los incluían.
+- **Eliminación de Doble Dos Puntos (`::`) en Etiquetas SLA**: Se corrigieron las etiquetas `Alcance::`, `Periodo::`, `Emisión::`, `Meta::` y las fichas de especificaciones técnicas del enlace en el reporte SLA para mostrar un único `:`.
 
 ## [v1.1.6] - 2026-11-13
 
