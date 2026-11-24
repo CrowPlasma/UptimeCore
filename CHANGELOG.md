@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 <a name="-english"></a>
 ## 🌐 English
 
+## [v1.1.8] - 2026-11-24
+
+### 🩹 Fixes & Dashboard Tags / Notification Timestamp Enhancements
+
+#### 🏷️ Full-Width Multi-Row Group Tags & Interactive `+N` Overflow
+- **Dynamic 2-Row Tag Layout**: Replaced the hardcoded 4-tag cap in `MonitorCard.tsx` with `GroupTagList`, which uses the full width of the group title column and dynamically wraps tags across up to 2 full rows based on measured chip width.
+- **Interactive `+N` / `− Less` Toggle**: When tags exceed 2 rows, a clickable `+N` pill (with a tooltip preview of hidden tags) expands all remaining tags inline without toggling the group accordion, paired with a `− Less` pill to collapse back cleanly.
+
+#### 🕒 Full Date & Time in Floating Alert Notifications
+- **Localized Date + Time Stamp**: Updated `ToastContainer.tsx` to display both the date and time (e.g. `Nov 24 · 12:13:22 PM`) on floating alert cards with a full year tooltip on hover, and adjusted card width (`385px`) to prevent header wrapping.
+
 ## [v1.1.7] - 2026-11-23
 
 ### 🩹 Fixes & SLA Report UI Polish
@@ -251,6 +262,17 @@ Foundational release of the enterprise network observability, real-time telemetr
 
 <a name="-español"></a>
 ## 🇪🇸 Español
+
+## [v1.1.8] - 2026-11-24
+
+### 🩹 Correcciones en Etiquetas de Grupos y Fecha en Notificaciones Flotantes
+
+#### 🏷️ Etiquetas Dinámicas en 2 Renglones y Botón Interactivo `+N`
+- **Aprovechamiento Total de Ancho en 2 Renglones**: Se sustituyó el límite fijo de 4 etiquetas en `MonitorCard.tsx` por `GroupTagList`, que aprovecha todo el ancho de la columna del nombre del grupo y distribuye automáticamente las etiquetas en hasta 2 renglones completos según su ancho real.
+- **Despliegue Interactivo (`+N` / `− Menos`)**: Al superar 2 renglones aparece una píldora clicable `+N` (con tooltip de las etiquetas ocultas) que muestra todas las etiquetas en línea sin abrir ni cerrar el acordeón del grupo, junto con un botón `− Menos` para volver a contraerlas.
+
+#### 🕒 Fecha y Hora en Notificaciones Flotantes
+- **Timestamp con Fecha Localizada**: Se actualizó `ToastContainer.tsx` para mostrar fecha y hora completas (ej. `24 nov · 12:13:22 p.m.`) en las tarjetas de alertas flotantes, con tooltip incluyendo el año y un ancho optimizado (`385px`) para evitar cortes en títulos largos.
 
 ## [v1.1.7] - 2026-11-23
 

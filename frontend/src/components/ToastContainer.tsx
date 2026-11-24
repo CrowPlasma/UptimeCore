@@ -31,11 +31,26 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
     : t.type === 'warning' ? '#f59e0b'
     : '#3b82f6'
 
-  const timeStr = new Date(t.createdAt).toLocaleTimeString(isEn ? 'en-US' : 'es-MX', {
+  const createdDate = new Date(t.createdAt)
+  const locale = isEn ? 'en-US' : 'es-MX'
+  const dateStr = createdDate.toLocaleDateString(locale, {
+    day: '2-digit',
+    month: 'short',
+  })
+  const timeStr = createdDate.toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   })
+  const fullDateTimeTitle = createdDate.toLocaleString(locale, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+  const timestampStr = `${dateStr} · ${timeStr}`
 
   return (
     <div
@@ -44,7 +59,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
       style={{
         position: 'relative',
         overflow: 'hidden',
-        width: 360,
+        width: 385,
         minHeight: 'fit-content',
         flexShrink: 0,
         boxSizing: 'border-box',
@@ -74,13 +89,17 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
           <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: accentColor }}>
             {t.title}
           </h4>
-          <span style={{
-            fontSize: 10.5,
-            fontFamily: "'JetBrains Mono', monospace",
-            color: 'var(--color-text-muted)',
-            flexShrink: 0,
-          }}>
-            {hovered && t.autoClose ? (isEn ? '⏸ Paused' : '⏸ Pausado') : timeStr}
+          <span
+            title={fullDateTimeTitle}
+            style={{
+              fontSize: 10,
+              fontFamily: "'JetBrains Mono', monospace",
+              color: 'var(--color-text-muted)',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {hovered && t.autoClose ? (isEn ? '⏸ Paused' : '⏸ Pausado') : timestampStr}
           </span>
         </div>
 

@@ -6,7 +6,7 @@
  *  - Botones de editar/eliminar funcionales
  *  - Historia real desde API (/api/monitors/:id/history)
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import {
   ChevronDown, ChevronUp, Plus, Pencil, Trash2,
   Globe, Wifi, Activity, Clock, TrendingUp, Loader2, Pause, Play, Wrench,
@@ -54,11 +54,200 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
 function TagChip({ name, color }: { name: string; color: string }) {
   return (
     <span style={{
-      fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+      display: 'inline-flex', alignItems: 'center',
+      fontSize: 10, fontWeight: 700, padding: '2.5px 9px', borderRadius: 999,
+      lineHeight: 1.2, whiteSpace: 'nowrap',
       background: color + '20', color, border: `1px solid ${color}40`,
     }}>
       {name}
     </span>
+  )
+}
+
+let _tagMeasureCtx: CanvasRenderingContext2D | null = null
+function measureTagTextWidth(text: string): number {
+  if (typeof document === 'undefined') return text.length * 6.5
+  if (!_tagMeasureCtx) {
+    const canvas = document.createElement('canvas')
+    _tagMeasureCtx = canvas.getContext('2d')
+  }
+  if (!_tagMeasureCtx) return text.length * 6.5
+  const fontFamily = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif'
+  _tagMeasureCtx.font = `700 10px ${fontFamily}`
+  return _tagMeasureCtx.measureText(text).width
+}
+
+function computeVisibleTagsCount(
+  tags: { id: number; name: string; color: string }[],
+  availableWidth: number,
+  maxRows = 2,
+  gap = 5,
+): number {
+  if (tags.length === 0) return 0
+  const maxW = Math.max(120, availableWidth)
+  // 18px horizontal padding (9px * 2) + 2px border + 2px subpixel buffer
+  const widths = tags.map(t => Math.ceil(measureTagTextWidth(t.name)) + 22)
+
+  // First pass: check if all tags fit within maxRows without needing a "+N" button
+  let row = 1
+  let x = 0
+  for (let i = 0; i < widths.length; i++) {
+    const w = widths[i]
+    if (x > 0 && x + gap + w > maxW) {
+      row++
+      x = w
+    } else {
+      x = x === 0 ? w : x + gap + w
+    }
+  }
+  if (row <= maxRows) return tags.length
+
+  // Second pass: fit as many tags as possible across maxRows while reserving room for "+N" on the last row
+  row = 1
+  x = 0
+  let count = 0
+  for (let i = 0; i < widths.length; i++) {
+    const w = widths[i]
+    const remaining = tags.length - (i + 1)
+    const plusWidth = remaining > 0 ? Math.ceil(measureTagTextWidth(`+${remaining}`)) + 20 : 0
+
+    if (row < maxRows) {
+      if (x > 0 && x + gap + w > maxW) {
+        row++
+        x = 0
+        // Re-evaluate this tag on the new row (which may now be maxRows)
+        i--
+        continue
+      }
+      x = x === 0 ? w : x + gap + w
+      count = i + 1
+    } else {
+      // On the final allowed row
+      const nextX = x === 0 ? w : x + gap + w
+      const totalNeeded = remaining > 0 ? nextX + gap + plusWidth : nextX
+      if (totalNeeded > maxW) {
+        break
+      }
+      x = nextX
+      count = i + 1
+    }
+  }
+  return Math.max(1, count)
+}
+
+function GroupTagList({
+  tags,
+  isEn,
+}: {
+  tags: { id: number; name: string; color: string }[]
+  isEn: boolean
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState<number>(334)
+  const [showAll, setShowAll] = useState(false)
+
+  useLayoutEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current && containerRef.current.clientWidth > 0) {
+        setContainerWidth(containerRef.current.clientWidth)
+      }
+    }
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [tags.length])
+
+  const collapsedCount = computeVisibleTagsCount(tags, containerWidth, 2, 5)
+  const visibleCount = showAll ? tags.length : collapsedCount
+  const hiddenCount = tags.length - visibleCount
+  const hiddenNames = hiddenCount > 0 ? tags.slice(visibleCount).map(t => t.name).join(', ') : ''
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        flexWrap: 'wrap',
+        marginTop: 5,
+        width: '100%',
+      }}
+    >
+      {tags.slice(0, visibleCount).map(t => (
+        <TagChip key={t.id} name={t.name} color={t.color} />
+      ))}
+      {!showAll && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={e => {
+            e.stopPropagation()
+            setShowAll(true)
+          }}
+          title={
+            isEn
+              ? `Show ${hiddenCount} more tag${hiddenCount > 1 ? 's' : ''}: ${hiddenNames}`
+              : `Ver ${hiddenCount} etiqueta${hiddenCount > 1 ? 's' : ''} más: ${hiddenNames}`
+          }
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '2.5px 8px',
+            borderRadius: 999,
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            background: 'rgba(99, 102, 241, 0.14)',
+            color: 'var(--color-accent)',
+            border: '1px solid rgba(99, 102, 241, 0.35)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.25)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.14)'
+          }}
+        >
+          +{hiddenCount}
+        </button>
+      )}
+      {showAll && tags.length > collapsedCount && (
+        <button
+          type="button"
+          onClick={e => {
+            e.stopPropagation()
+            setShowAll(false)
+          }}
+          title={isEn ? 'Collapse tags' : 'Ocultar etiquetas adicionales'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '2.5px 8px',
+            borderRadius: 999,
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            background: 'rgba(148, 163, 184, 0.14)',
+            color: 'var(--color-text-secondary)',
+            border: '1px solid var(--color-border)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(148, 163, 184, 0.25)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(148, 163, 184, 0.14)'
+          }}
+        >
+          {isEn ? '− Less' : '− Menos'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -272,14 +461,7 @@ export const MonitorCard = React.memo(function MonitorCard({
               </p>
             )}
             {group.tags && group.tags.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
-                {group.tags.slice(0, 4).map(t => <TagChip key={t.id} name={t.name} color={t.color} />)}
-                {group.tags.length > 4 && (
-                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-                    +{group.tags.length - 4}
-                  </span>
-                )}
-              </div>
+              <GroupTagList tags={group.tags} isEn={isEn} />
             )}
           </div>
 
