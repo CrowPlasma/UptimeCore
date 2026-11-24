@@ -300,7 +300,6 @@ export const es: TranslationSchema = {
     signInBtn: 'Iniciar Sesión',
     signingIn: 'Iniciando sesión...',
     logoutBtn: 'Cerrar Sesión',
-    defaultCredsNotice: 'Credenciales de administrador por defecto: admin / admin123',
     minPasswordError: 'La contraseña debe tener al menos 6 caracteres.',
     userRequiredError: 'El nombre de usuario es obligatorio.',
     invalidCredsError: 'Usuario o contraseña incorrectos.',

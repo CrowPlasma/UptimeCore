@@ -306,7 +306,6 @@ export interface TranslationSchema {
     signInBtn: string
     signingIn: string
     logoutBtn: string
-    defaultCredsNotice: string
     minPasswordError: string
     userRequiredError: string
     invalidCredsError: string

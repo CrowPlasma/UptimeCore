@@ -300,7 +300,6 @@ export const en: TranslationSchema = {
     signInBtn: 'Sign In',
     signingIn: 'Signing in...',
     logoutBtn: 'Log Out',
-    defaultCredsNotice: 'Default administrator credentials: admin / admin123',
     minPasswordError: 'Password must be at least 6 characters long.',
     userRequiredError: 'Username is required.',
     invalidCredsError: 'Invalid username or password.',

@@ -370,20 +370,6 @@ export function LoginView() {
                   : (isEn ? 'Sign in' : 'Iniciar Sesión')}
               </button>
             </form>
-
-            {/* Nota informativa de inicio */}
-            <div style={{
-              marginTop: 24,
-              paddingTop: 16,
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              textAlign: 'center',
-              fontSize: 11.5,
-              color: 'rgba(148, 163, 184, 0.7)',
-            }}>
-              {isEn
-                ? 'Default administrator credentials: admin / admin123'
-                : 'Credenciales de administrador por defecto: admin / admin123'}
-            </div>
           </>
         ) : (
           /* ── MODO: OLVIDÉ MI CONTRASEÑA ── */
