@@ -59,7 +59,7 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: string) => void }
       style={{
         position: 'relative',
         overflow: 'hidden',
-        width: 385,
+        width: '100%',
         minHeight: 'fit-content',
         flexShrink: 0,
         boxSizing: 'border-box',
@@ -339,7 +339,7 @@ export function ToastContainer() {
           padding: '6px 10px 6px 6px',
           background: 'transparent',
           pointerEvents: 'auto',
-          width: 384,
+          width: 410,
           boxSizing: 'border-box',
         }}
       >
