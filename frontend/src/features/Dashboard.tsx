@@ -602,7 +602,7 @@ export function Dashboard() {
           padding: '12px 18px', marginBottom: 24, marginTop: 28, fontSize: 13, color: '#b91c1c',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          ⚠️ {isEn ? 'Could not connect to backend:' : 'No se pudo conectar al backend:'} {error}. {isEn ? 'Ensure container ping-eye-backend is running.' : 'Asegúrate de que el contenedor `ping-eye-backend` esté activo.'}
+          ⚠️ {isEn ? 'Could not connect to backend:' : 'No se pudo conectar al backend:'} {error}. {isEn ? 'Ensure container uptimecore-backend is running.' : 'Asegúrate de que el contenedor `uptimecore-backend` esté activo.'}
         </div>
       )}
 
